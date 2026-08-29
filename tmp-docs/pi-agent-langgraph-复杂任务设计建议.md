@@ -1,6 +1,6 @@
 # Pi Agent 思路在 Python LangGraph 中的落地建议
 
-> 目标：在现有 `FastAPI + LangGraph + MCP + RAG + Provider` 底座上，为后续复杂任务、意图识别、分类路由、渐进式工具披露和低延迟运行预留清晰边界。本文件只给出设计建议，不改变当前 v0.1.0 实现。
+> 目标：在现有 `FastAPI + LangGraph + MCP + RAG + Provider` 底座上，为后续复杂任务、意图识别、分类路由、渐进式工具披露和低延迟运行预留清晰边界。本文件只给出设计建议，不改变当前 v0.1.1 实现。
 
 ## 一、可复用的核心思想
 

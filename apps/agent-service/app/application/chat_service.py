@@ -44,6 +44,9 @@ class ChatApplicationService:
                 message=clean,
                 run_id=run_id,
             )
+        except asyncio.CancelledError:
+            await self.sessions.mark_run_interrupted(session_id=session_id, run_id=run_id)
+            raise
         except Exception as exc:
             self._record(
                 user_id=user_id,
@@ -86,14 +89,15 @@ class ChatApplicationService:
         deltas: list[str] = []
         tools: list[str] = []
         recorded = False
+        graph_events = self.graph.stream(
+            user_id=user_id,
+            user_name=user_name,
+            session_id=session_id,
+            message=message,
+            run_id=run_id,
+        )
         try:
-            async for event in self.graph.stream(
-                user_id=user_id,
-                user_name=user_name,
-                session_id=session_id,
-                message=message,
-                run_id=run_id,
-            ):
+            async for event in graph_events:
                 if isinstance(event, dict):
                     data = event.get("data")
                     payload = data if isinstance(data, dict) else {}
@@ -124,6 +128,7 @@ class ChatApplicationService:
                         recorded = True
                 yield event
         except asyncio.CancelledError:
+            await self.sessions.mark_run_interrupted(session_id=session_id, run_id=run_id)
             if not recorded:
                 self._record_stream(
                     user_id=user_id,
@@ -160,12 +165,17 @@ class ChatApplicationService:
                 done_data=done_data,
                 elapsed_ms=(time.perf_counter() - started) * 1000,
             )
-
-    async def validate_and_authorize(self, *, user_id: str, session_id: str, message: str) -> str:
-        """Validate input and ownership before an HTTP streaming response starts."""
-        clean = self._validate(message)
-        await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
-        return clean
+        finally:
+            close = getattr(graph_events, "aclose", None)
+            if callable(close):
+                await close()
+            if not recorded:
+                try:
+                    await self.sessions.mark_run_interrupted(session_id=session_id, run_id=run_id)
+                except Exception:
+                    # Disconnect cleanup is best effort and must not mask the
+                    # original stream cancellation or provider error.
+                    pass
 
     def _validate(self, message: str) -> str:
         clean = message.strip()

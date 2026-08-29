@@ -18,6 +18,9 @@ from app.evaluation.models import EvaluationDimension
 from app.agent.performance import PerformancePlanner
 from app.agent.security import assess_prompt_injection, safe_refusal
 from app.agent.tool_catalog import ProgressiveToolRouter
+from app.avatar.adapters.mock import MockProvider
+from app.avatar.registry import ProviderRegistry
+from app.application.session_service import SessionApplicationService
 from app.domain.models import AvatarCapabilities, AvatarSession, SessionStatus
 from app.main import build_container
 from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
@@ -95,6 +98,28 @@ async def test_interrupted_run_can_resume_and_old_run_is_superseded() -> None:
     assert record is not None
     assert record.session.status == SessionStatus.ACTIVE
     assert record.interrupted is False
+
+
+@pytest.mark.asyncio
+async def test_interrupt_marks_run_before_provider_io() -> None:
+    now = datetime(2026, 8, 29, tzinfo=UTC)
+    store = InMemorySessionStore(ttl_seconds=60, clock=lambda: now)
+    observed: list[bool] = []
+
+    class ObservingProvider(MockProvider):
+        async def interrupt(self, session_id: str):
+            observed.append(await store.is_interrupted(session_id, self.run_id))
+            return await super().interrupt(session_id)
+
+    provider = ObservingProvider(ttl_seconds=60)
+    provider.run_id = None
+    service = SessionApplicationService(providers=ProviderRegistry([provider]), store=store)
+    session = await service.create(user_id="u1", provider_name="mock")
+    provider.run_id = await service.begin_run(user_id="u1", session_id=session.session_id)
+
+    await service.interrupt(user_id="u1", session_id=session.session_id)
+
+    assert observed == [True]
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,4 @@
+# Keep the Docling layout/table pipeline, but avoid pulling CUDA runtimes into
+# the default CPU-oriented service image.
+torch==2.12.0+cpu
+torchvision==0.27.0+cpu

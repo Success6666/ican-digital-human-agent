@@ -84,6 +84,7 @@ def build_container(
         sessions=store,
         rag_service=rag,
         observer=observability,
+        provider_cancel_grace_seconds=settings.provider_cancel_grace_seconds,
     )
     evaluation = EvaluationService(
         max_runs=settings.evaluation_buffer_size,
@@ -137,7 +138,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.1", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

@@ -2,6 +2,12 @@
 
 第一版默认使用 `mock`，真实厂商没有凭证时显示为 `disabled`，不会阻断主链路。
 
+## 运行时边界
+
+LangGraph 只产出 provider-neutral 的 `AgentResponse`（文本、情绪、手势、性能语义和会话标识）。`PresentationLayer` 将它转换为统一的 `send_text(..., mode="agent_response")` 调用，再交给 Fay 或厂商 Provider 适配器。Provider SDK 字段不得回流到 Agent Core；替换 Fay 或接入其他数字人运行时只需要新增或替换适配器。
+
+响应同时携带 `runId`。适配器应把它作为发送和取消操作的幂等键：当同一会话出现新 run 时，旧 run 的在途语音、唇动和微表情应尽快停止；即使厂商回调迟到，也不得覆盖新 run 的表现状态。
+
 ## 统一生命周期
 
 `create_session -> send_text/send_text_chunk -> interrupt -> close_session`。

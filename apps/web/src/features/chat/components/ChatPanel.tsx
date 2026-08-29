@@ -27,7 +27,7 @@ export function ChatPanel({ session, messages, timeline, isSending, error, onSen
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!draft.trim() || !session || isSending) return
+    if (!draft.trim() || !session) return
     onSend(draft)
     setDraft('')
   }
@@ -55,8 +55,8 @@ export function ChatPanel({ session, messages, timeline, isSending, error, onSen
           </div>
           {error && <p className="chat-error" role="alert">{error}</p>}
           <form className="composer" onSubmit={submit}>
-            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder="输入消息" maxLength={4000} disabled={isSending} rows={2} />
-            <div className="composer-footer"><span>{draft.length}/4000</span>{isSending ? <button className="stop-button" type="button" onClick={onStop}><Square size={15} />停止</button> : <button className="send-button" type="submit" disabled={!draft.trim()}><Send size={16} />发送</button>}</div>
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder="输入消息" maxLength={4000} disabled={!session} rows={2} />
+            <div className="composer-footer"><span>{draft.length}/4000</span>{isSending && <button className="stop-button" type="button" onClick={onStop}><Square size={15} />停止</button>}<button className="send-button" type="submit" disabled={!draft.trim()} title={isSending ? '发送新消息并停止当前响应' : '发送消息'}><Send size={16} />{isSending ? '改口' : '发送'}</button></div>
           </form>
         </>
       )}

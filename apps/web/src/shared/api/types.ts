@@ -52,7 +52,20 @@ export interface ChatRequest {
 export interface ChatResponse {
   reply: string
   traceId?: string
+  runId?: string
   toolCalls?: ToolCall[]
+  agentResponse?: AgentResponse
+}
+
+export interface AgentResponse {
+  text: string
+  emotion?: string
+  gesture?: string
+  performance?: AvatarPerformanceCue
+  traceId?: string
+  sessionId?: string
+  runId?: string
+  interruptible?: boolean
 }
 
 export type ChatEventType = 'start' | 'filler' | 'intent' | 'disclosure' | 'security' | 'rag' | 'tool' | 'provider' | 'delta' | 'done' | 'interrupted' | 'error' | string
@@ -78,6 +91,7 @@ export interface ChatStreamEvent {
   eventId?: string
   seq?: number
   traceId?: string
+  runId?: string
   text?: string
   reply?: string
   toolCall?: ToolCall

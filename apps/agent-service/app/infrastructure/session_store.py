@@ -11,7 +11,7 @@ from ..domain.models import SessionRecord, SessionStatus, AvatarSession
 
 
 class InMemorySessionStore:
-    """Small replaceable store used by v0.1.0.
+    """Small replaceable store used by v0.1.1.
 
     The public methods are async so a Redis-backed implementation can be
     introduced later without changing application services.
@@ -21,11 +21,13 @@ class InMemorySessionStore:
         self.ttl_seconds = ttl_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
         self._items: dict[str, SessionRecord] = {}
+        self._stop_events: dict[str, asyncio.Event] = {}
         self._lock = asyncio.Lock()
 
     async def create(self, session: AvatarSession) -> None:
         async with self._lock:
             self._items[session.session_id] = SessionRecord(session=session, last_activity=self._clock())
+            self._stop_events[session.session_id] = asyncio.Event()
 
     async def get(self, session_id: str) -> SessionRecord | None:
         async with self._lock:
@@ -34,6 +36,9 @@ class InMemorySessionStore:
                 return None
             if self._is_expired(record, self._clock()):
                 record.session.status = SessionStatus.EXPIRED
+                event = self._stop_events.pop(session_id, None)
+                if event is not None:
+                    event.set()
                 return None
             return record
 
@@ -64,9 +69,14 @@ class InMemorySessionStore:
                 return None
             if record.session.status == SessionStatus.CLOSED:
                 return None
+            previous_event = self._stop_events.get(session_id)
+            if previous_event is not None:
+                # Wake any provider task belonging to the superseded run.
+                previous_event.set()
             run_id = uuid4().hex
             record.active_run_id = run_id
             record.interrupted = False
+            self._stop_events[session_id] = asyncio.Event()
             record.session.status = SessionStatus.ACTIVE
             current = self._clock()
             record.last_activity = current
@@ -86,6 +96,28 @@ class InMemorySessionStore:
                 return True
             return record.interrupted
 
+    async def wait_for_stop(self, session_id: str, run_id: str) -> None:
+        """Wait for interruption or supersession of one concrete run.
+
+        The event is captured while holding the store lock, so a stop racing
+        with this call cannot be missed.  Redis-backed stores can implement
+        the same port with a pub/sub or keyspace notification.
+        """
+        async with self._lock:
+            record = self._items.get(session_id)
+            if (
+                record is None
+                or self._is_expired(record, self._clock())
+                or record.session.status in {SessionStatus.CLOSED, SessionStatus.EXPIRED}
+                or record.active_run_id != run_id
+                or record.interrupted
+            ):
+                return
+            event = self._stop_events.get(session_id)
+            if event is None:
+                return
+        await event.wait()
+
     async def mark_interrupted(self, session_id: str, run_id: str | None = None) -> SessionRecord | None:
         async with self._lock:
             record = self._items.get(session_id)
@@ -96,6 +128,9 @@ class InMemorySessionStore:
             if record.session.status != SessionStatus.CLOSED:
                 record.interrupted = True
                 record.session.status = SessionStatus.INTERRUPTED
+            event = self._stop_events.get(session_id)
+            if event is not None:
+                event.set()
             return record
 
     async def close(self, session_id: str) -> SessionRecord | None:
@@ -109,6 +144,9 @@ class InMemorySessionStore:
                 record.session.status = SessionStatus.CLOSED
             record.interrupted = False
             record.active_run_id = None
+            event = self._stop_events.pop(session_id, None)
+            if event is not None:
+                event.set()
             return record
 
     async def remove_expired(self, now: datetime | None = None) -> list[SessionRecord]:
@@ -122,6 +160,9 @@ class InMemorySessionStore:
                 if self._is_expired(record, current):
                     if record.session.status != SessionStatus.CLOSED:
                         record.session.status = SessionStatus.EXPIRED
+                    event = self._stop_events.pop(session_id, None)
+                    if event is not None:
+                        event.set()
                     expired.append(record)
                     del self._items[session_id]
             return expired

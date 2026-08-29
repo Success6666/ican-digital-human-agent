@@ -8,9 +8,10 @@ from .models import FillerPlan
 from ..domain.models import ChatResult, ToolCallRecord
 
 
-def filler_payload(trace_id: str, filler: FillerPlan) -> dict[str, Any]:
+def filler_payload(trace_id: str, filler: FillerPlan, *, run_id: str | None = None) -> dict[str, Any]:
     return {
         "traceId": trace_id,
+        "runId": run_id,
         "text": filler.text,
         "phase": filler.phase,
         "expectedDelayMs": filler.expected_delay_ms,
@@ -38,9 +39,13 @@ def result_payload(result: ChatResult) -> dict[str, Any]:
         "reply": result.reply,
         "traceId": result.trace_id,
         "sessionId": result.session_id,
+        "runId": result.run_id,
         "provider": result.provider,
         "toolCalls": dump_tools(result.tool_calls),
         "agentLatencyMs": result.agent_latency_ms,
         "digitalHumanLatencyMs": result.digital_human_latency_ms,
         "interrupted": result.interrupted,
+        "agentResponse": result.agent_response.model_dump(mode="json", by_alias=True)
+        if result.agent_response
+        else None,
     }

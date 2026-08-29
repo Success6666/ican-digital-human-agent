@@ -17,6 +17,7 @@ from .schemas import (
     ChatResponse,
     CreateSessionRequest,
     HealthResponse,
+    InterruptRequest,
     ProviderResponse,
     SessionResponse,
 )
@@ -29,7 +30,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.0")
+    return HealthResponse(service=container.settings.service_name, version="0.1.1")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -84,10 +85,19 @@ async def close_session(session_id: str, context: InternalContext, request: Requ
 
 
 @router.post("/internal/sessions/{session_id}/interrupt", response_model=SessionResponse)
-async def interrupt_session(session_id: str, context: InternalContext, request: Request) -> SessionResponse:
+async def interrupt_session(
+    session_id: str,
+    context: InternalContext,
+    request: Request,
+    payload: InterruptRequest | None = None,
+) -> SessionResponse:
     container = get_container(request)
     try:
-        session = await container.session_service.interrupt(user_id=context["user_id"], session_id=session_id)
+        session = await container.session_service.interrupt(
+            user_id=context["user_id"],
+            session_id=session_id,
+            run_id=payload.run_id if payload else None,
+        )
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return _session_response(session)
@@ -118,20 +128,11 @@ async def chat(payload: ChatRequest, context: InternalContext, request: Request)
 async def chat_stream(payload: ChatRequest, context: InternalContext, request: Request) -> StreamingResponse:
     container = get_container(request)
     try:
-        clean_message = await container.chat_service.validate_and_authorize(
-            user_id=context["user_id"],
-            session_id=payload.session_id,
-            message=payload.message,
-        )
-    except ApplicationError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-    try:
         events = await container.chat_service.stream(
             user_id=context["user_id"],
             user_name=context["user_name"],
             session_id=payload.session_id,
-            message=clean_message,
+            message=payload.message,
         )
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -141,8 +142,12 @@ async def chat_stream(payload: ChatRequest, context: InternalContext, request: R
         async for event in events:
             sequence += 1
             event_name = event.get("event", "message")
-            data = json.dumps(event.get("data", {}), ensure_ascii=False, separators=(",", ":"))
-            trace_id = event.get("data", {}).get("traceId", "stream")
+            payload = event.get("data", {})
+            data_payload = dict(payload) if isinstance(payload, dict) else {"value": payload}
+            data_payload.setdefault("seq", sequence)
+            data_payload.setdefault("eventId", f"{data_payload.get('traceId', 'stream')}:{sequence}")
+            data = json.dumps(data_payload, ensure_ascii=False, separators=(",", ":"))
+            trace_id = data_payload.get("traceId", "stream")
             yield f"id:{trace_id}:{sequence}\nevent:{event_name}\ndata:{data}\n\n"
 
     return StreamingResponse(
@@ -172,9 +177,11 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         reply=result.reply,
         traceId=result.trace_id,
         sessionId=result.session_id,
+        runId=result.run_id,
         provider=result.provider,
         toolCalls=[call.model_dump(mode="json") for call in result.tool_calls],
         agent_latency_ms=result.agent_latency_ms,
         digital_human_latency_ms=result.digital_human_latency_ms,
         interrupted=result.interrupted,
+        agent_response=result.agent_response,
     )

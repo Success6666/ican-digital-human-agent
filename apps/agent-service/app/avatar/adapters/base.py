@@ -58,13 +58,24 @@ class ConfigProvider:
             client_params={},
         )
 
-    async def send_text(self, session_id: str, text: str, *, mode: str = "text") -> ProviderResult:
+    async def send_text(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        mode: str = "text",
+        run_id: str | None = None,
+    ) -> ProviderResult:
         self._ensure_session(session_id)
-        raise ProviderNotConfiguredError(f"{self.name} text operation is not enabled in v0.1.0")
+        raise ProviderNotConfiguredError(f"{self.name} text operation is not enabled in v0.1.1")
 
-    async def interrupt(self, session_id: str) -> ProviderResult:
+    async def interrupt(self, session_id: str, *, run_id: str | None = None) -> ProviderResult:
         self._ensure_session(session_id)
-        return ProviderResult(provider=self.name, status="interrupted", metadata={"operation": "interrupt"})
+        return ProviderResult(
+            provider=self.name,
+            status="interrupted",
+            metadata={"operation": "interrupt", "runId": run_id},
+        )
 
     async def close_session(self, session_id: str) -> ProviderResult:
         self._sessions.discard(session_id)

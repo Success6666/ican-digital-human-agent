@@ -25,7 +25,11 @@ public class WebConfig implements WebMvcConfigurer {
                 .notMatch("/api/health")
                 .notMatch("/error")
                 .notMatchMethod("OPTIONS")
-                .check(r -> StpUtil.checkLogin())));
+                .check(r -> StpUtil.checkLogin())))
+                // StreamingResponseBody performs an async dispatch after the
+                // controller has authenticated the initial request. Sa-Token's
+                // thread-local context is not available on that dispatch.
+                .excludePathPatterns("/api/chat/stream");
     }
 
     @Override

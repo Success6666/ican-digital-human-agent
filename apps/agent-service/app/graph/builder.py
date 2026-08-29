@@ -12,14 +12,17 @@ from langgraph.graph import END, START, StateGraph
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
 from ..agent.models import FillerPhase, IntentDecision, ToolRoutePlan
 from ..agent.performance import PerformancePlanner
+from ..agent.response import build_agent_response
 from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan, safe_refusal
 from ..agent.steering import RunToken, should_stop
 from ..agent.tool_catalog import ProgressiveToolRouter, ToolRouter
 from ..avatar.registry import ProviderRegistry
+from ..avatar.presentation import PresentationLayer, ProviderRuntime
 from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
 from ..rag.models import SearchRequest
 from .state import AgentGraphState
+from .runtime_support import run_with_steering
 
 
 def build_graph(
@@ -32,16 +35,18 @@ def build_graph(
     intent_classifier: IntentClassifier | None = None,
     tool_router: ToolRouter | None = None,
     performance: PerformancePlanner | None = None,
+    provider_cancel_grace_seconds: float = 0.25,
 ):
     """Return a compiled graph with all external decisions injected.
 
-    The graph intentionally remains deterministic in v0.1.0.  Replacing the
+    The graph intentionally remains deterministic in v0.1.1.  Replacing the
     classifier or route policy does not change the API or provider adapters.
     """
 
     classifier = intent_classifier or CompositeIntentClassifier()
     router = tool_router or ProgressiveToolRouter()
     performer = performance or PerformancePlanner()
+    presentation = PresentationLayer()
 
     async def receive(state: AgentGraphState) -> dict[str, Any]:
         attrs = _attrs(state, {"message_length": len(state.get("message", ""))})
@@ -65,10 +70,17 @@ def build_graph(
                 }
             decision = _decision(state)
             if decision is None:
-                decision = await classifier.classify(
-                    state["message"],
-                    context={"owner_id": state["user_id"], "session_id": state["session_id"]},
+                decision, cancelled = await run_with_steering(
+                    lambda: classifier.classify(
+                        state["message"],
+                        context={"owner_id": state["user_id"], "session_id": state["session_id"]},
+                    ),
+                    sessions=sessions,
+                    token=_run_token(state),
+                    cancel_grace_seconds=provider_cancel_grace_seconds,
                 )
+                if cancelled or decision is None:
+                    return {"interrupted": True}
             plan = _plan(state) or router.route(decision, message=state["message"])
             await sessions.touch(state["session_id"])
             return {
@@ -99,10 +111,17 @@ def build_graph(
         attrs = _attrs(state, {"query_length": len(state.get("message", ""))})
         with _span(observer, "rag_retrieval", "rag.search", attrs):
             try:
-                result = await rag_service.search(
-                    SearchRequest(query=state["message"], collection="default", top_k=3),
-                    owner_id=state["user_id"],
+                result, cancelled = await run_with_steering(
+                    lambda: rag_service.search(
+                        SearchRequest(query=state["message"], collection="default", top_k=3),
+                        owner_id=state["user_id"],
+                    ),
+                    sessions=sessions,
+                    token=_run_token(state),
+                    cancel_grace_seconds=provider_cancel_grace_seconds,
                 )
+                if cancelled or result is None:
+                    return {"rag_hits": [], "interrupted": True}
             except Exception as exc:
                 return {"rag_hits": [], "rag_error": _safe_error(exc)}
         return {"rag_hits": [hit.model_dump(mode="json") for hit in result.hits]}
@@ -127,7 +146,17 @@ def build_graph(
             attrs = _attrs(state, {"argument_keys": sorted(arguments), "category": plan.category})
             with _span(observer, "mcp_call", name, attrs):
                 try:
-                    return await tool_client.call(name, arguments)
+                    result, cancelled = await run_with_steering(
+                        lambda: tool_client.call(name, arguments),
+                        sessions=sessions,
+                        token=_run_token(state),
+                        cancel_grace_seconds=provider_cancel_grace_seconds,
+                    )
+                    if cancelled:
+                        return ToolCallRecord(name=name, arguments=arguments, error="run interrupted")
+                    if result is None:
+                        return ToolCallRecord(name=name, arguments=arguments, error="tool returned no result")
+                    return result
                 except Exception as exc:  # defensive boundary for custom clients
                     return ToolCallRecord(name=name, arguments=arguments, error=_safe_error(exc))
 
@@ -177,19 +206,38 @@ def build_graph(
         attrs = _attrs(state, {"text_length": len(state.get("reply", ""))})
         with _span(observer, "provider_event", "send_text", attrs, provider=record.session.provider):
             started = time.perf_counter()
+            cue = performer.for_phase(FillerPhase.SPEAKING)
+            response = build_agent_response(
+                text=state.get("reply", ""),
+                trace_id=state.get("trace_id", ""),
+                session_id=state["session_id"],
+                run_id=state.get("run_id"),
+                performance=cue.model_dump(mode="json", by_alias=True),
+            )
             try:
-                result = await adapter.send_text(state["session_id"], state.get("reply", ""))
-                cue = performer.for_phase(FillerPhase.SPEAKING)
-                result.metadata = {
-                    **result.metadata,
-                    "performance": cue.model_dump(mode="json", by_alias=True),
-                }
+                result, cancelled = await run_with_steering(
+                    lambda: ProviderRuntime(adapter, presentation).present(response),
+                    sessions=sessions,
+                    token=_run_token(state),
+                    cancel_grace_seconds=provider_cancel_grace_seconds,
+                )
+                if cancelled or result is None:
+                    return {
+                        "interrupted": True,
+                        "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                    }
+                # The provider call may outlive a superseding run; suppress
+                # its result so stale output cannot complete the old run.
+                if await _stopped(sessions, state):
+                    return {"interrupted": True, "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2)}
                 return {
+                    "agent_response": response,
                     "provider_result": result,
                     "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2),
                 }
             except Exception as exc:
                 return {
+                    "agent_response": response,
                     "provider_error": _safe_error(exc),
                     "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2),
                 }
@@ -260,3 +308,10 @@ def _span(
 def _safe_error(exc: Exception) -> str:
     message = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
     return message[:300]
+
+
+def _run_token(state: AgentGraphState) -> RunToken | None:
+    run_id = state.get("run_id")
+    if not run_id:
+        return None
+    return RunToken(session_id=state["session_id"], run_id=run_id)

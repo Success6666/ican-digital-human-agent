@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -40,3 +41,20 @@ async def should_stop(store: Any, token: RunToken | None) -> bool:
 async def ensure_running(store: Any, token: RunToken | None) -> None:
     if await should_stop(store, token):
         raise RunInterrupted("run interrupted or superseded")
+
+
+async def wait_for_stop(store: Any, token: RunToken | None, *, poll_interval: float = 0.05) -> None:
+    """Wait until one run is interrupted or replaced.
+
+    Stores with a native notification primitive (the in-memory store does;
+    Redis can implement pub/sub later) avoid polling.  The fallback keeps the
+    contract usable for older store adapters.
+    """
+    waiter = getattr(store, "wait_for_stop", None)
+    if token is not None and callable(waiter):
+        await waiter(token.session_id, token.run_id)
+        return
+    while True:
+        if await should_stop(store, token):
+            return
+        await asyncio.sleep(poll_interval)

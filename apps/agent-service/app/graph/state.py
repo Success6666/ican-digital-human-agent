@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from ..domain.models import ProviderResult, ToolCallRecord
+from ..domain.models import AgentResponse, ProviderResult, ToolCallRecord
 
 
 class AgentGraphState(TypedDict, total=False):
@@ -20,6 +20,7 @@ class AgentGraphState(TypedDict, total=False):
     rag_hits: list[dict[str, Any]]
     rag_error: str
     provider_result: ProviderResult
+    agent_response: AgentResponse
     agent_latency_ms: float
     digital_human_latency_ms: float
     provider_error: str

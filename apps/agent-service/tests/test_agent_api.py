@@ -40,6 +40,8 @@ def test_auth_session_chat_and_sse() -> None:
         assert response.json()["toolCalls"] == [] or len(response.json()["toolCalls"]) == 2
         assert response.json()["agentLatencyMs"] is not None
         assert response.json()["digitalHumanLatencyMs"] is not None
+        assert response.json()["runId"]
+        assert response.json()["agentResponse"]["runId"] == response.json()["runId"]
 
         overview = client.get("/internal/evaluation/overview", headers=headers)
         assert overview.status_code == 200
@@ -66,6 +68,9 @@ def test_auth_session_chat_and_sse() -> None:
         assert "event:tool" in stream.text
         assert "event:delta" in stream.text
         assert "event:done" in stream.text
+        assert '"runId"' in stream.text
+        assert '"seq":1' in stream.text
+        assert '"eventId"' in stream.text
 
         blocked = client.post(
             "/internal/chat/stream",
@@ -80,6 +85,11 @@ def test_auth_session_chat_and_sse() -> None:
         assert "event:tool\n" not in blocked.text
 
         assert client.post(f"/internal/sessions/{session_id}/interrupt", headers=headers).status_code == 200
+        assert client.post(
+            f"/internal/sessions/{session_id}/interrupt",
+            headers=headers,
+            json={"runId": response.json()["runId"]},
+        ).status_code == 200
         assert client.delete(f"/internal/sessions/{session_id}", headers=headers).status_code == 200
         assert client.delete(f"/internal/sessions/{session_id}", headers=headers).status_code == 200
 

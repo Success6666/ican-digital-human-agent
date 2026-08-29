@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 import time
 from typing import Any
 
-from ..agent.steering import RunInterrupted, RunToken, should_stop
+from ..agent.steering import RunInterrupted, RunToken, should_stop, wait_for_stop
 from ..domain.ports import SessionStore
 
 
@@ -16,6 +18,86 @@ async def ensure_running(sessions: SessionStore, token: RunToken | None) -> None
         return
     if await should_stop(sessions, token):
         raise RunInterrupted("run interrupted or superseded")
+
+
+async def run_with_steering(
+    operation: Callable[[], Awaitable[Any]],
+    *,
+    sessions: SessionStore,
+    token: RunToken | None,
+    cancel_grace_seconds: float = 0.25,
+) -> tuple[Any | None, bool]:
+    """Run a cancellable external operation alongside the run-stop signal.
+
+    Returning ``(None, True)`` means the run was stopped and the operation's
+    result must not be published.  Provider adapters should allow
+    ``CancelledError`` to reach their HTTP/WebSocket client so remote speech
+    can stop at the transport boundary as well.
+    """
+    if token is None:
+        # Compatibility callers without a run token cannot be steered. Avoid
+        # creating a forever-polling stop task for that legacy path.
+        return await operation(), False
+
+    operation_task = asyncio.create_task(operation())
+    stop_task = asyncio.create_task(wait_for_stop(sessions, token))
+    try:
+        done, _ = await asyncio.wait(
+            {operation_task, stop_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if operation_task in done:
+            stop_task.cancel()
+            await asyncio.gather(stop_task, return_exceptions=True)
+            if await should_stop(sessions, token):
+                # Consume a possible provider exception before suppressing the
+                # stale result, otherwise asyncio reports an unhandled task.
+                await asyncio.gather(operation_task, return_exceptions=True)
+                return None, True
+            return await operation_task, False
+
+        await _cancel_operation(operation_task, cancel_grace_seconds)
+        return None, True
+    except asyncio.CancelledError:
+        # A browser disconnect cancels the graph task itself. Both watcher and
+        # external I/O must be cleaned here; otherwise a slow SDK can retain
+        # session/provider references after the response is gone.
+        await _cancel_operation(operation_task, cancel_grace_seconds)
+        stop_task.cancel()
+        await asyncio.gather(stop_task, return_exceptions=True)
+        raise
+    finally:
+        if not stop_task.done():
+            stop_task.cancel()
+            await asyncio.gather(stop_task, return_exceptions=True)
+
+
+async def _cancel_operation(task: asyncio.Task[Any], grace_seconds: float) -> None:
+    """Cancel one external operation and consume any late completion."""
+    if task.done():
+        await asyncio.gather(task, return_exceptions=True)
+        return
+    task.cancel()
+    cancelled_done, _ = await asyncio.wait(
+        {task},
+        timeout=max(0.01, grace_seconds),
+    )
+    if task in cancelled_done:
+        await asyncio.gather(task, return_exceptions=True)
+    else:
+        # A non-cooperative adapter is isolated from the graph result. Keep a
+        # callback so a late exception is consumed when its transport returns;
+        # compliant adapters should finish during the grace window.
+        task.add_done_callback(_consume_task)
+
+
+def _consume_task(task: asyncio.Task[Any]) -> None:
+    """Consume a detached provider task's eventual result or exception."""
+    try:
+        task.result()
+    except BaseException:
+        return
 
 
 def safe_error(exc: Exception) -> str:

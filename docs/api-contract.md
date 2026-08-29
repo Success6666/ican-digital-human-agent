@@ -1,4 +1,4 @@
-# API 契约（v0.1）
+# API 契约（v0.1.1）
 
 ## 浏览器 API
 
@@ -12,8 +12,9 @@
 | GET | `/api/providers` | Provider 能力与配置状态 |
 | POST | `/api/sessions` | 创建数字人会话，body `{provider}` |
 | DELETE | `/api/sessions/{id}` | 关闭会话，幂等 |
-| POST | `/api/chat` | 同步聊天，body `{sessionId,message}` |
+| POST | `/api/chat` | 同步聊天，body `{sessionId,message}`，返回 `runId` |
 | POST | `/api/chat/stream` | SSE 聊天，body `{sessionId,message}` |
+| POST | `/api/sessions/{id}/interrupt` | 中断当前运行；可选 body `{runId}`，只中断指定 run |
 | GET | `/api/rag/health` | RAG 与 Docling 状态 |
 | POST | `/api/rag/ingest` | 文本或 Base64 文档入库 |
 | POST | `/api/rag/search` | 用户隔离的语义检索 |
@@ -26,7 +27,9 @@
 
 ## SSE 事件
 
-当前浏览器 SSE 保持兼容的三段式帧：`id`、`event`、`data`。`data` 至少带 `traceId`；`start`、`filler`、`intent`、`tool_disclosure`、`security`、`rag`、`tool`、`delta`、`provider`、`done`、`interrupted`、`error` 为第一版事件类型。安全门命中时，`security` 事件会给出人类可读原因，并跳过 RAG 与 MCP 工具；性能事件包含人类可读的 `performance`（表情、注视、手势、唇动和可中断标记）。
+当前浏览器 SSE 保持兼容的三段式帧：`id`、`event`、`data`。`data` 至少带 `traceId`、`runId`、`seq` 和 `eventId`；`start`、`filler`、`intent`、`tool_disclosure`、`security`、`rag`、`tool`、`delta`、`provider`、`done`、`interrupted`、`error` 为第一版事件类型。安全门命中时，`security` 事件会给出人类可读原因，并跳过 RAG 与 MCP 工具；性能事件包含人类可读的 `performance`（表情、注视、手势、唇动和可中断标记）。
+
+同步 `/api/chat` 与 SSE `done` 的 `agentResponse` 是 Agent Core 到展示层的稳定契约，包含 `text`、`emotion`、`gesture`、`performance`、`traceId`、`sessionId`、`runId` 和 `interruptible`。浏览器不依赖厂商 SDK 字段；数字人运行时由 Provider 适配器负责渲染。
 
 `packages/contracts/events.schema.json` 定义跨服务事件总线的 envelope（`schema_version/event_id/run_id/seq/ts/type/data`）；它与浏览器 SSE 的兼容 wire 层分开，后续事件桥接时再统一。
 

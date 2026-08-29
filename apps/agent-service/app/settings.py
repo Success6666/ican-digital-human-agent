@@ -41,6 +41,7 @@ class Settings(BaseModel):
     max_request_body_bytes: int = Field(default=16 * 1024 * 1024, alias="AGENT_MAX_REQUEST_BODY_BYTES")
     request_timeout_seconds: float = Field(default=8.0, alias="MCP_REQUEST_TIMEOUT_SECONDS")
     mcp_fast_path_timeout_seconds: float = Field(default=0.25, alias="MCP_FAST_PATH_TIMEOUT_SECONDS")
+    provider_cancel_grace_seconds: float = Field(default=0.25, alias="PROVIDER_CANCEL_GRACE_SECONDS")
     mcp_max_result_bytes: int = Field(default=DEFAULT_MAX_RESULT_BYTES, alias="MCP_MAX_RESULT_BYTES")
     mcp_max_result_items: int = Field(default=DEFAULT_MAX_RESULT_ITEMS, alias="MCP_MAX_RESULT_ITEMS")
     mcp_max_result_depth: int = Field(default=DEFAULT_MAX_RESULT_DEPTH, alias="MCP_MAX_RESULT_DEPTH")
@@ -84,7 +85,13 @@ class Settings(BaseModel):
             raise ValueError(f"must be at least {MIN_MAX_RESULT_BYTES} bytes")
         return value
 
-    @field_validator("request_timeout_seconds", "mcp_fast_path_timeout_seconds", "eval_input_price_per_1k", "eval_output_price_per_1k")
+    @field_validator(
+        "request_timeout_seconds",
+        "mcp_fast_path_timeout_seconds",
+        "provider_cancel_grace_seconds",
+        "eval_input_price_per_1k",
+        "eval_output_price_per_1k",
+    )
     @classmethod
     def positive_timeout(cls, value: float) -> float:
         if value <= 0:

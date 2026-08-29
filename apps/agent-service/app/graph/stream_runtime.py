@@ -12,7 +12,7 @@ import time
 import uuid
 from typing import Any
 
-from ..agent.models import FillerPhase
+from ..agent.models import FillerPhase, IntentDecision, IntentName, IntentSource
 from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan, reason_label
 from ..agent.steering import RunInterrupted, RunToken, open_run
 from ..agent.streaming import chunks, dump_tools, filler_payload, provider_performance, result_payload
@@ -32,41 +32,58 @@ async def stream_runtime(
     """Yield user-facing stream events while preserving run interruption checks."""
     trace_id = uuid.uuid4().hex
     stream_started = time.perf_counter()
-    listening = runtime._performance.for_listening()
-    yield {
-        "event": "start",
-        "data": {
-            "traceId": trace_id,
-            "sessionId": session_id,
-            "performance": listening.model_dump(mode="json", by_alias=True),
-        },
-    }
+    if run_id is None:
+        run_id = (await open_run(runtime._sessions, session_id)).run_id
+    terminal = False
     try:
-        if run_id is None:
-            run_id = (await open_run(runtime._sessions, session_id)).run_id
-        token = RunToken(session_id=session_id, run_id=run_id) if run_id else None
         assessment = assess_prompt_injection(message)
-        if assessment.attempted:
-            decision = blocked_decision()
-            plan = blocked_plan()
-        else:
-            decision = await runtime._classify(message, user_id=user_id, session_id=session_id)
-            plan = runtime._router.route(decision, message=message)
-        filler = runtime._filler.plan(decision, message=message)
-        await ensure_running(runtime._sessions, token)
+        # Keep the first acknowledgement independent from model classification.
+        # A remote classifier can be slow, while this cue is safe, short and
+        # interruptible; the later intent event carries the authoritative result.
+        provisional = IntentDecision(
+            name=IntentName.UNKNOWN,
+            confidence=0.0,
+            source=IntentSource.FALLBACK,
+            rationale="首响占位",
+        )
+        immediate_filler = runtime._filler.plan(provisional, message=message)
+        listening = runtime._performance.for_listening()
         runtime._record_first_byte(
             trace_id,
             owner_id=user_id,
             latency_ms=(time.perf_counter() - stream_started) * 1000,
         )
-        # The acknowledgement is intentionally a separate event. Existing
-        # clients ignore unknown events while new clients can speak it fast.
-        if filler.should_emit and filler.text:
-            yield {"event": "filler", "data": filler_payload(trace_id, filler)}
+        yield {
+            "event": "start",
+            "data": {
+                "traceId": trace_id,
+                "sessionId": session_id,
+                "runId": run_id,
+                "performance": listening.model_dump(mode="json", by_alias=True),
+            },
+        }
+        token = RunToken(session_id=session_id, run_id=run_id) if run_id else None
+        await ensure_running(runtime._sessions, token)
+        if immediate_filler.should_emit and immediate_filler.text:
+            yield {"event": "filler", "data": filler_payload(trace_id, immediate_filler, run_id=run_id)}
+        await ensure_running(runtime._sessions, token)
+        if assessment.attempted:
+            decision = blocked_decision()
+            plan = blocked_plan()
+        else:
+            decision = await runtime._classify_steered(
+                message,
+                user_id=user_id,
+                session_id=session_id,
+                token=token,
+            )
+            plan = runtime._router.route(decision, message=message)
+        await ensure_running(runtime._sessions, token)
         yield {
             "event": "intent",
             "data": {
                 "traceId": trace_id,
+                "runId": run_id,
                 "intent": "security" if assessment.attempted else decision.name,
                 "confidence": decision.confidence,
                 "source": decision.source,
@@ -76,6 +93,7 @@ async def stream_runtime(
             "event": "tool_disclosure",
             "data": {
                 "traceId": trace_id,
+                "runId": run_id,
                 "level": plan.disclosure_level,
                 "category": plan.category,
                 "tools": [
@@ -113,6 +131,7 @@ async def stream_runtime(
                         for delta in _response_events(
                             payload,
                             trace_id=trace_id,
+                            run_id=run_id,
                             runtime=runtime,
                         ):
                             # Keep the interruption check between chunks so a
@@ -125,6 +144,7 @@ async def stream_runtime(
                         node_name,
                         payload,
                         trace_id=trace_id,
+                        run_id=run_id,
                     )
                     if event is not None:
                         yield event
@@ -137,13 +157,16 @@ async def stream_runtime(
             done["performance"] = runtime._performance.for_phase(FillerPhase.COMPLETE).model_dump(
                 mode="json", by_alias=True
             )
+            terminal = True
             yield {"event": "done", "data": done}
     except RunInterrupted:
+        terminal = True
         cue = runtime._performance.for_phase(FillerPhase.INTERRUPTED)
         yield {
             "event": "interrupted",
             "data": {
                 "traceId": trace_id,
+                "runId": run_id,
                 "message": "请求已打断。",
                 "performance": cue.model_dump(mode="json", by_alias=True),
             },
@@ -154,6 +177,7 @@ async def stream_runtime(
                 "reply": "请求已打断。",
                 "traceId": trace_id,
                 "sessionId": session_id,
+                "runId": run_id,
                 "provider": "unknown",
                 "toolCalls": [],
                 "interrupted": True,
@@ -162,7 +186,26 @@ async def stream_runtime(
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        yield {"event": "error", "data": {"traceId": trace_id, "message": safe_error(exc)}}
+        yield {
+            "event": "error",
+            "data": {"traceId": trace_id, "runId": run_id, "message": safe_error(exc)},
+        }
+    finally:
+        if not terminal and run_id:
+            await _invalidate_run(runtime, session_id=session_id, run_id=run_id)
+
+
+async def _invalidate_run(runtime: Any, *, session_id: str, run_id: str) -> None:
+    """Invalidate a run when its stream closes before a terminal event."""
+    marker = getattr(runtime._sessions, "mark_interrupted", None)
+    if not callable(marker):
+        return
+    try:
+        await marker(session_id, run_id=run_id)
+    except Exception:
+        # Disconnect cleanup is best effort and must not mask the original
+        # stream cancellation or provider error.
+        return
 
 
 def _node_event(
@@ -170,6 +213,7 @@ def _node_event(
     payload: dict[str, Any],
     *,
     trace_id: str,
+    run_id: str | None,
 ) -> dict[str, Any] | None:
     """Translate a graph update into a transport event, if applicable."""
     if node_name == "retrieve":
@@ -179,6 +223,7 @@ def _node_event(
             "event": "rag",
             "data": {
                 "traceId": trace_id,
+                "runId": run_id,
                 "hitCount": len(payload.get("rag_hits", [])),
                 "degraded": bool(payload.get("rag_error")),
             },
@@ -189,6 +234,7 @@ def _node_event(
             "event": "security",
             "data": {
                 "traceId": trace_id,
+                "runId": run_id,
                 "blocked": blocked,
                 "reason": reason_label(payload.get("security_reason")) if blocked else None,
             },
@@ -198,14 +244,26 @@ def _node_event(
             return None
         return {
             "event": "tool",
-            "data": {"traceId": trace_id, "toolCalls": dump_tools(payload.get("tool_calls", []))},
+            "data": {
+                "traceId": trace_id,
+                "runId": run_id,
+                "toolCalls": dump_tools(payload.get("tool_calls", [])),
+            },
         }
     if node_name == "provider":
+        provider_status = (
+            "interrupted"
+            if payload.get("interrupted")
+            else "error"
+            if payload.get("provider_error")
+            else "ok"
+        )
         return {
             "event": "provider",
             "data": {
                 "traceId": trace_id,
-                "status": "error" if payload.get("provider_error") else "ok",
+                "runId": run_id,
+                "status": provider_status,
                 "message": payload.get("provider_error"),
                 "performance": provider_performance(payload),
             },
@@ -217,12 +275,17 @@ def _response_events(
     payload: dict[str, Any],
     *,
     trace_id: str,
+    run_id: str | None,
     runtime: Any,
 ) -> Iterator[dict[str, Any]]:
     """Build response deltas lazily; the caller performs async checks."""
     reply = str(payload.get("reply", ""))
     for index, chunk in enumerate(chunks(reply)):
-        data: dict[str, Any] = {"traceId": trace_id, "text": chunk}
+        data: dict[str, Any] = {
+            "traceId": trace_id,
+            "runId": run_id,
+            "text": chunk,
+        }
         if index == 0:
             data["performance"] = runtime._performance.for_phase(FillerPhase.SPEAKING).model_dump(
                 mode="json", by_alias=True

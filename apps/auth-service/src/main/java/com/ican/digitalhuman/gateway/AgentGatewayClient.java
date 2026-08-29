@@ -26,7 +26,11 @@ public class AgentGatewayClient {
     public AgentGatewayClient(AgentProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        // Uvicorn's clear-text HTTP endpoint does not reliably preserve POST
+        // bodies during the JDK client's h2c upgrade attempt.  Keep the
+        // gateway transport explicit and compatible with SSE/JSON requests.
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.connectTimeout())
                 .build();
     }
@@ -61,17 +65,43 @@ public class AgentGatewayClient {
         try {
             HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() >= 400) {
-                String message = readLimited(response.body());
-                throw new GatewayException(response.statusCode(), safeMessage(response.statusCode(), message));
+                String message;
+                try (InputStream bodyStream = response.body()) {
+                    message = readLimited(bodyStream);
+                }
+                writeStreamError(output, safeMessage(response.statusCode(), message));
+                return;
             }
             try (InputStream input = response.body()) {
-                input.transferTo(output);
+                byte[] buffer = new byte[4096];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    if (read == 0) {
+                        continue;
+                    }
+                    output.write(buffer, 0, read);
+                    // Push each small SSE batch through the servlet response
+                    // so the browser can render the acknowledgement/delta
+                    // without waiting for the complete Agent run.
+                    output.flush();
+                }
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new GatewayException(502, "Agent 请求被中断");
+            writeStreamError(output, "Agent 请求被中断");
         } catch (IOException exception) {
-            throw new GatewayException(502, "Agent 服务不可达");
+            writeStreamError(output, "Agent 服务不可达");
+        }
+    }
+
+    private void writeStreamError(OutputStream output, String message) {
+        try {
+            String data = objectMapper.createObjectNode().put("message", message).toString();
+            output.write(("event:error\ndata:" + data + "\n\n").getBytes(StandardCharsets.UTF_8));
+            output.flush();
+        } catch (IOException ignored) {
+            // The browser may have disconnected already; there is no useful
+            // response left to write and no exception should trigger /error.
         }
     }
 

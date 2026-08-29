@@ -44,11 +44,13 @@ public class AgentProxyController {
     }
 
     @PostMapping("/sessions/{sessionId}/interrupt")
-    public JsonNode interruptSession(@PathVariable String sessionId) {
+    public JsonNode interruptSession(
+            @PathVariable String sessionId,
+            @RequestBody(required = false) JsonNode body) {
         UserAccount current = user();
         return agentGatewayClient.post(
                 "/internal/sessions/" + encodePath(sessionId) + "/interrupt",
-                null,
+                body,
                 current.id(),
                 current.username()
         );

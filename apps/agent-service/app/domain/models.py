@@ -53,6 +53,25 @@ class ProviderResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentResponse(BaseModel):
+    """Provider-neutral output passed from Agent Core to presentation.
+
+    The graph owns the meaning of the response; presentation adapters decide
+    how to render the semantic cues on a concrete digital-human runtime.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    text: str = Field(default="", max_length=20_000)
+    emotion: str = Field(default="neutral", min_length=1, max_length=64)
+    gesture: str | None = Field(default=None, max_length=64)
+    performance: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str | None = Field(default=None, alias="traceId")
+    session_id: str | None = Field(default=None, alias="sessionId")
+    run_id: str | None = Field(default=None, alias="runId")
+    interruptible: bool = True
+
+
 class ToolCallRecord(BaseModel):
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
@@ -63,14 +82,18 @@ class ToolCallRecord(BaseModel):
 
 
 class ChatResult(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     reply: str
     trace_id: str
     session_id: str
+    run_id: str | None = Field(default=None, alias="runId")
     provider: str
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     agent_latency_ms: float | None = Field(default=None, ge=0)
     digital_human_latency_ms: float | None = Field(default=None, ge=0)
     interrupted: bool = False
+    agent_response: AgentResponse | None = Field(default=None, alias="agentResponse")
 
 
 class SessionRecord(BaseModel):

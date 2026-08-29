@@ -36,19 +36,26 @@ class MockProvider:
             client_params={"mode": "local-mock"},
         )
 
-    async def send_text(self, session_id: str, text: str, *, mode: str = "text") -> ProviderResult:
+    async def send_text(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        mode: str = "text",
+        run_id: str | None = None,
+    ) -> ProviderResult:
         self._ensure_session(session_id)
         clean = text.strip()
         return ProviderResult(
             provider=self.name,
             text=f"Mock 数字人已收到：{clean}",
             status="ok",
-            metadata={"mode": mode, "deterministic": True},
+            metadata={"mode": mode, "deterministic": True, "runId": run_id},
         )
 
-    async def interrupt(self, session_id: str) -> ProviderResult:
+    async def interrupt(self, session_id: str, *, run_id: str | None = None) -> ProviderResult:
         self._ensure_session(session_id)
-        return ProviderResult(provider=self.name, status="interrupted")
+        return ProviderResult(provider=self.name, status="interrupted", metadata={"runId": run_id})
 
     async def close_session(self, session_id: str) -> ProviderResult:
         self._sessions.discard(session_id)

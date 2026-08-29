@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from ..avatar.errors import ProviderError
 from ..avatar.registry import ProviderRegistry
+from ..avatar.runtime_calls import interrupt as interrupt_provider
 from ..domain.models import AvatarSession, SessionRecord, SessionStatus
 from ..domain.ports import SessionStore
 from .errors import ProviderUnavailableError, SessionNotFoundError, SessionOwnershipError
@@ -51,17 +52,45 @@ class SessionApplicationService:
             raise SessionNotFoundError("session is not available")
         return str(run_id)
 
-    async def interrupt(self, *, user_id: str, session_id: str) -> AvatarSession:
+    async def interrupt(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        run_id: str | None = None,
+    ) -> AvatarSession:
         record = await self.get_for_user(user_id=user_id, session_id=session_id)
         if record.session.status == SessionStatus.CLOSED:
             return record.session
+        active_run_id = record.active_run_id
+        # A delayed interrupt from an older browser stream must never stop a
+        # newer run in the same session.  Missing run_id keeps the v0.1 API
+        # behavior and targets the currently active run.
+        if run_id is not None and active_run_id not in {None, run_id}:
+            return record.session
+        target_run_id = run_id or active_run_id
+        # Publish the interruption before calling the provider so an in-flight
+        # graph run observes the token change without waiting on remote I/O.
+        updated = await self.store.mark_interrupted(session_id, run_id=target_run_id)
+        if updated is None:
+            return record.session
+        if target_run_id is not None and updated.active_run_id not in {None, target_run_id}:
+            return updated.session
         provider = self.providers.get(record.session.provider)
         try:
-            await provider.interrupt(session_id)
+            await interrupt_provider(provider, session_id, run_id=target_run_id)
         except ProviderError as exc:
             raise ProviderUnavailableError(str(exc)) from exc
-        updated = await self.store.mark_interrupted(session_id, run_id=record.active_run_id)
         return (updated or record).session
+
+    async def mark_run_interrupted(self, *, session_id: str, run_id: str | None) -> None:
+        """Invalidate a run after its transport disconnects.
+
+        This path intentionally skips remote Provider I/O: the graph task is
+        already being cancelled, and the store token is the authoritative
+        guard against any late result.
+        """
+        await self.store.mark_interrupted(session_id, run_id=run_id)
 
     async def close(self, *, user_id: str, session_id: str) -> AvatarSession | None:
         record = await self.store.get(session_id)
@@ -70,6 +99,11 @@ class SessionApplicationService:
             return None
         self._ensure_owner(record, user_id)
         if record.session.status != SessionStatus.CLOSED:
+            # Invalidate the active graph run before touching the remote
+            # runtime.  Provider teardown can be slow; keeping the stop token
+            # authoritative prevents stale text/tool output from racing with
+            # close_session and gives in-flight work an immediate exit path.
+            await self.store.mark_interrupted(session_id, run_id=record.active_run_id)
             provider = self.providers.get(record.session.provider)
             try:
                 await provider.close_session(session_id)
