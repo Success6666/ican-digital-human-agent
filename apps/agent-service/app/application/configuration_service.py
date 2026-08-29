@@ -1,0 +1,84 @@
+"""Expose a non-sensitive runtime configuration view for operators."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..observability.service import ObservabilityService
+from ..rag.service import RagService
+from ..avatar.registry import ProviderRegistry
+from ..settings import Settings
+
+
+class ConfigurationApplicationService:
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        providers: ProviderRegistry,
+        rag: RagService,
+        observability: ObservabilityService,
+    ) -> None:
+        self.settings = settings
+        self.providers = providers
+        self.rag = rag
+        self.observability = observability
+
+    async def view(self) -> dict[str, Any]:
+        provider_health = await self.providers.health()
+        parser = getattr(self.rag.parser, "config", None)
+        return {
+            "environment": self.settings.environment,
+            "defaultProvider": self.settings.default_provider,
+            "session": {
+                "ttlSeconds": self.settings.session_ttl_seconds,
+                "cleanupIntervalSeconds": self.settings.cleanup_interval_seconds,
+            },
+            "llm": {
+                "mode": "deterministic-fallback",
+                "configured": False,
+                "detail": "未配置业务模型，当前使用可验收的确定性响应器",
+            },
+            "embedding": {
+                "provider": "hash-local",
+                "configured": True,
+                "detail": "本地特征哈希向量，后续可替换为远程 Embedding 服务",
+            },
+            "rag": {
+                "parser": "Docling",
+                "enabled": bool(getattr(parser, "enabled", True)),
+                "artifactsConfigured": bool(getattr(parser, "artifacts_path", None)),
+                "ocrBackend": getattr(parser, "ocr_backend", "auto"),
+                "ocrLanguages": list(getattr(parser, "ocr_languages", ())),
+                "tableMode": getattr(parser, "table_mode", "accurate"),
+                "localModels": _docling_models(parser),
+                "maxDocumentBytes": self.settings.rag_max_document_bytes,
+                "maxMetadataBytes": self.settings.rag_max_metadata_bytes,
+                "maxMetadataItems": self.settings.rag_max_metadata_items,
+                "maxMetadataDepth": self.settings.rag_max_metadata_depth,
+            },
+            "mcp": {
+                "maxResultBytes": self.settings.mcp_max_result_bytes,
+                "maxResultItems": self.settings.mcp_max_result_items,
+                "maxResultDepth": self.settings.mcp_max_result_depth,
+                "localFallback": self.settings.mcp_allow_local_fallback,
+            },
+            "observability": self.observability.health().model_dump(mode="json"),
+            "providers": [item.model_dump(mode="json") for item in provider_health],
+        }
+
+
+def _docling_models(parser: Any) -> list[str]:
+    """Return a human-readable list of the enabled local parsing models."""
+
+    if parser is None or not getattr(parser, "enabled", True):
+        return ["未启用本地 Docling 模型"]
+    models = ["Layout Heron"]
+    if getattr(parser, "do_table_structure", True):
+        mode = "accurate" if getattr(parser, "table_mode", "accurate") == "accurate" else "fast"
+        models.append(f"TableFormer（{mode}）")
+    if getattr(parser, "do_ocr", True):
+        backend = str(getattr(parser, "ocr_backend", "onnxruntime")).upper()
+        languages = "、".join(getattr(parser, "ocr_languages", ())) or "默认语言"
+        models.append(f"RapidOCR / {backend}（{languages}）")
+    return models

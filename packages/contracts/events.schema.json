@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ican.local/contracts/events.schema.json",
+  "title": "DigitalHumanAgentEvent",
+  "type": "object",
+  "required": ["schema_version", "event_id", "run_id", "seq", "type", "data"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "thread_id": {"type": ["string", "null"]},
+    "seq": {"type": "integer", "minimum": 1},
+    "ts": {"type": "string", "format": "date-time"},
+    "type": {"type": "string", "minLength": 1},
+    "data": {"type": "object"}
+  },
+  "additionalProperties": false
+}

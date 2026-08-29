@@ -1,0 +1,144 @@
+"""Environment-backed service settings.
+
+Keeping configuration in one small module makes it possible to replace the
+in-memory runtime with Redis or a different MCP endpoint without touching the
+domain and graph layers.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+import os
+
+from pydantic import BaseModel, Field, field_validator
+
+from .mcp.limits import (
+    DEFAULT_MAX_RESULT_BYTES,
+    DEFAULT_MAX_RESULT_DEPTH,
+    DEFAULT_MAX_RESULT_ITEMS,
+    MIN_MAX_RESULT_BYTES,
+)
+from .rag.limits import (
+    DEFAULT_MAX_METADATA_BYTES,
+    DEFAULT_MAX_METADATA_DEPTH,
+    DEFAULT_MAX_METADATA_ITEMS,
+)
+
+
+class Settings(BaseModel):
+    service_name: str = "agent-service"
+    environment: str = "development"
+    host: str = Field(default="0.0.0.0", alias="AGENT_HOST")
+    port: int = Field(default=8000, alias="AGENT_PORT")
+    internal_token: str = Field(default="dev-internal-token", alias="AGENT_INTERNAL_TOKEN")
+    mcp_server_url: str = Field(default="http://localhost:9000/mcp", alias="MCP_SERVER_URL")
+    mcp_internal_token: str = Field(default="", alias="MCP_INTERNAL_TOKEN")
+    mcp_allow_local_fallback: bool = Field(default=True, alias="MCP_ALLOW_LOCAL_FALLBACK")
+    default_provider: str = Field(default="mock", alias="DEFAULT_PROVIDER")
+    session_ttl_seconds: int = Field(default=1800, alias="SESSION_TTL_SECONDS")
+    cleanup_interval_seconds: int = Field(default=30, alias="SESSION_CLEANUP_INTERVAL_SECONDS")
+    max_message_length: int = Field(default=4000, alias="MAX_MESSAGE_LENGTH")
+    max_request_body_bytes: int = Field(default=16 * 1024 * 1024, alias="AGENT_MAX_REQUEST_BODY_BYTES")
+    request_timeout_seconds: float = Field(default=8.0, alias="MCP_REQUEST_TIMEOUT_SECONDS")
+    mcp_fast_path_timeout_seconds: float = Field(default=0.25, alias="MCP_FAST_PATH_TIMEOUT_SECONDS")
+    mcp_max_result_bytes: int = Field(default=DEFAULT_MAX_RESULT_BYTES, alias="MCP_MAX_RESULT_BYTES")
+    mcp_max_result_items: int = Field(default=DEFAULT_MAX_RESULT_ITEMS, alias="MCP_MAX_RESULT_ITEMS")
+    mcp_max_result_depth: int = Field(default=DEFAULT_MAX_RESULT_DEPTH, alias="MCP_MAX_RESULT_DEPTH")
+    rag_max_document_bytes: int = Field(default=8 * 1024 * 1024, alias="RAG_MAX_DOCUMENT_BYTES")
+    rag_max_metadata_bytes: int = Field(default=DEFAULT_MAX_METADATA_BYTES, alias="RAG_MAX_METADATA_BYTES")
+    rag_max_metadata_items: int = Field(default=DEFAULT_MAX_METADATA_ITEMS, alias="RAG_MAX_METADATA_ITEMS")
+    rag_max_metadata_depth: int = Field(default=DEFAULT_MAX_METADATA_DEPTH, alias="RAG_MAX_METADATA_DEPTH")
+    evaluation_buffer_size: int = Field(default=2000, alias="EVALUATION_BUFFER_SIZE")
+    eval_input_price_per_1k: float = Field(default=0.003, alias="EVAL_INPUT_PRICE_PER_1K")
+    eval_output_price_per_1k: float = Field(default=0.009, alias="EVAL_OUTPUT_PRICE_PER_1K")
+    eval_currency: str = Field(default="CNY", alias="EVAL_CURRENCY")
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    provider_enabled: dict[str, bool] = Field(default_factory=dict)
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator(
+        "session_ttl_seconds",
+        "cleanup_interval_seconds",
+        "max_message_length",
+        "max_request_body_bytes",
+        "mcp_max_result_bytes",
+        "mcp_max_result_items",
+        "mcp_max_result_depth",
+        "rag_max_document_bytes",
+        "rag_max_metadata_bytes",
+        "rag_max_metadata_items",
+        "rag_max_metadata_depth",
+        "evaluation_buffer_size",
+    )
+    @classmethod
+    def positive_int(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("must be positive")
+        return value
+
+    @field_validator("mcp_max_result_bytes")
+    @classmethod
+    def result_bytes_minimum(cls, value: int) -> int:
+        if value < MIN_MAX_RESULT_BYTES:
+            raise ValueError(f"must be at least {MIN_MAX_RESULT_BYTES} bytes")
+        return value
+
+    @field_validator("request_timeout_seconds", "mcp_fast_path_timeout_seconds", "eval_input_price_per_1k", "eval_output_price_per_1k")
+    @classmethod
+    def positive_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("must be positive")
+        return value
+
+    @classmethod
+    def from_env(cls) -> "Settings":
+        values: dict[str, object] = {}
+        for field_name, field in cls.model_fields.items():
+            env_name = field.alias or field_name.upper()
+            raw = os.getenv(env_name)
+            if raw is None and field_name == "request_timeout_seconds":
+                raw = os.getenv("REQUEST_TIMEOUT_SECONDS")
+            if raw is not None:
+                values[field_name] = raw
+
+        # The MCP container can use the same secret as the Agent when a
+        # dedicated MCP_INTERNAL_TOKEN is not supplied.
+        if not values.get("mcp_internal_token"):
+            values["mcp_internal_token"] = os.getenv("AGENT_INTERNAL_TOKEN", "dev-internal-token")
+
+        values["cors_origins"] = _csv(os.getenv("CORS_ORIGINS", "http://localhost:5173"))
+        values["provider_enabled"] = {
+            name: _truthy_any(
+                os.getenv(f"PROVIDER_{name.upper()}_ENABLED"),
+                os.getenv(_provider_flag(name), "false"),
+            )
+            for name in ("aliyun", "mofa", "iflytek", "fay")
+        }
+        return cls.model_validate(values)
+
+
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _truthy_any(primary: str | None, fallback: str) -> bool:
+    return _truthy(primary) if primary is not None else _truthy(fallback)
+
+
+def _provider_flag(name: str) -> str:
+    return {
+        "aliyun": "ALIYUN_AVATAR_ENABLED",
+        "mofa": "MOFA_AVATAR_ENABLED",
+        "iflytek": "IFLYTEK_AVATAR_ENABLED",
+        "fay": "FAY_ENABLED",
+    }[name]
+
+
+def _csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings.from_env()

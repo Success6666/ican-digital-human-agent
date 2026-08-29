@@ -1,0 +1,34 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Java
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+
+# Runtime artifacts
+*.log
+tmp-docs/*.json
+tmp-docs/*.png

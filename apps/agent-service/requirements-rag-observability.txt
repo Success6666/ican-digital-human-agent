@@ -1,0 +1,7 @@
+# RAG document parsing (loaded lazily by app.rag.docling_parser)
+docling>=2.0,<3
+
+# FutureAGI's OpenTelemetry instrumentation is optional at runtime. The
+# adapter falls back to JSON logs when the package or credentials are absent.
+# fi-instrumentation-otel 1.1.x supports Python 3.10-3.13.
+fi-instrumentation-otel>=1.1,<2; python_version < '3.14'

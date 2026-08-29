@@ -1,0 +1,31 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: digital-human-auth-service
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: ${AUTH_TOKEN_TIMEOUT:7200}
+  active-timeout: ${AUTH_ACTIVE_TIMEOUT:-1}
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false
+  is-read-header: true
+  is-read-body: false
+  is-read-cookie: true
+
+agent:
+  base-url: ${AGENT_BASE_URL:http://localhost:8000}
+  internal-token: ${AGENT_INTERNAL_TOKEN:dev-internal-token}
+  connect-timeout: ${AGENT_CONNECT_TIMEOUT:3s}
+  read-timeout: ${AGENT_READ_TIMEOUT:45s}
+
+security:
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173}

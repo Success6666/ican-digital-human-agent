@@ -1,0 +1,131 @@
+name: ican-digital-human
+
+services:
+  web:
+    build:
+      context: ./apps/web
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8088}:80"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./apps/auth-service
+    environment:
+      SERVER_PORT: 8080
+      AGENT_BASE_URL: http://agent-service:8000
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-dev-internal-token}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8088,http://localhost:5173}
+    expose:
+      - "8080"
+    depends_on:
+      agent-service:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/api/health | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  agent-service:
+    build:
+      context: ./apps/agent-service
+    environment:
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 8000
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-dev-internal-token}
+      MCP_SERVER_URL: ${MCP_SERVER_URL:-http://mcp-server:9000/mcp}
+      MCP_REQUEST_TIMEOUT_SECONDS: ${MCP_REQUEST_TIMEOUT_SECONDS:-8}
+      MCP_ALLOW_LOCAL_FALLBACK: ${MCP_ALLOW_LOCAL_FALLBACK:-true}
+      MCP_FAST_PATH_TIMEOUT_SECONDS: ${MCP_FAST_PATH_TIMEOUT_SECONDS:-0.25}
+      MCP_MAX_RESULT_BYTES: ${MCP_MAX_RESULT_BYTES:-65536}
+      MCP_MAX_RESULT_ITEMS: ${MCP_MAX_RESULT_ITEMS:-256}
+      MCP_MAX_RESULT_DEPTH: ${MCP_MAX_RESULT_DEPTH:-8}
+      DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-mock}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1800}
+      SESSION_CLEANUP_INTERVAL_SECONDS: ${SESSION_CLEANUP_INTERVAL_SECONDS:-30}
+      MAX_MESSAGE_LENGTH: ${MAX_MESSAGE_LENGTH:-4000}
+      AGENT_MAX_REQUEST_BODY_BYTES: ${AGENT_MAX_REQUEST_BODY_BYTES:-16777216}
+      EVALUATION_BUFFER_SIZE: ${EVALUATION_BUFFER_SIZE:-2000}
+      EVAL_INPUT_PRICE_PER_1K: ${EVAL_INPUT_PRICE_PER_1K:-0.003}
+      EVAL_OUTPUT_PRICE_PER_1K: ${EVAL_OUTPUT_PRICE_PER_1K:-0.009}
+      EVAL_CURRENCY: ${EVAL_CURRENCY:-CNY}
+      DOCLING_ENABLED: ${DOCLING_ENABLED:-true}
+      DOCLING_ARTIFACTS_PATH: ${DOCLING_ARTIFACTS_PATH:-}
+      DOCLING_OCR_BACKEND: ${DOCLING_OCR_BACKEND:-onnxruntime}
+      DOCLING_OCR_LANG: ${DOCLING_OCR_LANG:-chinese}
+      DOCLING_DO_OCR: ${DOCLING_DO_OCR:-true}
+      DOCLING_DO_TABLE_STRUCTURE: ${DOCLING_DO_TABLE_STRUCTURE:-true}
+      DOCLING_TABLE_MODE: ${DOCLING_TABLE_MODE:-accurate}
+      RAG_MAX_CHUNKS: ${RAG_MAX_CHUNKS:-5000}
+      RAG_MAX_DOCUMENT_BYTES: ${RAG_MAX_DOCUMENT_BYTES:-8388608}
+      RAG_MAX_METADATA_BYTES: ${RAG_MAX_METADATA_BYTES:-65536}
+      RAG_MAX_METADATA_ITEMS: ${RAG_MAX_METADATA_ITEMS:-128}
+      RAG_MAX_METADATA_DEPTH: ${RAG_MAX_METADATA_DEPTH:-6}
+      RAG_STRICT_BINARY: ${RAG_STRICT_BINARY:-true}
+      RAG_CHUNK_MAX_CHARS: ${RAG_CHUNK_MAX_CHARS:-1200}
+      RAG_CHUNK_OVERLAP_CHARS: ${RAG_CHUNK_OVERLAP_CHARS:-120}
+      OBSERVABILITY_BUFFER_SIZE: ${OBSERVABILITY_BUFFER_SIZE:-1000}
+      FUTUREAGI_ENABLED: ${FUTUREAGI_ENABLED:-false}
+      FUTUREAGI_ENDPOINT: ${FUTUREAGI_ENDPOINT:-}
+      FUTUREAGI_API_KEY: ${FUTUREAGI_API_KEY:-}
+      FUTUREAGI_SECRET_KEY: ${FUTUREAGI_SECRET_KEY:-}
+      FUTUREAGI_PROJECT: ${FUTUREAGI_PROJECT:-digital-human-agent}
+      ALIYUN_AVATAR_ENABLED: ${ALIYUN_AVATAR_ENABLED:-false}
+      ALIYUN_AVATAR_BASE_URL: ${ALIYUN_AVATAR_BASE_URL:-}
+      ALIYUN_AVATAR_APP_ID: ${ALIYUN_AVATAR_APP_ID:-}
+      ALIYUN_AVATAR_INSTANCE_ID: ${ALIYUN_AVATAR_INSTANCE_ID:-}
+      ALIYUN_AVATAR_ACCESS_KEY_ID: ${ALIYUN_AVATAR_ACCESS_KEY_ID:-}
+      ALIYUN_AVATAR_ACCESS_KEY_SECRET: ${ALIYUN_AVATAR_ACCESS_KEY_SECRET:-}
+      MOFA_AVATAR_ENABLED: ${MOFA_AVATAR_ENABLED:-false}
+      MOFA_GATEWAY_URL: ${MOFA_GATEWAY_URL:-}
+      MOFA_APP_ID: ${MOFA_APP_ID:-}
+      MOFA_APP_SECRET: ${MOFA_APP_SECRET:-}
+      IFLYTEK_AVATAR_ENABLED: ${IFLYTEK_AVATAR_ENABLED:-false}
+      IFLYTEK_GATEWAY_URL: ${IFLYTEK_GATEWAY_URL:-}
+      IFLYTEK_APP_ID: ${IFLYTEK_APP_ID:-}
+      IFLYTEK_API_KEY: ${IFLYTEK_API_KEY:-}
+      IFLYTEK_API_SECRET: ${IFLYTEK_API_SECRET:-}
+      FAY_ENABLED: ${FAY_ENABLED:-false}
+      FAY_BASE_URL: ${FAY_BASE_URL:-}
+    expose:
+      - "8000"
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  mcp-server:
+    build:
+      context: ./apps/mcp-server
+    environment:
+      MCP_INTERNAL_TOKEN: ${MCP_INTERNAL_TOKEN:-${AGENT_INTERNAL_TOKEN:-dev-internal-token}}
+    expose:
+      - "9000"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
