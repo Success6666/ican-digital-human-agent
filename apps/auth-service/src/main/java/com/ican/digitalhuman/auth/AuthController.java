@@ -3,6 +3,7 @@ package com.ican.digitalhuman.auth;
 import com.ican.digitalhuman.auth.dto.LoginRequest;
 import com.ican.digitalhuman.auth.dto.LoginResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,7 +20,7 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/login")
+    @PostMapping(value = "/login", produces = MediaType.APPLICATION_JSON_VALUE)
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
     }

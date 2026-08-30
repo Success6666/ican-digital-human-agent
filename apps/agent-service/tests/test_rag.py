@@ -48,6 +48,21 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(hits.hits), 1)
         self.assertEqual(hits.hits[0].chunk.metadata["owner_id"], "alice")
 
+    async def test_plain_text_content_without_extension_is_not_treated_as_binary(self) -> None:
+        result = await self.service.ingest(
+            IngestRequest(
+                source_name="generated-input",
+                content="Generated plain text remains searchable.",
+            ),
+            owner_id="alice",
+        )
+        self.assertIn(result.parser, {"docling", "text-fallback"})
+        hits = await self.service.search(
+            SearchRequest(query="plain text searchable"),
+            owner_id="alice",
+        )
+        self.assertEqual(len(hits.hits), 1)
+
     async def test_namespace_isolation(self) -> None:
         await self.service.ingest(
             IngestRequest(source_name="a.md", content="private alpha"), owner_id="alice"
@@ -104,6 +119,28 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(DocumentParseError):
             parser.parse(b"not a pdf", source_name="broken.pdf", document_id="d1")
 
+    def test_binary_parse_error_does_not_reflect_source_or_sdk_detail(self) -> None:
+        parser = DoclingParser(
+            strict_binary=True,
+            config=DoclingRuntimeConfig(enabled=True),
+        )
+        with patch.object(
+            parser,
+            "_parse_with_docling",
+            side_effect=RuntimeError("C:/private/secret.pdf Authorization=top-secret"),
+        ):
+            with self.assertRaises(DocumentParseError) as context:
+                parser.parse(
+                    b"not a pdf",
+                    source_name="C:/private/secret.pdf",
+                    content_type="application/pdf",
+                    document_id="d-safe-error",
+                )
+        message = str(context.exception)
+        self.assertIn("文档解析失败", message)
+        self.assertNotIn("secret.pdf", message)
+        self.assertNotIn("top-secret", message)
+
     def test_docling_can_be_disabled_without_breaking_text_fallback(self) -> None:
         parser = DoclingParser(config=DoclingRuntimeConfig(enabled=False))
         parsed = parser.parse(
@@ -113,6 +150,16 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(parsed.metadata["parser"], "text-fallback")
         self.assertFalse(parser.available)
+
+    def test_mime_less_parser_sniffs_utf8_text_but_rejects_pdf_signature(self) -> None:
+        self.assertEqual(
+            DoclingParser._content_type("README", None, b"plain UTF-8 text"),
+            "text/plain",
+        )
+        self.assertEqual(
+            DoclingParser._content_type("README", None, b"%PDF-1.7\n"),
+            "application/octet-stream",
+        )
 
     def test_availability_probe_does_not_construct_converter(self) -> None:
         parser = DoclingParser(config=DoclingRuntimeConfig(enabled=True))

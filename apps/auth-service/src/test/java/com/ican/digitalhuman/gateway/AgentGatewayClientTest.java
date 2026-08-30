@@ -105,9 +105,84 @@ class AgentGatewayClientTest {
         var output = new FlushTrackingOutputStream();
         client.stream("/internal/chat/stream", new ObjectMapper().createObjectNode(), "u1", "demo", output);
 
-        org.assertj.core.api.Assertions.assertThat(output.toString(StandardCharsets.UTF_8))
+        String frame = output.toString(StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(frame)
                 .contains("event:error", "Agent 服务暂时不可用")
                 .doesNotContain("secret backend detail");
+        String data = frame.substring(frame.indexOf("data:") + "data:".length(), frame.indexOf("\n\n"));
+        var payload = new ObjectMapper().readTree(data);
+        org.assertj.core.api.Assertions.assertThat(payload.path("traceId").asText()).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(payload.path("runId").asText()).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(payload.path("seq").asInt()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(payload.path("eventId").asText())
+                .isEqualTo(payload.path("traceId").asText() + ":1");
+        org.assertj.core.api.Assertions.assertThat(frame)
+                .startsWith("id:" + payload.path("eventId").asText() + "\nevent:error");
+    }
+
+    @Test
+    void convertsTransportFailureToCorrelatedSseErrorFrame() throws Exception {
+        AgentGatewayClient unavailable = new AgentGatewayClient(
+                new AgentProperties(
+                        "http://127.0.0.1:1",
+                        "test-token",
+                        Duration.ofMillis(100),
+                        Duration.ofMillis(100)),
+                new ObjectMapper());
+
+        var output = new FlushTrackingOutputStream();
+        unavailable.stream("/internal/chat/stream", new ObjectMapper().createObjectNode(), "u1", "demo", output);
+
+        String frame = output.toString(StandardCharsets.UTF_8);
+        String data = frame.substring(frame.indexOf("data:") + "data:".length(), frame.indexOf("\n\n"));
+        var payload = new ObjectMapper().readTree(data);
+        org.assertj.core.api.Assertions.assertThat(frame).contains("event:error", "Agent 服务不可达");
+        org.assertj.core.api.Assertions.assertThat(payload.path("traceId").asText()).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(payload.path("runId").asText()).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(payload.path("seq").asInt()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(payload.path("eventId").asText())
+                .isEqualTo(payload.path("traceId").asText() + ":1");
+        org.assertj.core.api.Assertions.assertThat(frame)
+                .startsWith("id:" + payload.path("eventId").asText() + "\nevent:error");
+    }
+
+    @Test
+    void tracksFirstUpstreamIdentifiersAcrossCrLfFrames() {
+        var envelope = SseStreamEnvelope.create(new ObjectMapper().createObjectNode());
+        envelope.observe(
+                "event:start\r\ndata:{\"traceId\":\"trace-a\",\"runId\":\"run-a\",\"seq\":7}\r\n\r\n",
+                new ObjectMapper()
+        );
+        envelope.observe(
+                "data:{\"traceId\":\"trace-b\",\"runId\":\"run-b\",\"seq\":8}\n\n",
+                new ObjectMapper()
+        );
+
+        org.assertj.core.api.Assertions.assertThat(envelope.traceId()).isEqualTo("trace-a");
+        org.assertj.core.api.Assertions.assertThat(envelope.runId()).isEqualTo("run-a");
+        org.assertj.core.api.Assertions.assertThat(envelope.nextSequence()).isEqualTo(9);
+    }
+
+    @Test
+    void boundsMalformedFramesAndRejectsExtremeSequenceValues() {
+        var envelope = SseStreamEnvelope.create(null);
+        envelope.observe("data:" + "x".repeat(300 * 1024), new ObjectMapper());
+        envelope.observe("data:{\"seq\":2147483647}\n\n", new ObjectMapper());
+
+        org.assertj.core.api.Assertions.assertThat(envelope.nextSequence()).isEqualTo(2);
+    }
+
+    @Test
+    void sanitizesUpstreamIdentifiersBeforeUsingThemInAnSseId() {
+        var envelope = SseStreamEnvelope.create(null);
+        envelope.observe(
+                "data:{\"traceId\":\"trace\\nid\",\"runId\":\"run\\r\\nid\"}\n\n",
+                new ObjectMapper()
+        );
+
+        org.assertj.core.api.Assertions.assertThat(envelope.traceId()).isEqualTo("trace_id");
+        org.assertj.core.api.Assertions.assertThat(envelope.runId()).isEqualTo("run__id");
+        org.assertj.core.api.Assertions.assertThat(envelope.eventId()).doesNotContain("\n", "\r");
     }
 
     private static final class FlushTrackingOutputStream extends ByteArrayOutputStream {

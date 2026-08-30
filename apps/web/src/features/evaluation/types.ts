@@ -43,6 +43,26 @@ export interface EvaluationOverviewWire {
   digitalHumanLatencyP50Ms?: number
   digital_human_latency_p95_ms?: number
   digitalHumanLatencyP95Ms?: number
+  first_event_latency_ms?: number
+  firstEventLatencyMs?: number
+  first_visible_latency_ms?: number
+  firstVisibleLatencyMs?: number
+  cancellation_latency_ms?: number
+  cancellationLatencyMs?: number
+  first_event_latency_p50_ms?: number
+  firstEventLatencyP50Ms?: number
+  first_event_latency_p95_ms?: number
+  firstEventLatencyP95Ms?: number
+  first_visible_latency_p50_ms?: number
+  firstVisibleLatencyP50Ms?: number
+  first_visible_latency_p95_ms?: number
+  firstVisibleLatencyP95Ms?: number
+  cancellation_latency_p50_ms?: number
+  cancellationLatencyP50Ms?: number
+  cancellation_latency_p95_ms?: number
+  cancellationLatencyP95Ms?: number
+  cancellation_rate?: number
+  cancellationRate?: number
   latency?: { agent_ms?: number; digital_human_ms?: number; total_ms?: number }
   [key: string]: unknown
 }
@@ -86,6 +106,12 @@ export interface EvaluationRunWire {
   agentLatencyMs?: number
   digital_human_latency_ms?: number
   digitalHumanLatencyMs?: number
+  first_event_latency_ms?: number
+  firstEventLatencyMs?: number
+  first_visible_latency_ms?: number
+  firstVisibleLatencyMs?: number
+  cancellation_latency_ms?: number
+  cancellationLatencyMs?: number
   duration_ms?: number
   durationMs?: number
   scores?: Record<string, { score?: number; label?: string; detail?: string }>
@@ -119,6 +145,16 @@ export interface EvaluationOverview {
   agentLatencyP95Ms?: number
   digitalHumanLatencyP50Ms?: number
   digitalHumanLatencyP95Ms?: number
+  firstEventLatencyMs?: number
+  firstVisibleLatencyMs?: number
+  cancellationLatencyMs?: number
+  firstEventLatencyP50Ms?: number
+  firstEventLatencyP95Ms?: number
+  firstVisibleLatencyP50Ms?: number
+  firstVisibleLatencyP95Ms?: number
+  cancellationLatencyP50Ms?: number
+  cancellationLatencyP95Ms?: number
+  cancellationRate?: number
 }
 
 export interface EvaluationDataState {

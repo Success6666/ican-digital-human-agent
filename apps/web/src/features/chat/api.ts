@@ -2,14 +2,19 @@ import { api } from '../../shared/api/client'
 import { streamSse } from '../../shared/lib/sse'
 import type { ChatRequest, ChatResponse, ChatStreamEvent } from '../../shared/api/types'
 
-export async function sendChat(request: ChatRequest): Promise<ChatResponse> {
-  const response = await api.post<ChatResponse>('/chat', request)
+export async function sendChat(request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
+  const response = await api.post<ChatResponse>('/chat', request, signal ? { signal } : undefined)
   return {
     reply: response.reply ?? '',
     traceId: response.traceId,
     runId: response.runId,
     toolCalls: response.toolCalls ?? [],
     agentResponse: response.agentResponse,
+    agentLatencyMs: response.agentLatencyMs,
+    digitalHumanLatencyMs: response.digitalHumanLatencyMs,
+    firstEventLatencyMs: response.firstEventLatencyMs,
+    firstVisibleLatencyMs: response.firstVisibleLatencyMs,
+    cancellationLatencyMs: response.cancellationLatencyMs,
   }
 }
 

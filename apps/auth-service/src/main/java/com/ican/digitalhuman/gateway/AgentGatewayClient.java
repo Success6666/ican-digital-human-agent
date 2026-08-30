@@ -58,6 +58,7 @@ public class AgentGatewayClient {
     }
 
     public void stream(String path, JsonNode body, String userId, String userName, OutputStream output) {
+        SseStreamEnvelope envelope = SseStreamEnvelope.create(body);
         HttpRequest request = baseRequest(path, userId, userName)
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(write(body)))
@@ -69,7 +70,7 @@ public class AgentGatewayClient {
                 try (InputStream bodyStream = response.body()) {
                     message = readLimited(bodyStream);
                 }
-                writeStreamError(output, safeMessage(response.statusCode(), message));
+                writeStreamError(output, safeMessage(response.statusCode(), message), envelope);
                 return;
             }
             try (InputStream input = response.body()) {
@@ -79,6 +80,7 @@ public class AgentGatewayClient {
                     if (read == 0) {
                         continue;
                     }
+                    envelope.observe(new String(buffer, 0, read, StandardCharsets.UTF_8), objectMapper);
                     output.write(buffer, 0, read);
                     // Push each small SSE batch through the servlet response
                     // so the browser can render the acknowledgement/delta
@@ -88,16 +90,25 @@ public class AgentGatewayClient {
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            writeStreamError(output, "Agent 请求被中断");
+            writeStreamError(output, "Agent 请求被中断", envelope);
         } catch (IOException exception) {
-            writeStreamError(output, "Agent 服务不可达");
+            writeStreamError(output, "Agent 服务不可达", envelope);
         }
     }
 
-    private void writeStreamError(OutputStream output, String message) {
+    private void writeStreamError(OutputStream output, String message, SseStreamEnvelope envelope) {
         try {
-            String data = objectMapper.createObjectNode().put("message", message).toString();
-            output.write(("event:error\ndata:" + data + "\n\n").getBytes(StandardCharsets.UTF_8));
+            long sequence = envelope.nextSequence();
+            String eventId = envelope.eventId();
+            String data = objectMapper.createObjectNode()
+                    .put("message", message)
+                    .put("traceId", envelope.traceId())
+                    .put("runId", envelope.runId())
+                    .put("seq", sequence)
+                    .put("eventId", eventId)
+                    .toString();
+            output.write(("id:" + eventId + "\nevent:error\ndata:" + data + "\n\n")
+                    .getBytes(StandardCharsets.UTF_8));
             output.flush();
         } catch (IOException ignored) {
             // The browser may have disconnected already; there is no useful
@@ -185,4 +196,5 @@ public class AgentGatewayClient {
         byte[] buffer = input.readNBytes(2048);
         return new String(buffer, StandardCharsets.UTF_8);
     }
+
 }

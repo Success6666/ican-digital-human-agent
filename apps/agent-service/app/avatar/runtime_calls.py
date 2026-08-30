@@ -1,6 +1,6 @@
 """Compatibility calls for provider runtimes.
 
-The v0.1.1 protocol carries a run token so adapters can cancel exactly one
+The v0.1.2 protocol carries a run token so adapters can cancel exactly one
 presentation.  The small signature check keeps older third-party adapters
 usable while they migrate to the extended keyword arguments.
 """

@@ -19,6 +19,9 @@ class TelemetryEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     event_id: str = Field(default_factory=lambda: uuid4().hex)
+    # Assigned by the observability facade before a sink receives the event.
+    # A zero value keeps direct sink usage backwards compatible.
+    sequence: int = Field(default=0, ge=0)
     event_type: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
     trace_id: str
@@ -42,6 +45,8 @@ class ObservabilityHealth(BaseModel):
     backend: str
     configured: bool
     buffered_events: int = Field(default=0, ge=0)
+    pending_tasks: int = Field(default=0, ge=0)
+    dropped_events: int = Field(default=0, ge=0)
     last_error: str | None = None
 
     @field_validator("last_error", mode="before")
@@ -54,6 +59,7 @@ class TraceStage(BaseModel):
     """Human-readable stage summary used by the evaluation console."""
 
     name: str
+    sequence: int = Field(default=0, ge=0)
     event_type: str
     status: Literal["ok", "error", "unset"]
     duration_ms: float | None = Field(default=None, ge=0)
@@ -74,9 +80,16 @@ class TraceSummary(BaseModel):
     duration_ms: float = Field(ge=0)
     event_count: int = Field(ge=0)
     error_count: int = Field(ge=0)
+    cancelled: bool = False
+    first_event_latency_ms: float | None = Field(default=None, ge=0)
+    first_visible_latency_ms: float | None = Field(default=None, ge=0)
+    agent_latency_ms: float | None = Field(default=None, ge=0)
+    digital_human_latency_ms: float | None = Field(default=None, ge=0)
+    cancellation_latency_ms: float | None = Field(default=None, ge=0)
     stages: list[TraceStage] = Field(default_factory=list)
 
 
 class TraceReplay(BaseModel):
     trace: TraceSummary
     events: list[TelemetryEvent] = Field(default_factory=list)
+    truncated: bool = False

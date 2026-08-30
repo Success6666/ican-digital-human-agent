@@ -27,6 +27,9 @@ class EvaluationDimension(StrEnum):
     RESULT_CONSISTENCY = "result_consistency"
     FACTUAL_GROUNDING = "factual_grounding"
     PROMPT_INJECTION_DEFENSE = "prompt_injection_defense"
+    FIRST_EVENT_LATENCY = "first_event_latency"
+    FIRST_VISIBLE_LATENCY = "first_visible_latency"
+    CANCELLATION_LATENCY = "cancellation_latency"
     AGENT_LATENCY = "agent_latency"
     DIGITAL_HUMAN_LATENCY = "digital_human_latency"
 
@@ -93,6 +96,9 @@ class EvaluationRunRequest(BaseModel):
     output_tokens: int | None = Field(default=None, ge=0, le=10_000_000)
     agent_latency_ms: float | None = Field(default=None, ge=0, le=86_400_000)
     digital_human_latency_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+    first_event_latency_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+    first_visible_latency_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+    cancellation_latency_ms: float | None = Field(default=None, ge=0, le=86_400_000)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -124,6 +130,9 @@ class EvaluationRun(BaseModel):
     currency: str = "CNY"
     agent_latency_ms: float | None = Field(default=None, ge=0)
     digital_human_latency_ms: float | None = Field(default=None, ge=0)
+    first_event_latency_ms: float | None = Field(default=None, ge=0)
+    first_visible_latency_ms: float | None = Field(default=None, ge=0)
+    cancellation_latency_ms: float | None = Field(default=None, ge=0)
     total_latency_ms: float | None = Field(default=None, ge=0)
     scores: dict[EvaluationDimension, MetricScore] = Field(default_factory=dict)
     input_preview: str = ""
@@ -150,11 +159,22 @@ class EvaluationOverview(BaseModel):
     prompt_injection_protection: float | None = Field(default=None, ge=0, le=1)
     agent_latency_ms: float | None = Field(default=None, ge=0)
     digital_human_latency_ms: float | None = Field(default=None, ge=0)
+    first_event_latency_ms: float | None = Field(default=None, ge=0)
+    first_visible_latency_ms: float | None = Field(default=None, ge=0)
+    cancellation_latency_ms: float | None = Field(default=None, ge=0)
     total_latency_ms: float | None = Field(default=None, ge=0)
     agent_latency_p50_ms: float | None = Field(default=None, ge=0)
     agent_latency_p95_ms: float | None = Field(default=None, ge=0)
     digital_human_latency_p50_ms: float | None = Field(default=None, ge=0)
     digital_human_latency_p95_ms: float | None = Field(default=None, ge=0)
+    first_event_latency_p50_ms: float | None = Field(default=None, ge=0)
+    first_event_latency_p95_ms: float | None = Field(default=None, ge=0)
+    first_visible_latency_p50_ms: float | None = Field(default=None, ge=0)
+    first_visible_latency_p95_ms: float | None = Field(default=None, ge=0)
+    cancellation_latency_p50_ms: float | None = Field(default=None, ge=0)
+    cancellation_latency_p95_ms: float | None = Field(default=None, ge=0)
+    cancellation_rate: float | None = Field(default=None, ge=0, le=1)
+    status_counts: dict[str, int] = Field(default_factory=dict)
     metrics: dict[EvaluationDimension, MetricScore] = Field(default_factory=dict)
     updated_at: datetime = Field(default_factory=utc_now)
     source: Literal["evaluation", "empty"] = "evaluation"

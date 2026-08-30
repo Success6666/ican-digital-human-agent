@@ -26,6 +26,16 @@ export function normalizeOverview(payload: EvaluationOverviewWire | null): Evalu
     agentLatencyP95Ms: source === 'empty' ? undefined : numberOf(payload.agentLatencyP95Ms ?? payload.agent_latency_p95_ms),
     digitalHumanLatencyP50Ms: source === 'empty' ? undefined : numberOf(payload.digitalHumanLatencyP50Ms ?? payload.digital_human_latency_p50_ms),
     digitalHumanLatencyP95Ms: source === 'empty' ? undefined : numberOf(payload.digitalHumanLatencyP95Ms ?? payload.digital_human_latency_p95_ms),
+    firstEventLatencyMs: source === 'empty' ? undefined : numberOf(payload.firstEventLatencyMs ?? payload.first_event_latency_ms),
+    firstVisibleLatencyMs: source === 'empty' ? undefined : numberOf(payload.firstVisibleLatencyMs ?? payload.first_visible_latency_ms),
+    cancellationLatencyMs: source === 'empty' ? undefined : numberOf(payload.cancellationLatencyMs ?? payload.cancellation_latency_ms),
+    firstEventLatencyP50Ms: source === 'empty' ? undefined : numberOf(payload.firstEventLatencyP50Ms ?? payload.first_event_latency_p50_ms),
+    firstEventLatencyP95Ms: source === 'empty' ? undefined : numberOf(payload.firstEventLatencyP95Ms ?? payload.first_event_latency_p95_ms),
+    firstVisibleLatencyP50Ms: source === 'empty' ? undefined : numberOf(payload.firstVisibleLatencyP50Ms ?? payload.first_visible_latency_p50_ms),
+    firstVisibleLatencyP95Ms: source === 'empty' ? undefined : numberOf(payload.firstVisibleLatencyP95Ms ?? payload.first_visible_latency_p95_ms),
+    cancellationLatencyP50Ms: source === 'empty' ? undefined : numberOf(payload.cancellationLatencyP50Ms ?? payload.cancellation_latency_p50_ms),
+    cancellationLatencyP95Ms: source === 'empty' ? undefined : numberOf(payload.cancellationLatencyP95Ms ?? payload.cancellation_latency_p95_ms),
+    cancellationRate: source === 'empty' ? undefined : ratio(payload.cancellationRate ?? payload.cancellation_rate),
     source,
   }
 }
@@ -35,6 +45,10 @@ export function deriveOverview(runs: EvaluationRunWire[], fallbackRuns = 0): Eva
   const successful = runs.filter((run) => ['ok', 'success', 'completed', 'passed'].includes(String(run.status ?? '').toLowerCase())).length
   const durations = runs.map((run) => numberOf(run.durationMs ?? run.duration_ms)).filter((value): value is number => value !== undefined)
   const tokens = runs.map((run) => numberOf(run.totalTokens ?? run.total_tokens)).filter((value): value is number => value !== undefined)
+  const firstEventValues = runs.map((run) => numberOf(run.firstEventLatencyMs ?? run.first_event_latency_ms)).filter((value): value is number => value !== undefined)
+  const firstVisibleValues = runs.map((run) => numberOf(run.firstVisibleLatencyMs ?? run.first_visible_latency_ms)).filter((value): value is number => value !== undefined)
+  const cancellationValues = runs.map((run) => numberOf(run.cancellationLatencyMs ?? run.cancellation_latency_ms)).filter((value): value is number => value !== undefined)
+  const interrupted = runs.filter((run) => ['interrupted', 'cancelled', 'canceled'].includes(String(run.status ?? '').toLowerCase())).length
   return {
     totalRuns: runs.length || fallbackRuns,
     totalTokens: tokens.length ? tokens.reduce((sum, value) => sum + value, 0) : undefined,
@@ -42,6 +56,16 @@ export function deriveOverview(runs: EvaluationRunWire[], fallbackRuns = 0): Eva
     currency: 'CNY',
     taskSuccessRate: runs.length ? successful / runs.length : undefined,
     totalLatencyMs: durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : undefined,
+    firstEventLatencyMs: average(firstEventValues),
+    firstVisibleLatencyMs: average(firstVisibleValues),
+    cancellationLatencyMs: average(cancellationValues),
+    firstEventLatencyP50Ms: percentile(firstEventValues, 0.5),
+    firstEventLatencyP95Ms: percentile(firstEventValues, 0.95),
+    firstVisibleLatencyP50Ms: percentile(firstVisibleValues, 0.5),
+    firstVisibleLatencyP95Ms: percentile(firstVisibleValues, 0.95),
+    cancellationLatencyP50Ms: percentile(cancellationValues, 0.5),
+    cancellationLatencyP95Ms: percentile(cancellationValues, 0.95),
+    cancellationRate: runs.length ? interrupted / runs.length : undefined,
     source: 'telemetry',
   }
 }
@@ -96,4 +120,15 @@ function costCurrency(value: unknown): string | undefined {
 function sumDefined(values: Array<number | undefined>): number | undefined {
   const defined = values.filter((value): value is number => value !== undefined)
   return defined.length ? defined.reduce((sum, value) => sum + value, 0) : undefined
+}
+
+function average(values: number[]): number | undefined {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined
+}
+
+function percentile(values: number[], quantile: number): number | undefined {
+  if (!values.length) return undefined
+  const ordered = [...values].sort((a, b) => a - b)
+  const index = Math.min(ordered.length - 1, Math.max(0, Math.ceil(quantile * ordered.length) - 1))
+  return ordered[index]
 }

@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from collections.abc import Awaitable, Callable
+import inspect
 import time
 from typing import Any
 
 from ..agent.steering import RunInterrupted, RunToken, should_stop, wait_for_stop
 from ..domain.ports import SessionStore
+from ..observability.redaction import redact_text
+from ..observability.utils import latency_value
 
 
 async def ensure_running(sessions: SessionStore, token: RunToken | None) -> None:
@@ -18,6 +21,28 @@ async def ensure_running(sessions: SessionStore, token: RunToken | None) -> None
         return
     if await should_stop(sessions, token):
         raise RunInterrupted("run interrupted or superseded")
+
+
+async def interruption_latency_ms(
+    sessions: SessionStore,
+    token: RunToken | None,
+    *,
+    consume: bool = False,
+) -> float | None:
+    """Read an optional store-provided monotonic stop timestamp."""
+
+    if token is None:
+        return None
+    reader = getattr(sessions, "interruption_latency_ms", None)
+    if not callable(reader):
+        return None
+    try:
+        value = await reader(token.session_id, token.run_id, consume=consume)
+    except TypeError:
+        value = await reader(token.session_id, token.run_id)
+    except Exception:
+        return None
+    return latency_value(value)
 
 
 async def run_with_steering(
@@ -102,8 +127,9 @@ def _consume_task(task: asyncio.Task[Any]) -> None:
 
 def safe_error(exc: Exception) -> str:
     """Return a bounded, single-line error suitable for an API event."""
-    message = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
-    return message[:300]
+    raw = str(exc).strip()
+    message = raw.splitlines()[0] if raw else exc.__class__.__name__
+    return redact_text(message, max_length=300) or exc.__class__.__name__
 
 
 def agent_latency(*, started_at: float, digital_human_latency_ms: float | None) -> float:
@@ -114,10 +140,28 @@ def agent_latency(*, started_at: float, digital_human_latency_ms: float | None) 
 
 
 @asynccontextmanager
-async def trace_scope(observer: Any | None, name: str, attributes: dict[str, Any]):
+async def trace_scope(
+    observer: Any | None,
+    name: str,
+    attributes: dict[str, Any],
+    *,
+    trace_id: str | None = None,
+):
     """Use the optional observer without making it a runtime requirement."""
     if observer is None:
         yield
         return
-    async with observer.start_trace(name, attributes=attributes):
+    start_trace = observer.start_trace
+    try:
+        parameters = inspect.signature(start_trace).parameters.values()
+        accepts_trace_id = any(
+            parameter.name == "trace_id" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        accepts_trace_id = True
+    kwargs: dict[str, Any] = {"attributes": attributes}
+    if trace_id is not None and accepts_trace_id:
+        kwargs["trace_id"] = trace_id
+    async with start_trace(name, **kwargs):
         yield

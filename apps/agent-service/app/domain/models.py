@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,6 +21,9 @@ class AvatarCapabilities(BaseModel):
 
     text_input: bool = True
     interrupt: bool = True
+    # ``local`` means the Agent suppresses stale output only. A real provider
+    # must declare ``run`` once its SDK can stop one remote utterance by run id.
+    interrupt_scope: Literal["run", "session", "local", "unsupported"] = "local"
     streaming: bool = False
     audio_input: bool = False
     video_output: bool = False
@@ -92,6 +95,9 @@ class ChatResult(BaseModel):
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     agent_latency_ms: float | None = Field(default=None, ge=0)
     digital_human_latency_ms: float | None = Field(default=None, ge=0)
+    first_event_latency_ms: float | None = Field(default=None, ge=0)
+    first_visible_latency_ms: float | None = Field(default=None, ge=0)
+    cancellation_latency_ms: float | None = Field(default=None, ge=0)
     interrupted: bool = False
     agent_response: AgentResponse | None = Field(default=None, alias="agentResponse")
 

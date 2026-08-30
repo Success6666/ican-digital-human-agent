@@ -19,15 +19,30 @@ interface ChatPanelProps {
 export function ChatPanel({ session, messages, timeline, isSending, error, onSend, onStop, onClear }: ChatPanelProps) {
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const stickToBottomRef = useRef(true)
 
   useEffect(() => {
     const node = scrollRef.current
-    if (node) node.scrollTop = node.scrollHeight
+    if (node && stickToBottomRef.current) {
+      if (typeof node.scrollTo === 'function') {
+        node.scrollTo({ top: node.scrollHeight, behavior: 'auto' })
+      } else {
+        node.scrollTop = node.scrollHeight
+      }
+    }
   }, [messages])
+
+  function handleMessageScroll() {
+    const node = scrollRef.current
+    if (!node) return
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
+    stickToBottomRef.current = distanceFromBottom < 48
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!draft.trim() || !session) return
+    stickToBottomRef.current = true
     onSend(draft)
     setDraft('')
   }
@@ -49,7 +64,7 @@ export function ChatPanel({ session, messages, timeline, isSending, error, onSen
         <div className="chat-empty"><div className="empty-icon"><MessageSquareText size={25} /></div><h3>先建立一个数字人会话</h3><p>选择 Provider 后建立会话，消息会通过认证网关进入 Agent。</p></div>
       ) : (
         <>
-          <div ref={scrollRef} className="message-list" aria-live="polite">
+          <div ref={scrollRef} className="message-list" aria-live="polite" onScroll={handleMessageScroll}>
             {messages.length === 0 && <div className="chat-empty chat-empty--compact"><div className="empty-icon"><MessageSquareText size={22} /></div><h3>会话已就绪</h3><p>试着发送一句问候，观察完整的事件链路。</p></div>}
             {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
           </div>

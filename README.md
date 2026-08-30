@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.1）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.2）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
@@ -57,6 +57,7 @@ npm run dev
 - MCP 2.x Streamable HTTP，远端不可用时可配置本地探针降级，并带快速 TCP 探测。
 - MCP 结果在进入图状态前受 `MCP_MAX_RESULT_BYTES`、`MCP_MAX_RESULT_ITEMS`、`MCP_MAX_RESULT_DEPTH` 三层边界约束；发生截断时会在工具元数据中标记原因，避免大 payload 扩散到 Trace 和前端。
 - Docling 文档解析、切分、向量检索端口和用户命名空间隔离。
+- Provider 能力会区分单轮中断、会话中断和本地隔离，避免把服务端抑制旧结果误认为远端播报已停止。
 - FutureAGI 适配器；未配置时使用有界本地 JSON 缓冲。
 - 评测中心：项目自建 25 条链路场景基线集，记录 token、价格、任务成功率、工具调用准确率、结果正确性/一致性、事实有据性、提示词注入防护，以及 Agent/数字人分段延迟和 p50/p95。
 - 审计与 Trace 回放：只展示当前用户可见、已脱敏的人类可读信息。
@@ -72,6 +73,8 @@ npm run dev
 | GET | `/api/observability/traces/{traceId}` | 脱敏 Trace 回放 |
 
 评测服务默认只保存有限条内存记录，价格通过 `EVAL_INPUT_PRICE_PER_1K`、`EVAL_OUTPUT_PRICE_PER_1K` 和 `EVAL_CURRENCY` 配置。后续可把存储替换为数据库或队列而不改变 HTTP 契约。
+
+实时链路会分别记录服务端首事件、服务端首个可见事件、Agent、数字人和取消延迟，并在 Trace 回放与评测汇总中提供平均值及 p50/p95。首个可见事件以服务端写出首个可见 SSE 帧前的时间戳为准，不冒充浏览器实际绘制时间。FutureAGI 导出采用有界异步队列；`OBSERVABILITY_MAX_PENDING_TASKS` 和 `OBSERVABILITY_PENDING_FLUSH_TIMEOUT_SECONDS` 用于控制积压和关闭等待，队列满时保留本地记录并计入丢弃计数。
 
 MCP 工具结果默认最多保留 64 KiB、256 个集合项和 8 层嵌套，可在 `.env` 中按工具复杂度调整；生产环境应保留硬上限并结合 Trace 观察截断比例。
 
@@ -91,7 +94,7 @@ Agent 入口默认限制请求体为 16 MiB（`AGENT_MAX_REQUEST_BODY_BYTES`）�
 
 ## Docling 本地模型策略
 
-首版 PDF 链路建议准备 layout Heron；包含表格时启用 TableFormer accurate；扫描 PDF 或图片再启用 RapidOCR ONNXRuntime（中文）。图片分类、图片描述/VLM、公式和图表模型默认关闭，按数据类型和延迟预算按需启用。通过 `DOCLING_ARTIFACTS_PATH` 指向本地权重目录，保持离线可复现；`DOCLING_ENABLED=false` 可强制使用文本回退，`RAG_MAX_DOCUMENT_BYTES` 统一限制单文档解析预算。
+首版 PDF 链路建议准备 layout Heron；包含表格时启用 TableFormer accurate；扫描 PDF 或图片再启用 RapidOCR ONNXRuntime（中文）。图片分类、图片描述/VLM、公式和图表模型默认关闭，按数据类型和延迟预算按需启用。通过 `DOCLING_ARTIFACTS_PATH` 指向本地权重目录，保持离线可复现；`DOCLING_MAX_CONCURRENCY` 控制解析并发，CPU-only 环境建议保持为 `1`；`DOCLING_ENABLED=false` 可强制使用文本回退，`RAG_MAX_DOCUMENT_BYTES` 统一限制单文档解析预算。
 
 ## 验证命令
 
@@ -111,4 +114,4 @@ Set-Location ..\web
 npm run build
 ```
 
-本版本实时交互验收记录见 [`tmp-docs/digital-human-agent-v0.1.1-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.1-realtime-task-book-已完成.md)，历史基线见 [`tmp-docs/digital-human-agent-v0.1.0-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.0-task-book-已完成.md)。
+本版本实时交互验收记录见 [`tmp-docs/digital-human-agent-v0.1.2-optimization-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.2-optimization-task-book-已完成.md)，历史基线见 [`tmp-docs/digital-human-agent-v0.1.1-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.1-realtime-task-book-已完成.md)。

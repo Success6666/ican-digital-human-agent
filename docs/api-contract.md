@@ -1,4 +1,4 @@
-# API 契约（v0.1.1）
+# API 契约（v0.1.2）
 
 ## 浏览器 API
 
@@ -29,7 +29,9 @@
 
 当前浏览器 SSE 保持兼容的三段式帧：`id`、`event`、`data`。`data` 至少带 `traceId`、`runId`、`seq` 和 `eventId`；`start`、`filler`、`intent`、`tool_disclosure`、`security`、`rag`、`tool`、`delta`、`provider`、`done`、`interrupted`、`error` 为第一版事件类型。安全门命中时，`security` 事件会给出人类可读原因，并跳过 RAG 与 MCP 工具；性能事件包含人类可读的 `performance`（表情、注视、手势、唇动和可中断标记）。
 
-同步 `/api/chat` 与 SSE `done` 的 `agentResponse` 是 Agent Core 到展示层的稳定契约，包含 `text`、`emotion`、`gesture`、`performance`、`traceId`、`sessionId`、`runId` 和 `interruptible`。浏览器不依赖厂商 SDK 字段；数字人运行时由 Provider 适配器负责渲染。
+认证网关在 Agent 尚未写出首帧就发生上游错误或传输中断时，会生成同样带 `id`、`traceId`、`runId`、`seq`、`eventId` 的 `error` 帧；这些标识用于前端去重、恢复和问题定位，不代表 Agent 已成功创建业务 Trace。若上游已经写出部分帧，网关会沿用首个有效的 Trace/Run 标识并递增序号。
+
+同步 `/api/chat` 与 SSE `done` 的 `agentResponse` 是 Agent Core 到展示层的稳定契约，包含 `text`、`emotion`、`gesture`、`performance`、`traceId`、`sessionId`、`runId` 和 `interruptible`。SSE 终态数据还可携带 `firstEventLatencyMs`、`firstVisibleLatencyMs`、`agentLatencyMs`、`digitalHumanLatencyMs` 和 `cancellationLatencyMs`，用于 Trace 回放与评测汇总；其中 `firstVisibleLatencyMs` 表示服务端写出首个可见 SSE 帧前的耗时，不等同于浏览器绘制完成时间；缺少某一阶段数据时保持为空，不伪造延迟。浏览器不依赖厂商 SDK 字段；数字人运行时由 Provider 适配器负责渲染。
 
 `packages/contracts/events.schema.json` 定义跨服务事件总线的 envelope（`schema_version/event_id/run_id/seq/ts/type/data`）；它与浏览器 SSE 的兼容 wire 层分开，后续事件桥接时再统一。
 
@@ -43,6 +45,10 @@ RAG 文档在解析前受 `RAG_MAX_DOCUMENT_BYTES` 统一约束，JSON 入库和
 
 Agent 的 POST/PUT/PATCH 请求体还受 `AGENT_MAX_REQUEST_BODY_BYTES`（默认 16 MiB）ASGI 入口限制；Nginx 使用同等上限，给 8 MiB 文档的 Base64/JSON 编码留出余量。
 
+Provider 能力中的 `interrupt_scope` 取值为 `run`、`session`、`local` 或 `unsupported`。`local` 只保证服务端抑制旧 run 的结果，不代表远端数字人已经停止播报；接入真实 SDK 时只有实现 run 级 abort 或 WebSocket 关闭后才能声明 `run`。
+
+Docling 解析和 FutureAGI 异步导出均有并发上限：`DOCLING_MAX_CONCURRENCY` 控制转换器调用，`OBSERVABILITY_MAX_PENDING_TASKS` 与 `OBSERVABILITY_PENDING_FLUSH_TIMEOUT_SECONDS` 控制遥测导出队列。关闭服务时只等待有限时长，超时任务会取消，已经写入本地缓冲的事件仍可回放。
+
 会话、文档、Trace 和评测运行标识在网关侧先通过路径白名单校验；非法路径或查询字符直接返回参数错误，不会被拼接到上游 URL。
 
 ## 错误
@@ -52,6 +58,7 @@ Agent 的 POST/PUT/PATCH 请求体还受 `AGENT_MAX_REQUEST_BODY_BYTES`（默认
 ```
 
 错误响应不包含堆栈、密钥、上游完整响应或数据库连接信息。
+认证网关即使收到不匹配的 `Accept` 头，也会返回结构化 JSON 错误；成功的 `/api/chat/stream` 仍只返回 `text/event-stream`。Web 入口通过 Docker DNS 动态解析认证服务，容器滚动重建不会固定旧的上游地址。
 
 ## 评测指标
 

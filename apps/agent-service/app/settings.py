@@ -8,6 +8,7 @@ domain and graph layers.
 from __future__ import annotations
 
 from functools import lru_cache
+import math
 import os
 
 from pydantic import BaseModel, Field, field_validator
@@ -45,14 +46,29 @@ class Settings(BaseModel):
     mcp_max_result_bytes: int = Field(default=DEFAULT_MAX_RESULT_BYTES, alias="MCP_MAX_RESULT_BYTES")
     mcp_max_result_items: int = Field(default=DEFAULT_MAX_RESULT_ITEMS, alias="MCP_MAX_RESULT_ITEMS")
     mcp_max_result_depth: int = Field(default=DEFAULT_MAX_RESULT_DEPTH, alias="MCP_MAX_RESULT_DEPTH")
+    mcp_max_parallel_tools: int = Field(default=4, alias="MCP_MAX_PARALLEL_TOOLS", ge=1, le=32)
     rag_max_document_bytes: int = Field(default=8 * 1024 * 1024, alias="RAG_MAX_DOCUMENT_BYTES")
     rag_max_metadata_bytes: int = Field(default=DEFAULT_MAX_METADATA_BYTES, alias="RAG_MAX_METADATA_BYTES")
     rag_max_metadata_items: int = Field(default=DEFAULT_MAX_METADATA_ITEMS, alias="RAG_MAX_METADATA_ITEMS")
     rag_max_metadata_depth: int = Field(default=DEFAULT_MAX_METADATA_DEPTH, alias="RAG_MAX_METADATA_DEPTH")
+    rag_parse_concurrency: int = Field(default=1, alias="RAG_PARSE_CONCURRENCY", ge=1, le=8)
+    docling_max_concurrency: int = Field(default=1, alias="DOCLING_MAX_CONCURRENCY", ge=1, le=8)
     evaluation_buffer_size: int = Field(default=2000, alias="EVALUATION_BUFFER_SIZE")
     eval_input_price_per_1k: float = Field(default=0.003, alias="EVAL_INPUT_PRICE_PER_1K")
     eval_output_price_per_1k: float = Field(default=0.009, alias="EVAL_OUTPUT_PRICE_PER_1K")
     eval_currency: str = Field(default="CNY", alias="EVAL_CURRENCY")
+    observability_max_pending_tasks: int = Field(
+        default=256,
+        alias="OBSERVABILITY_MAX_PENDING_TASKS",
+        ge=1,
+        le=4096,
+    )
+    observability_pending_flush_timeout_seconds: float = Field(
+        default=2.0,
+        alias="OBSERVABILITY_PENDING_FLUSH_TIMEOUT_SECONDS",
+        gt=0,
+        le=60,
+    )
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     provider_enabled: dict[str, bool] = Field(default_factory=dict)
 
@@ -66,11 +82,15 @@ class Settings(BaseModel):
         "mcp_max_result_bytes",
         "mcp_max_result_items",
         "mcp_max_result_depth",
+        "mcp_max_parallel_tools",
         "rag_max_document_bytes",
         "rag_max_metadata_bytes",
         "rag_max_metadata_items",
         "rag_max_metadata_depth",
+        "rag_parse_concurrency",
+        "docling_max_concurrency",
         "evaluation_buffer_size",
+        "observability_max_pending_tasks",
     )
     @classmethod
     def positive_int(cls, value: int) -> int:
@@ -89,13 +109,19 @@ class Settings(BaseModel):
         "request_timeout_seconds",
         "mcp_fast_path_timeout_seconds",
         "provider_cancel_grace_seconds",
-        "eval_input_price_per_1k",
-        "eval_output_price_per_1k",
+        "observability_pending_flush_timeout_seconds",
     )
     @classmethod
     def positive_timeout(cls, value: float) -> float:
-        if value <= 0:
+        if not math.isfinite(value) or value <= 0:
             raise ValueError("must be positive")
+        return value
+
+    @field_validator("eval_input_price_per_1k", "eval_output_price_per_1k")
+    @classmethod
+    def nonnegative_price(cls, value: float) -> float:
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("must be non-negative")
         return value
 
     @classmethod

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import hashlib
 import inspect
 import os
+import time
 from typing import Any
 from uuid import uuid4
 
 from .chunker import CharacterChunker
 from .docling_parser import DoclingParser
+from .docling_parser import DoclingRuntimeConfig
 from .limits import (
     DEFAULT_MAX_METADATA_BYTES,
     DEFAULT_MAX_METADATA_DEPTH,
@@ -42,9 +45,12 @@ class RagService:
         max_metadata_bytes: int = DEFAULT_MAX_METADATA_BYTES,
         max_metadata_items: int = DEFAULT_MAX_METADATA_ITEMS,
         max_metadata_depth: int = DEFAULT_MAX_METADATA_DEPTH,
+        parse_concurrency: int = 1,
     ) -> None:
         if max_document_bytes <= 0:
             raise ValueError("max_document_bytes must be positive")
+        if parse_concurrency <= 0:
+            raise ValueError("parse_concurrency must be positive")
         self.parser = parser
         self.chunker = chunker
         self.store = store
@@ -55,8 +61,11 @@ class RagService:
             max_items=max_metadata_items,
             max_depth=max_metadata_depth,
         )
+        self.parse_concurrency = parse_concurrency
+        self._parse_slots = asyncio.Semaphore(parse_concurrency)
 
     async def ingest(self, request: IngestRequest, *, owner_id: str = "system") -> IngestResult:
+        started = time.perf_counter()
         document_id = request.document_id or uuid4().hex
         namespace = _namespace(owner_id, request.collection)
         request.validate_metadata(self.metadata_limits)
@@ -64,19 +73,30 @@ class RagService:
         if len(payload) > self.max_document_bytes:
             raise ValueError(f"document exceeds {self.max_document_bytes} bytes")
         try:
-            parsed = await asyncio.to_thread(
-                self.parser.parse,
-                payload,
-                source_name=request.source_name,
-                content_type=request.content_type,
-                document_id=document_id,
-                metadata={**request.metadata, "owner_id": owner_id, "collection": request.collection},
-            )
-            texts = await asyncio.to_thread(self.chunker.split, parsed.content, metadata=parsed.metadata)
+            async with self._parse_slots:
+                parsed = await asyncio.to_thread(
+                    self.parser.parse,
+                    payload,
+                    source_name=request.source_name,
+                    # JSON ``content`` is explicitly text even when callers
+                    # use a generated source name without a file extension.
+                    # Keep base64 uploads extension-driven so strict binary
+                    # parsing remains unchanged.
+                    content_type=request.content_type
+                    or ("text/plain" if request.content is not None else None),
+                    document_id=document_id,
+                    metadata={**request.metadata, "owner_id": owner_id, "collection": request.collection},
+                )
+                texts = await asyncio.to_thread(self.chunker.split, parsed.content, metadata=parsed.metadata)
         except Exception as exc:
             await self._observe(
                 "rag.ingest",
-                {"source_name": request.source_name, "collection": request.collection},
+                {
+                    "source_name": request.source_name,
+                    "collection": request.collection,
+                    "document_bytes": len(payload),
+                    "duration_ms": _elapsed_ms(started),
+                },
                 error=exc,
             )
             raise
@@ -106,6 +126,8 @@ class RagService:
                 "collection": request.collection,
                 "chunk_count": len(chunks),
                 "parser": parsed.metadata.get("parser", "unknown"),
+                "document_bytes": len(payload),
+                "duration_ms": _elapsed_ms(started),
             },
         )
         return IngestResult(
@@ -117,6 +139,7 @@ class RagService:
         )
 
     async def search(self, request: SearchRequest, *, owner_id: str = "system") -> SearchResult:
+        started = time.perf_counter()
         namespace = _namespace(owner_id, request.collection)
         request.validate_metadata(self.metadata_limits)
         try:
@@ -129,13 +152,25 @@ class RagService:
         except Exception as exc:
             await self._observe(
                 "rag.retrieval",
-                {"collection": request.collection, "top_k": request.top_k},
+                {
+                    "collection": request.collection,
+                    "top_k": request.top_k,
+                    "query_length": len(request.query),
+                    "duration_ms": _elapsed_ms(started),
+                },
                 error=exc,
             )
             raise
         await self._observe(
             "rag.retrieval",
-            {"collection": request.collection, "top_k": request.top_k, "hit_count": len(hits)},
+            {
+                "collection": request.collection,
+                "top_k": request.top_k,
+                "hit_count": len(hits),
+                "query_length": len(request.query),
+                "top_score": round(hits[0].score, 8) if hits else None,
+                "duration_ms": _elapsed_ms(started),
+            },
         )
         return SearchResult(query=request.query, collection=request.collection, hits=hits)
 
@@ -150,7 +185,9 @@ class RagService:
         if self.observer is None:
             return
         try:
-            method = getattr(self.observer, "record_event", None)
+            method = getattr(self.observer, "record_event_nonblocking", None)
+            if method is None:
+                method = getattr(self.observer, "record_event", None)
             if method is None:
                 return
             result = method(name, attributes=attributes, error=error, event_type=name)
@@ -174,6 +211,8 @@ def build_default_rag_service(
     max_metadata_bytes: int | None = None,
     max_metadata_items: int | None = None,
     max_metadata_depth: int | None = None,
+    parse_concurrency: int | None = None,
+    docling_max_concurrency: int | None = None,
 ) -> RagService:
     max_chars = _positive_int(os.getenv("RAG_CHUNK_MAX_CHARS"), 1200)
     overlap = _nonnegative_int(os.getenv("RAG_CHUNK_OVERLAP_CHARS"), 120)
@@ -196,9 +235,16 @@ def build_default_rag_service(
         os.getenv("RAG_MAX_METADATA_DEPTH"),
         DEFAULT_MAX_METADATA_DEPTH,
     )
+    parse_concurrency_limit = parse_concurrency or _positive_int(
+        os.getenv("RAG_PARSE_CONCURRENCY"),
+        1,
+    )
     strict_binary = _truthy(os.getenv("RAG_STRICT_BINARY", "true"))
+    docling_config = DoclingRuntimeConfig.from_env()
+    if docling_max_concurrency is not None:
+        docling_config = replace(docling_config, max_concurrency=docling_max_concurrency)
     return RagService(
-        parser=DoclingParser(strict_binary=strict_binary),
+        parser=DoclingParser(strict_binary=strict_binary, config=docling_config),
         chunker=CharacterChunker(max_chars=max_chars, overlap_chars=overlap),
         store=InMemoryVectorStore(max_chunks=max_chunks),
         observer=observer,
@@ -206,6 +252,7 @@ def build_default_rag_service(
         max_metadata_bytes=metadata_bytes_limit,
         max_metadata_items=metadata_items_limit,
         max_metadata_depth=metadata_depth_limit,
+        parse_concurrency=parse_concurrency_limit,
     )
 
 
@@ -227,3 +274,7 @@ def _nonnegative_int(raw: str | None, default: int) -> int:
 
 def _truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _elapsed_ms(started: float) -> float:
+    return round(max(0.0, (time.perf_counter() - started) * 1000), 2)

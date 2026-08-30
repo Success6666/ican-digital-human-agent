@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -12,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from ..application.errors import ApplicationError
 from ..domain.models import AvatarSession, ChatResult
 from .dependencies import InternalContext, get_container
+from .sse import iter_sse_frames
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -30,7 +29,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.1")
+    return HealthResponse(service=container.settings.service_name, version="0.1.2")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -137,21 +136,8 @@ async def chat_stream(payload: ChatRequest, context: InternalContext, request: R
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    async def event_body() -> AsyncIterator[str]:
-        sequence = 0
-        async for event in events:
-            sequence += 1
-            event_name = event.get("event", "message")
-            payload = event.get("data", {})
-            data_payload = dict(payload) if isinstance(payload, dict) else {"value": payload}
-            data_payload.setdefault("seq", sequence)
-            data_payload.setdefault("eventId", f"{data_payload.get('traceId', 'stream')}:{sequence}")
-            data = json.dumps(data_payload, ensure_ascii=False, separators=(",", ":"))
-            trace_id = data_payload.get("traceId", "stream")
-            yield f"id:{trace_id}:{sequence}\nevent:{event_name}\ndata:{data}\n\n"
-
     return StreamingResponse(
-        event_body(),
+        iter_sse_frames(events, request, session_id=payload.session_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
@@ -182,6 +168,9 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         toolCalls=[call.model_dump(mode="json") for call in result.tool_calls],
         agent_latency_ms=result.agent_latency_ms,
         digital_human_latency_ms=result.digital_human_latency_ms,
+        first_event_latency_ms=result.first_event_latency_ms,
+        first_visible_latency_ms=result.first_visible_latency_ms,
+        cancellation_latency_ms=result.cancellation_latency_ms,
         interrupted=result.interrupted,
         agent_response=result.agent_response,
     )

@@ -28,6 +28,12 @@ const attributeLabels: Record<string, string> = {
 
 const hiddenKeys = new Set(['trace_id', 'span_id', 'parent_span_id', 'session_id', 'user_id', 'api_key', 'secret_key', 'token'])
 
+const FIRST_EVENT_NAMES = new Set(['agent.first_byte', 'stream.first_event', 'first_event'])
+const FIRST_VISIBLE_NAMES = new Set(['agent.first_visible', 'stream.first_visible', 'first_visible'])
+const AGENT_LATENCY_NAMES = new Set(['agent.invoke', 'agent.stream', 'agent.completed', 'agent.complete'])
+const DIGITAL_HUMAN_LATENCY_NAMES = new Set(['provider', 'send_text', 'digital_human', 'avatar'])
+const CANCELLATION_NAMES = new Set(['cancel', 'cancelled', 'cancellation', 'interrupt', 'interrupted', 'run.stop', 'run.interrupted'])
+
 export function eventLabel(event: TelemetryEvent): string {
   const name = String(event.name ?? event.event_type ?? '运行事件')
   if (eventLabels[name]) return eventLabels[name]
@@ -93,18 +99,87 @@ export function groupTraces(events: TelemetryEvent[]): TraceGroup[] {
   }
   return [...buckets.entries()]
     .map(([id, bucket]) => {
-      const ordered = [...bucket].sort((a, b) => timestampOf(a) - timestampOf(b))
-      const duration = ordered.reduce((sum, event) => sum + (event.duration_ms ?? 0), 0)
-      const status: TraceGroup['status'] = ordered.some((event) => eventStatus(event) === 'error') ? 'error' : ordered.some((event) => eventStatus(event) === 'unset') ? 'unset' : 'ok'
-      return { id, label: '', startedAt: ordered[0]?.timestamp, durationMs: duration, status, events: ordered }
+      const ordered = [...bucket].sort(compareEventOrder)
+      const duration = wallDuration(ordered)
+      // span.start is intentionally unset while a trace is running. Once an
+      // end event is present, it must not downgrade the completed group to
+      // the user-facing "处理中" state.
+      const status: TraceGroup['status'] = ordered.some((event) => eventStatus(event) === 'error')
+        ? 'error'
+        : ordered.some((event) => eventStatus(event) === 'ok')
+          ? 'ok'
+          : 'unset'
+      return {
+        id,
+        label: '',
+        startedAt: ordered[0]?.timestamp,
+        durationMs: duration,
+        status,
+        events: ordered,
+        firstEventLatencyMs: latencyFor(ordered, FIRST_EVENT_NAMES, ['first_event_latency_ms', 'first_byte_latency_ms', 'latency_ms']),
+        firstVisibleLatencyMs: latencyFor(ordered, FIRST_VISIBLE_NAMES, ['first_visible_latency_ms', 'visible_latency_ms', 'latency_ms']),
+        cancellationLatencyMs: latencyFor(ordered, CANCELLATION_NAMES, ['cancellation_latency_ms', 'cancel_latency_ms', 'cancelLatencyMs', 'latency_ms']),
+        agentLatencyMs: latencyFor(ordered, AGENT_LATENCY_NAMES, ['agent_latency_ms', 'agentLatencyMs']),
+        digitalHumanLatencyMs: latencyFor(ordered, DIGITAL_HUMAN_LATENCY_NAMES, ['digital_human_latency_ms', 'digitalHumanLatencyMs', 'avatar_latency_ms']),
+      }
     })
-    .sort((a, b) => timestampOf(b.events[0]) - timestampOf(a.events[0]))
+    .sort((a, b) => compareEventOrder(b.events[0], a.events[0]))
     .map((group, index) => ({ ...group, label: `运行记录 ${String(index + 1).padStart(2, '0')}` }))
+}
+
+function compareEventOrder(a?: TelemetryEvent, b?: TelemetryEvent): number {
+  const left = sequenceOf(a)
+  const right = sequenceOf(b)
+  if (left !== undefined || right !== undefined) {
+    if (left === undefined) return 1
+    if (right === undefined) return -1
+    if (left !== right) return left - right
+  }
+  return timestampOf(a) - timestampOf(b)
+}
+
+function sequenceOf(event?: TelemetryEvent): number | undefined {
+  const value = event?.sequence
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined
+}
+
+function latencyFor(events: TelemetryEvent[], names: Set<string>, attributes: string[]): number | undefined {
+  const values: number[] = []
+  for (const event of events) {
+    const normalizedName = String(event.name ?? '').toLowerCase()
+    if (!names.has(normalizedName) && ![...names].some((part) => normalizedName.includes(part))) continue
+    const value = attributeNumber(event.attributes, attributes)
+    if (value !== undefined) values.push(value)
+    else {
+      const duration = event.duration_ms
+      if (duration !== undefined && duration !== null && event.event_type !== 'span.start') values.push(duration)
+    }
+  }
+  return values.length ? Math.min(...values) : undefined
+}
+
+function attributeNumber(attributes: Record<string, unknown> | undefined, names: string[]): number | undefined {
+  for (const name of names) {
+    const value = attributes?.[name]
+    if (value === undefined || value === null || typeof value === 'boolean') continue
+    if (typeof value === 'string' && value.trim() === '') continue
+    const parsed = typeof value === 'number' ? value : Number(value)
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed
+  }
+  return undefined
 }
 
 function timestampOf(event?: TelemetryEvent): number {
   const value = event?.timestamp ? Date.parse(event.timestamp) : 0
   return Number.isFinite(value) ? value : 0
+}
+
+function wallDuration(events: TelemetryEvent[]): number {
+  if (events.length < 2) return Math.max(0, events[0]?.duration_ms ?? 0)
+  const started = timestampOf(events[0])
+  const ended = timestampOf(events[events.length - 1])
+  if (started > 0 && ended >= started) return ended - started
+  return events.reduce((sum, event) => sum + (event.duration_ms ?? 0), 0)
 }
 
 function safeValue(value: unknown): string {

@@ -1,5 +1,6 @@
 export interface TelemetryEvent {
   event_id?: string
+  sequence?: number
   event_type?: string
   name?: string
   trace_id?: string
@@ -20,6 +21,11 @@ export interface TraceGroup {
   durationMs: number
   status: 'ok' | 'error' | 'unset'
   events: TelemetryEvent[]
+  firstEventLatencyMs?: number
+  firstVisibleLatencyMs?: number
+  cancellationLatencyMs?: number
+  agentLatencyMs?: number
+  digitalHumanLatencyMs?: number
 }
 
 export type AuditFilter = 'all' | 'errors' | 'rag' | 'provider'

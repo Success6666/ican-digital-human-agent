@@ -1,5 +1,6 @@
 import { api } from '../../shared/api/client'
 import type { AvatarSession, ProviderName, ProviderStatus } from '../../shared/api/types'
+import { capabilityNames } from './capabilities'
 
 interface ProviderListResponse {
   providers?: ProviderWire[]
@@ -49,12 +50,6 @@ export async function createSession(provider: ProviderName): Promise<AvatarSessi
     }
   }
   throw new Error('服务端未返回有效会话')
-}
-
-function capabilityNames(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String)
-  if (!value || typeof value !== 'object') return []
-  return Object.entries(value as Record<string, unknown>).map(([key, enabled]) => enabled === true ? key : `${key}: ${String(enabled)}`)
 }
 
 export async function closeSession(sessionId: string): Promise<void> {

@@ -20,10 +20,16 @@ from ..domain.ports import SessionStore, ToolClient
 from .builder import build_graph
 from .runtime_support import agent_latency as _agent_latency
 from .runtime_support import ensure_running as _ensure_running
+from .runtime_support import interruption_latency_ms as _interruption_latency_ms
 from .runtime_support import run_with_steering as _run_with_steering
 from .runtime_support import trace_scope as _trace_scope
 from .state import AgentGraphState
 from .stream_runtime import stream_runtime
+from .telemetry import record_first_byte as _record_first_byte
+from .telemetry import record_first_visible as _record_first_visible
+from .telemetry import record_interrupted as _record_interrupted
+from .telemetry import record_marker as _record_marker
+from .telemetry import record_observer_event as _record_observer_event
 
 
 class AgentGraphRuntime:
@@ -40,6 +46,7 @@ class AgentGraphRuntime:
         filler_policy: FillerPolicy | None = None,
         performance: PerformancePlanner | None = None,
         provider_cancel_grace_seconds: float = 0.25,
+        max_parallel_tools: int = 4,
     ) -> None:
         self._observer = observer
         self._sessions = sessions
@@ -58,6 +65,7 @@ class AgentGraphRuntime:
             tool_router=self._router,
             performance=self._performance,
             provider_cancel_grace_seconds=provider_cancel_grace_seconds,
+            max_parallel_tools=max_parallel_tools,
         )
 
     async def invoke(
@@ -79,6 +87,7 @@ class AgentGraphRuntime:
                 self._observer,
                 "agent.invoke",
                 {"owner_id": user_id, "run_id": run_id, "message_length": len(message)},
+                trace_id=trace_id,
             ):
                 assessment = assess_prompt_injection(message)
                 if assessment.attempted:
@@ -115,6 +124,17 @@ class AgentGraphRuntime:
         except RunInterrupted:
             # A synchronous caller can race with a newer run just like an SSE
             # caller. Return a terminal domain result instead of leaking a 500.
+            cancellation_latency = await _interruption_latency_ms(
+                self._sessions,
+                token,
+                consume=True,
+            )
+            self._record_interrupted(
+                trace_id,
+                owner_id=user_id,
+                reason="run_interrupted",
+                latency_ms=cancellation_latency,
+            )
             return ChatResult(
                 reply="请求已打断。",
                 trace_id=trace_id,
@@ -122,6 +142,7 @@ class AgentGraphRuntime:
                 run_id=run_id,
                 provider="unknown",
                 agent_latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                cancellation_latency_ms=cancellation_latency,
                 interrupted=True,
                 agent_response=AgentResponse(
                     text="请求已打断。",
@@ -155,7 +176,13 @@ class AgentGraphRuntime:
             async for event in inner:
                 yield event
         finally:
-            await inner.aclose()
+            try:
+                await inner.aclose()
+            except Exception:
+                # The inner generator already performs best-effort run
+                # invalidation; an adapter close failure must not mask the
+                # caller's cancellation or completed stream.
+                pass
 
     async def _classify(self, message: str, *, user_id: str, session_id: str) -> IntentDecision:
         return await self._classifier.classify(
@@ -182,21 +209,63 @@ class AgentGraphRuntime:
         return result
 
     def _record_first_byte(self, trace_id: str, *, owner_id: str, latency_ms: float) -> None:
-        if self._observer is None:
-            return
-        recorder = getattr(self._observer, "record_event", None)
-        if callable(recorder):
-            recorder(
-                "agent.first_byte",
-                event_type="latency",
-                trace_id=trace_id,
-                attributes={"owner_id": owner_id, "latency_ms": round(latency_ms, 2)},
-            )
+        _record_first_byte(self._observer, trace_id, owner_id=owner_id, latency_ms=latency_ms)
+
+    def _record_first_visible(self, trace_id: str, *, owner_id: str, latency_ms: float) -> None:
+        _record_first_visible(self._observer, trace_id, owner_id=owner_id, latency_ms=latency_ms)
+
+    def _record_interrupted(
+        self,
+        trace_id: str,
+        *,
+        owner_id: str,
+        reason: str,
+        latency_ms: float | None = None,
+    ) -> None:
+        _record_interrupted(
+            self._observer,
+            trace_id,
+            owner_id=owner_id,
+            reason=reason,
+            latency_ms=latency_ms,
+        )
+
+    def _record_marker(self, name: str, *, trace_id: str, owner_id: str, latency_ms: float) -> None:
+        _record_marker(self._observer, name, trace_id=trace_id, owner_id=owner_id, latency_ms=latency_ms)
+
+    def _record_observer_event(
+        self,
+        name: str,
+        *,
+        trace_id: str,
+        event_type: str,
+        attributes: dict[str, Any],
+    ) -> None:
+        _record_observer_event(
+            self._observer,
+            name,
+            trace_id=trace_id,
+            event_type=event_type,
+            attributes=attributes,
+        )
 
     @staticmethod
     def _result(state: AgentGraphState, *, session_id: str, trace_id: str) -> ChatResult:
         provider_result = state.get("provider_result")
-        provider = provider_result.provider if provider_result else "unknown"
+        provider_status_value = (
+            provider_result.get("status")
+            if isinstance(provider_result, dict)
+            else getattr(provider_result, "status", "ok")
+        )
+        provider_name = (
+            provider_result.get("provider")
+            if isinstance(provider_result, dict)
+            else getattr(provider_result, "provider", None)
+        )
+        provider_status = str(provider_status_value or "ok").casefold()
+        provider_failed = provider_status in {"error", "failed"} or bool(state.get("provider_error"))
+        provider = "unknown" if provider_failed or not provider_result or not provider_name else str(provider_name)
+        interrupted = bool(state.get("interrupted")) or provider_status in {"interrupted", "cancelled", "canceled"}
         return ChatResult(
             reply=state.get("reply", "请求未完成，请稍后重试。"),
             trace_id=trace_id,
@@ -206,7 +275,10 @@ class AgentGraphRuntime:
             tool_calls=state.get("tool_calls", []),
             agent_latency_ms=state.get("agent_latency_ms"),
             digital_human_latency_ms=state.get("digital_human_latency_ms"),
-            interrupted=bool(state.get("interrupted")),
+            first_event_latency_ms=state.get("first_event_latency_ms"),
+            first_visible_latency_ms=state.get("first_visible_latency_ms"),
+            cancellation_latency_ms=state.get("cancellation_latency_ms"),
+            interrupted=interrupted,
             agent_response=_agent_response(state, session_id=session_id, trace_id=trace_id),
         )
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AvatarSession, ProviderName, ProviderStatus } from '../../shared/api/types'
 import * as avatarApi from './api'
 import type { ProviderWire } from './api'
+import { capabilityNames } from './capabilities'
 
 const providerOrder: ProviderName[] = ['mock', 'aliyun', 'mofa', 'iflytek', 'fay']
 const providerLabels: Record<string, string> = {
@@ -17,10 +18,7 @@ function normalizeProviders(items: ProviderWire[]): ProviderStatus[] {
     const name = item.name || item.provider || 'unknown'
     const status = (item.status || '').toLowerCase()
     const available = item.available ?? !['offline', 'unavailable', 'error'].includes(status)
-    const capabilitySource = item.capabilities
-    const capabilities = Array.isArray(capabilitySource)
-      ? capabilitySource.map(String)
-      : Object.entries(capabilitySource ?? {}).map(([key, enabled]) => enabled === true ? key : `${key}: ${String(enabled)}`)
+    const capabilities = capabilityNames(item.capabilities)
     return {
       name,
       label: item.label || providerLabels[name] || name,

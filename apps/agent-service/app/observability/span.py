@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextvars import ContextVar, Token
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -46,14 +47,14 @@ class Span:
         self.start()
         return self
 
-    def __exit__(self, exc_type: Any, exc: Exception | None, tb: Any) -> None:
+    def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
         self.end(error=exc)
 
     async def __aenter__(self) -> "Span":
         self.start()
         return self
 
-    async def __aexit__(self, exc_type: Any, exc: Exception | None, tb: Any) -> None:
+    async def __aexit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
         await self.aend(error=exc)
 
     def start(self) -> "Span":
@@ -62,7 +63,14 @@ class Span:
         self.started_at = datetime.now(timezone.utc)
         self._token = _current_span.set(self.span_id)
         self._trace_token = _current_trace.set(self.trace_id)
-        self.manager._emit_sync(self._event(event_type="span.start", status="unset", duration_ms=None))
+        self.manager._emit_sync(
+            self._event(
+                event_type="span.start",
+                status="unset",
+                duration_ms=None,
+                timestamp=self.started_at,
+            )
+        )
         return self
 
     def set_attribute(self, key: str, value: Any) -> "Span":
@@ -78,36 +86,40 @@ class Span:
             attributes=attributes,
         )
 
-    def end(self, *, error: Exception | None = None, status: str | None = None) -> None:
+    def end(self, *, error: BaseException | None = None, status: str | None = None) -> None:
         if self._ended:
             return
         self._ended = True
         if self.started_at is None:
             self.start()
-        duration = (datetime.now(timezone.utc) - self.started_at).total_seconds() * 1000
+        ended_at = datetime.now(timezone.utc)
+        duration = (ended_at - self.started_at).total_seconds() * 1000
         self.manager._emit_sync(
             self._event(
                 event_type=self.event_type,
-                status="error" if error else (status or "ok"),
+                status=_span_status(error, status),
                 duration_ms=duration,
                 error=error,
+                timestamp=ended_at,
             )
         )
         self._reset_context()
 
-    async def aend(self, *, error: Exception | None = None, status: str | None = None) -> None:
+    async def aend(self, *, error: BaseException | None = None, status: str | None = None) -> None:
         if self._ended:
             return
         self._ended = True
         if self.started_at is None:
             self.start()
-        duration = (datetime.now(timezone.utc) - self.started_at).total_seconds() * 1000
+        ended_at = datetime.now(timezone.utc)
+        duration = (ended_at - self.started_at).total_seconds() * 1000
         await self.manager._emit_async(
             self._event(
                 event_type=self.event_type,
-                status="error" if error else (status or "ok"),
+                status=_span_status(error, status),
                 duration_ms=duration,
                 error=error,
+                timestamp=ended_at,
             )
         )
         self._reset_context()
@@ -118,18 +130,24 @@ class Span:
         event_type: str,
         status: str,
         duration_ms: float | None,
-        error: Exception | None = None,
+        error: BaseException | None = None,
+        timestamp: datetime | None = None,
     ) -> TelemetryEvent:
+        attributes = dict(self.attributes)
+        if isinstance(error, asyncio.CancelledError):
+            # Keep the public status contract stable while making cancellation
+            # visible to trace aggregation and replay diagnostics.
+            attributes.setdefault("cancelled", True)
         return TelemetryEvent(
             event_type=event_type,
             name=self.name,
             trace_id=self.trace_id,
             span_id=self.span_id,
             parent_span_id=self.parent_span_id,
-            timestamp=self.started_at or datetime.now(timezone.utc),
+            timestamp=timestamp or datetime.now(timezone.utc),
             duration_ms=duration_ms,
             status=status,  # type: ignore[arg-type]
-            attributes=self.attributes,
+            attributes=attributes,
             error_type=type(error).__name__ if error else None,
             error_message=str(error)[:512] if error else None,
         )
@@ -145,3 +163,11 @@ class Span:
                 _current_trace.reset(self._trace_token)
             except (RuntimeError, ValueError):
                 pass
+
+
+def _span_status(error: BaseException | None, status: str | None) -> str:
+    """Resolve a stable status without expanding the transport enum."""
+
+    if error is not None:
+        return "error"
+    return status or "ok"

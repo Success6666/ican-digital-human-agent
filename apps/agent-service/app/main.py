@@ -53,13 +53,18 @@ def build_container(
     providers = providers or build_default_registry(settings)
     store = InMemorySessionStore(ttl_seconds=settings.session_ttl_seconds)
     session_service = SessionApplicationService(providers=providers, store=store)
-    observability = build_default_observability()
+    observability = build_default_observability(
+        max_pending_tasks=settings.observability_max_pending_tasks,
+        pending_flush_timeout_seconds=settings.observability_pending_flush_timeout_seconds,
+    )
     rag = build_default_rag_service(
         observer=observability,
         max_document_bytes=settings.rag_max_document_bytes,
         max_metadata_bytes=settings.rag_max_metadata_bytes,
         max_metadata_items=settings.rag_max_metadata_items,
         max_metadata_depth=settings.rag_max_metadata_depth,
+        parse_concurrency=settings.rag_parse_concurrency,
+        docling_max_concurrency=settings.docling_max_concurrency,
     )
     result_limiter = ToolResultLimiter(
         max_bytes=settings.mcp_max_result_bytes,
@@ -85,6 +90,7 @@ def build_container(
         rag_service=rag,
         observer=observability,
         provider_cancel_grace_seconds=settings.provider_cancel_grace_seconds,
+        max_parallel_tools=settings.mcp_max_parallel_tools,
     )
     evaluation = EvaluationService(
         max_runs=settings.evaluation_buffer_size,
@@ -138,7 +144,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.1", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.2", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

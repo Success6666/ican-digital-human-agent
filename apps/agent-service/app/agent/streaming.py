@@ -44,6 +44,9 @@ def result_payload(result: ChatResult) -> dict[str, Any]:
         "toolCalls": dump_tools(result.tool_calls),
         "agentLatencyMs": result.agent_latency_ms,
         "digitalHumanLatencyMs": result.digital_human_latency_ms,
+        "firstEventLatencyMs": result.first_event_latency_ms,
+        "firstVisibleLatencyMs": result.first_visible_latency_ms,
+        "cancellationLatencyMs": result.cancellation_latency_ms,
         "interrupted": result.interrupted,
         "agentResponse": result.agent_response.model_dump(mode="json", by_alias=True)
         if result.agent_response

@@ -34,21 +34,42 @@ export function performanceText(event: ChatStreamEvent): string | undefined {
 }
 
 export function eventTool(event: ChatStreamEvent): ToolCall | undefined {
-  if (event.toolCall && typeof event.toolCall === 'object') return event.toolCall as ToolCall
-  if (event.tool && typeof event.tool === 'object') return event.tool as ToolCall
-  return undefined
+  return normalizeToolCall(event.toolCall) ?? normalizeToolCall(event.tool)
 }
 
 export function eventTools(event: ChatStreamEvent): ToolCall[] {
   if (!Array.isArray(event.toolCalls)) return []
-  return event.toolCalls.filter((item): item is ToolCall => Boolean(item && typeof item === 'object'))
+  return event.toolCalls
+    .map((item) => normalizeToolCall(item))
+    .filter((item): item is ToolCall => item !== undefined)
 }
 
 export function toolDetail(tool: ToolCall): string | undefined {
-  if (tool.status === 'failed') return '工具执行失败'
-  if (tool.status === 'running') return '工具执行中'
-  if (typeof tool.durationMs === 'number' && Number.isFinite(tool.durationMs)) return `工具已完成 · ${Math.round(tool.durationMs)} ms`
+  const normalized = normalizeToolCall(tool) ?? tool
+  if (normalized.status === 'failed') return '工具执行失败'
+  if (normalized.status === 'running') return '工具执行中'
+  if (typeof normalized.durationMs === 'number' && Number.isFinite(normalized.durationMs)) return `工具已完成 · ${Math.round(normalized.durationMs)} ms`
   return '工具已返回结果'
+}
+
+/** 将后端蛇形字段和前端展示字段统一为稳定的可读模型。 */
+export function normalizeToolCall(value: unknown): ToolCall | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const name = typeof record.name === 'string' ? record.name : ''
+  const explicitStatus = typeof record.status === 'string' ? record.status : undefined
+  const hasResult = Object.prototype.hasOwnProperty.call(record, 'output')
+    || Object.prototype.hasOwnProperty.call(record, 'result')
+  const status = explicitStatus
+    ?? (record.error ? 'failed' : hasResult ? 'completed' : 'running')
+  const durationMs = finiteNumber(record.durationMs ?? record.duration_ms)
+  return {
+    name,
+    status,
+    input: record.input ?? record.arguments,
+    output: record.output ?? record.result,
+    ...(durationMs === undefined ? {} : { durationMs }),
+  }
 }
 
 export function confidenceText(value: unknown): string {
@@ -73,4 +94,9 @@ export function providerStatusText(value: unknown): string | undefined {
   if (status === 'interrupted' || status === 'cancelled') return 'Provider 已停止'
   if (status === 'error' || status === 'failed') return 'Provider 返回异常'
   return status ? `Provider 状态：${sanitizeDisplayText(status, 32)}` : undefined
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
 }

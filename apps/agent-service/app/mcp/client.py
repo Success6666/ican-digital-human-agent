@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..domain.models import ToolCallRecord
+from ..observability.redaction import redact_text
 from .limits import ToolResultLimiter
 
 
@@ -220,5 +221,6 @@ def _parse_result(result: Any) -> ToolCallRecord:
 
 def _safe_error(exc: Exception) -> str:
     # Do not include URLs, headers, or exception reprs that could contain secrets.
-    message = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
-    return message[:300]
+    raw = str(exc).strip()
+    message = raw.splitlines()[0] if raw else exc.__class__.__name__
+    return redact_text(message, max_length=300) or exc.__class__.__name__

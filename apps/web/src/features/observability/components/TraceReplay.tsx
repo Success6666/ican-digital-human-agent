@@ -45,6 +45,13 @@ export function TraceReplay({ group }: TraceReplayProps) {
       </div>
       <div className="replay-progress"><span style={{ width: `${progress}%` }} /></div>
       <div className="replay-step-head"><span>事件 {step + 1} / {group.events.length}</span><span>{formatTime(current.timestamp ?? '')}</span></div>
+      <div className="replay-latency-grid" aria-label="实时延迟摘要">
+        <div><span>首事件</span><strong>{formatDuration(group.firstEventLatencyMs)}</strong></div>
+        <div><span>首可见</span><strong>{formatDuration(group.firstVisibleLatencyMs)}</strong></div>
+        <div><span>Agent</span><strong>{formatDuration(group.agentLatencyMs)}</strong></div>
+        <div><span>数字人</span><strong>{formatDuration(group.digitalHumanLatencyMs)}</strong></div>
+        <div><span>取消</span><strong>{formatDuration(group.cancellationLatencyMs)}</strong></div>
+      </div>
       <div className="replay-event">
         <div className="replay-event-title"><span className={`replay-event-icon replay-event-icon--${eventStatus(current)}`}>{eventStatus(current) === 'error' ? <CircleAlert size={16} /> : eventStatus(current) === 'ok' ? <Check size={16} /> : <Play size={15} />}</span><div><strong>{eventLabel(current)}</strong><small>{eventTypeLabel(current.event_type)} · {formatDuration(current.duration_ms)}</small></div></div>
         {attributes.length > 0 && <dl className="replay-attributes">{attributes.map((attribute) => { const [label, value] = attribute.split('：'); return <div key={attribute}><dt>{label}</dt><dd>{value}</dd></div> })}</dl>}

@@ -7,14 +7,18 @@ from collections.abc import AsyncIterator
 import time
 from typing import Any
 
-from ..agent.security import assess_prompt_injection
-from ..evaluation.metrics import looks_like_prompt_injection, looks_like_safe_refusal
-from ..evaluation.models import EvaluationRunRequest
 from ..evaluation.service import EvaluationService
 from ..domain.models import ChatResult
 from ..graph.runtime import AgentGraphRuntime
+from .chat_evaluation import ChatEvaluationRecorder
+from .chat_evaluation import number as _number_value
+from .chat_evaluation import result_status as _result_status_value
 from .errors import InvalidMessageError
 from .session_service import SessionApplicationService
+
+# Preserve the old private helper import paths for downstream integrations.
+_number = _number_value
+_result_status = _result_status_value
 
 
 class ChatApplicationService:
@@ -30,6 +34,7 @@ class ChatApplicationService:
         self.sessions = sessions
         self.max_message_length = max_message_length
         self.evaluation = evaluation
+        self._evaluation_recorder = ChatEvaluationRecorder(evaluation)
 
     async def send(self, *, user_id: str, user_name: str, session_id: str, message: str) -> ChatResult:
         clean = self._validate(message)
@@ -57,6 +62,9 @@ class ChatApplicationService:
                 tools=[],
                 agent_latency_ms=(time.perf_counter() - started) * 1000,
                 digital_human_latency_ms=None,
+                cancellation_latency_ms=(time.perf_counter() - started) * 1000
+                if exc.__class__.__name__ == "RunInterrupted"
+                else None,
             )
             raise
         self._record_result(user_id=user_id, message=clean, result=result, elapsed_ms=(time.perf_counter() - started) * 1000)
@@ -168,7 +176,13 @@ class ChatApplicationService:
         finally:
             close = getattr(graph_events, "aclose", None)
             if callable(close):
-                await close()
+                try:
+                    await close()
+                except Exception:
+                    # A transport disconnect may race with graph cleanup;
+                    # preserve the original stream outcome and rely on the
+                    # store marker below to invalidate the run.
+                    pass
             if not recorded:
                 try:
                     await self.sessions.mark_run_interrupted(session_id=session_id, run_id=run_id)
@@ -186,17 +200,8 @@ class ChatApplicationService:
         return clean
 
     def _record_result(self, *, user_id: str, message: str, result: ChatResult, elapsed_ms: float) -> None:
-        status = _result_status(result)
-        self._record(
-            user_id=user_id,
-            message=message,
-            output=result.reply,
-            status=status,
-            trace_id=result.trace_id,
-            tools=[item.name for item in result.tool_calls],
-            agent_latency_ms=result.agent_latency_ms or elapsed_ms,
-            digital_human_latency_ms=result.digital_human_latency_ms,
-        )
+        self._evaluation_recorder.evaluation = self.evaluation
+        self._evaluation_recorder.record_result(user_id=user_id, message=message, result=result, elapsed_ms=elapsed_ms)
 
     def _record_stream(
         self,
@@ -210,20 +215,16 @@ class ChatApplicationService:
         done_data: dict[str, Any],
         elapsed_ms: float,
     ) -> None:
-        if status == "success":
-            if done_data.get("provider") == "unknown":
-                status = "error"
-            elif any(isinstance(item, dict) and item.get("error") for item in done_data.get("toolCalls", [])):
-                status = "error"
-        self._record(
+        self._evaluation_recorder.evaluation = self.evaluation
+        self._evaluation_recorder.record_stream(
             user_id=user_id,
             message=message,
-            output=output,
-            status=status if status in {"success", "error", "interrupted"} else "success",
             trace_id=trace_id,
+            output=output,
+            status=status,
             tools=tools,
-            agent_latency_ms=_number(done_data.get("agentLatencyMs")) or elapsed_ms,
-            digital_human_latency_ms=_number(done_data.get("digitalHumanLatencyMs")),
+            done_data=done_data,
+            elapsed_ms=elapsed_ms,
         )
 
     def _record(
@@ -237,45 +238,21 @@ class ChatApplicationService:
         tools: list[str],
         agent_latency_ms: float | None,
         digital_human_latency_ms: float | None,
+        first_event_latency_ms: float | None = None,
+        first_visible_latency_ms: float | None = None,
+        cancellation_latency_ms: float | None = None,
     ) -> None:
-        if self.evaluation is None:
-            return
-        # Keep the evaluation signal aligned with the graph security gate;
-        # the metric helper also covers offline samples that do not enter the
-        # runtime graph.
-        injection = looks_like_prompt_injection(message) or assess_prompt_injection(message).attempted
-        recorded_status = status if status in {"success", "error", "interrupted", "blocked"} else "error"
-        if injection and looks_like_safe_refusal(output):
-            recorded_status = "blocked"
-        try:
-            self.evaluation.record(
-                EvaluationRunRequest(
-                    input_text=message,
-                    output_text=output,
-                    status=recorded_status,
-                    trace_id=trace_id,
-                    actual_tools=sorted(set(tools)),
-                    injection_attempt=injection,
-                    injection_blocked=looks_like_safe_refusal(output) if injection else None,
-                    agent_latency_ms=max(0.0, agent_latency_ms) if agent_latency_ms is not None else None,
-                    digital_human_latency_ms=max(0.0, digital_human_latency_ms)
-                    if digital_human_latency_ms is not None
-                    else None,
-                ),
-                owner_id=user_id,
-            )
-        except Exception:
-            # Evaluation must never make the user-facing chat fail.
-            return
-
-
-def _number(value: Any) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and value >= 0 else None
-
-
-def _result_status(result: ChatResult) -> str:
-    if result.interrupted:
-        return "interrupted"
-    if result.provider == "unknown" or any(call.error for call in result.tool_calls):
-        return "error"
-    return "success"
+        self._evaluation_recorder.evaluation = self.evaluation
+        self._evaluation_recorder.record(
+            user_id=user_id,
+            message=message,
+            output=output,
+            status=status,
+            trace_id=trace_id,
+            tools=tools,
+            agent_latency_ms=agent_latency_ms,
+            digital_human_latency_ms=digital_human_latency_ms,
+            first_event_latency_ms=first_event_latency_ms,
+            first_visible_latency_ms=first_visible_latency_ms,
+            cancellation_latency_ms=cancellation_latency_ms,
+        )

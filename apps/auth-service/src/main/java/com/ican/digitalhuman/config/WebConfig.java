@@ -29,7 +29,7 @@ public class WebConfig implements WebMvcConfigurer {
                 // StreamingResponseBody performs an async dispatch after the
                 // controller has authenticated the initial request. Sa-Token's
                 // thread-local context is not available on that dispatch.
-                .excludePathPatterns("/api/chat/stream");
+                .excludePathPatterns("/api/chat/stream", "/error");
     }
 
     @Override

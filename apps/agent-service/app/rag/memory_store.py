@@ -44,10 +44,13 @@ class InMemoryVectorStore:
     async def upsert(self, chunks: Sequence[DocumentChunk], *, namespace: str) -> None:
         if not namespace:
             raise ValueError("namespace is required")
+        prepared: list[tuple[tuple[str, str], DocumentChunk, Sequence[float]]] = []
+        for chunk in chunks:
+            vector = await asyncio.to_thread(self.embedder.embed, chunk.text)
+            prepared.append(((namespace, chunk.chunk_id), chunk, vector))
         async with self._lock:
-            for chunk in chunks:
-                key = (namespace, chunk.chunk_id)
-                self._items[key] = _StoredChunk(chunk=chunk, vector=self.embedder.embed(chunk.text))
+            for key, chunk, vector in prepared:
+                self._items[key] = _StoredChunk(chunk=chunk, vector=vector)
                 self._items.move_to_end(key)
             while len(self._items) > self.max_chunks:
                 self._items.popitem(last=False)
@@ -63,17 +66,22 @@ class InMemoryVectorStore:
         if not query.strip():
             return []
         top_k = max(1, min(top_k, 50))
-        query_vector = self.embedder.embed(query)
+        query_vector = await asyncio.to_thread(self.embedder.embed, query)
         metadata_filter = metadata_filter or {}
         async with self._lock:
-            candidates: list[SearchHit] = []
-            for (item_namespace, _), stored in self._items.items():
-                if item_namespace != namespace or not _matches(stored.chunk.metadata, metadata_filter):
-                    continue
-                score = _cosine(query_vector, stored.vector)
-                candidates.append(SearchHit(chunk=stored.chunk, score=round(score, 8)))
-            candidates.sort(key=lambda hit: (-hit.score, hit.chunk.ordinal, hit.chunk.chunk_id))
-            return candidates[:top_k]
+            snapshot = [
+                stored
+                for (item_namespace, _), stored in self._items.items()
+                if item_namespace == namespace and _matches(stored.chunk.metadata, metadata_filter)
+            ]
+        # Sorting and cosine calculations happen outside the storage lock so a
+        # large namespace does not block concurrent ingest/delete operations.
+        candidates = [
+            SearchHit(chunk=stored.chunk, score=round(_cosine(query_vector, stored.vector), 8))
+            for stored in snapshot
+        ]
+        candidates.sort(key=lambda hit: (-hit.score, hit.chunk.ordinal, hit.chunk.chunk_id))
+        return candidates[:top_k]
 
     async def delete_document(self, document_id: str, *, namespace: str) -> int:
         async with self._lock:

@@ -7,16 +7,27 @@ so transport-facing event details do not inflate the lifecycle runtime.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 import time
 import uuid
 from typing import Any
 
 from ..agent.models import FillerPhase, IntentDecision, IntentName, IntentSource
-from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan, reason_label
+from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan
 from ..agent.steering import RunInterrupted, RunToken, open_run
-from ..agent.streaming import chunks, dump_tools, filler_payload, provider_performance, result_payload
-from .runtime_support import agent_latency, ensure_running, safe_error, trace_scope
+from ..agent.streaming import filler_payload, result_payload
+from .runtime_support import (
+    agent_latency,
+    ensure_running,
+    interruption_latency_ms,
+    safe_error,
+    trace_scope,
+)
+from .stream_helpers import elapsed_ms as _elapsed_ms
+from .stream_helpers import invalidate_run as _invalidate_run
+from .stream_helpers import latency_payload as _latency_payload
+from .stream_helpers import node_event as _node_event
+from .stream_helpers import response_events as _response_events
 from .state import AgentGraphState
 
 
@@ -35,6 +46,20 @@ async def stream_runtime(
     if run_id is None:
         run_id = (await open_run(runtime._sessions, session_id)).run_id
     terminal = False
+    first_event_latency_ms: float | None = None
+    first_visible_latency_ms: float | None = None
+
+    def mark_first_visible() -> None:
+        nonlocal first_visible_latency_ms
+        if first_visible_latency_ms is not None:
+            return
+        first_visible_latency_ms = _elapsed_ms(stream_started)
+        runtime._record_first_visible(
+            trace_id,
+            owner_id=user_id,
+            latency_ms=first_visible_latency_ms,
+        )
+
     try:
         assessment = assess_prompt_injection(message)
         # Keep the first acknowledgement independent from model classification.
@@ -48,10 +73,11 @@ async def stream_runtime(
         )
         immediate_filler = runtime._filler.plan(provisional, message=message)
         listening = runtime._performance.for_listening()
+        first_event_latency_ms = _elapsed_ms(stream_started)
         runtime._record_first_byte(
             trace_id,
             owner_id=user_id,
-            latency_ms=(time.perf_counter() - stream_started) * 1000,
+            latency_ms=first_event_latency_ms,
         )
         yield {
             "event": "start",
@@ -65,6 +91,7 @@ async def stream_runtime(
         token = RunToken(session_id=session_id, run_id=run_id) if run_id else None
         await ensure_running(runtime._sessions, token)
         if immediate_filler.should_emit and immediate_filler.text:
+            mark_first_visible()
             yield {"event": "filler", "data": filler_payload(trace_id, immediate_filler, run_id=run_id)}
         await ensure_running(runtime._sessions, token)
         if assessment.attempted:
@@ -79,6 +106,7 @@ async def stream_runtime(
             )
             plan = runtime._router.route(decision, message=message)
         await ensure_running(runtime._sessions, token)
+        mark_first_visible()
         yield {
             "event": "intent",
             "data": {
@@ -89,6 +117,7 @@ async def stream_runtime(
                 "source": decision.source,
             },
         }
+        mark_first_visible()
         yield {
             "event": "tool_disclosure",
             "data": {
@@ -118,6 +147,7 @@ async def stream_runtime(
             runtime._observer,
             "agent.stream",
             {"owner_id": user_id, "run_id": run_id, "message_length": len(message)},
+            trace_id=trace_id,
         ):
             async for update in runtime._graph.astream(state, stream_mode="updates"):
                 await ensure_running(runtime._sessions, token)
@@ -138,6 +168,8 @@ async def stream_runtime(
                             # superseding run can stop speech promptly.
                             await ensure_running(runtime._sessions, token)
                             await asyncio.sleep(0)
+                            if delta.get("data", {}).get("text"):
+                                mark_first_visible()
                             yield delta
                         continue
                     event = _node_event(
@@ -147,13 +179,39 @@ async def stream_runtime(
                         run_id=run_id,
                     )
                     if event is not None:
+                        mark_first_visible()
                         yield event
             state["agent_latency_ms"] = agent_latency(
                 started_at=stream_started,
                 digital_human_latency_ms=state.get("digital_human_latency_ms"),
             )
+            state["first_event_latency_ms"] = first_event_latency_ms
+            state["first_visible_latency_ms"] = first_visible_latency_ms
             result = runtime._result(state, session_id=session_id, trace_id=trace_id)
+            cancellation_latency = None
+            if result.interrupted:
+                cancellation_latency = await interruption_latency_ms(
+                    runtime._sessions,
+                    token,
+                    consume=True,
+                )
+                result.cancellation_latency_ms = cancellation_latency
+                runtime._record_interrupted(
+                    trace_id,
+                    owner_id=user_id,
+                    reason="graph_interrupted",
+                    latency_ms=cancellation_latency,
+                )
             done = result_payload(result)
+            done.update(
+                _latency_payload(
+                    first_event_latency_ms,
+                    first_visible_latency_ms,
+                    cancellation_latency
+                    if cancellation_latency is not None
+                    else result.cancellation_latency_ms
+                )
+            )
             done["performance"] = runtime._performance.for_phase(FillerPhase.COMPLETE).model_dump(
                 mode="json", by_alias=True
             )
@@ -161,6 +219,19 @@ async def stream_runtime(
             yield {"event": "done", "data": done}
     except RunInterrupted:
         terminal = True
+        cancellation_latency = await interruption_latency_ms(
+            runtime._sessions,
+            RunToken(session_id=session_id, run_id=run_id) if run_id else None,
+            consume=True,
+        )
+        if cancellation_latency is None:
+            cancellation_latency = _elapsed_ms(stream_started)
+        runtime._record_interrupted(
+            trace_id,
+            owner_id=user_id,
+            reason="run_interrupted",
+            latency_ms=cancellation_latency,
+        )
         cue = runtime._performance.for_phase(FillerPhase.INTERRUPTED)
         yield {
             "event": "interrupted",
@@ -169,6 +240,7 @@ async def stream_runtime(
                 "runId": run_id,
                 "message": "请求已打断。",
                 "performance": cue.model_dump(mode="json", by_alias=True),
+                **_latency_payload(first_event_latency_ms, first_visible_latency_ms, cancellation_latency),
             },
         }
         yield {
@@ -181,113 +253,48 @@ async def stream_runtime(
                 "provider": "unknown",
                 "toolCalls": [],
                 "interrupted": True,
+                **_latency_payload(first_event_latency_ms, first_visible_latency_ms, cancellation_latency),
             },
         }
     except asyncio.CancelledError:
+        cancellation_latency = await interruption_latency_ms(
+            runtime._sessions,
+            RunToken(session_id=session_id, run_id=run_id) if run_id else None,
+            consume=True,
+        )
+        if cancellation_latency is None:
+            cancellation_latency = _elapsed_ms(stream_started)
+        runtime._record_interrupted(
+            trace_id,
+            owner_id=user_id,
+            reason="client_disconnect",
+            latency_ms=cancellation_latency,
+        )
         raise
     except Exception as exc:
+        # An application/transport error is still a terminal stream outcome.
+        # Invalidate the run before publishing the terminal frame so a later
+        # request cannot observe the failed run as active.
+        if run_id:
+            await _invalidate_run(runtime, session_id=session_id, run_id=run_id)
+        terminal = True
         yield {
             "event": "error",
             "data": {"traceId": trace_id, "runId": run_id, "message": safe_error(exc)},
         }
+        yield {
+            "event": "done",
+            "data": {
+                "reply": "请求未完成，请稍后重试。",
+                "traceId": trace_id,
+                "sessionId": session_id,
+                "runId": run_id,
+                "provider": "unknown",
+                "toolCalls": [],
+                "interrupted": False,
+                **_latency_payload(first_event_latency_ms, first_visible_latency_ms, None),
+            },
+        }
     finally:
         if not terminal and run_id:
             await _invalidate_run(runtime, session_id=session_id, run_id=run_id)
-
-
-async def _invalidate_run(runtime: Any, *, session_id: str, run_id: str) -> None:
-    """Invalidate a run when its stream closes before a terminal event."""
-    marker = getattr(runtime._sessions, "mark_interrupted", None)
-    if not callable(marker):
-        return
-    try:
-        await marker(session_id, run_id=run_id)
-    except Exception:
-        # Disconnect cleanup is best effort and must not mask the original
-        # stream cancellation or provider error.
-        return
-
-
-def _node_event(
-    node_name: str,
-    payload: dict[str, Any],
-    *,
-    trace_id: str,
-    run_id: str | None,
-) -> dict[str, Any] | None:
-    """Translate a graph update into a transport event, if applicable."""
-    if node_name == "retrieve":
-        if payload.get("security_blocked"):
-            return None
-        return {
-            "event": "rag",
-            "data": {
-                "traceId": trace_id,
-                "runId": run_id,
-                "hitCount": len(payload.get("rag_hits", [])),
-                "degraded": bool(payload.get("rag_error")),
-            },
-        }
-    if node_name == "security":
-        blocked = bool(payload.get("security_blocked"))
-        return {
-            "event": "security",
-            "data": {
-                "traceId": trace_id,
-                "runId": run_id,
-                "blocked": blocked,
-                "reason": reason_label(payload.get("security_reason")) if blocked else None,
-            },
-        }
-    if node_name == "tool":
-        if payload.get("security_blocked"):
-            return None
-        return {
-            "event": "tool",
-            "data": {
-                "traceId": trace_id,
-                "runId": run_id,
-                "toolCalls": dump_tools(payload.get("tool_calls", [])),
-            },
-        }
-    if node_name == "provider":
-        provider_status = (
-            "interrupted"
-            if payload.get("interrupted")
-            else "error"
-            if payload.get("provider_error")
-            else "ok"
-        )
-        return {
-            "event": "provider",
-            "data": {
-                "traceId": trace_id,
-                "runId": run_id,
-                "status": provider_status,
-                "message": payload.get("provider_error"),
-                "performance": provider_performance(payload),
-            },
-        }
-    return None
-
-
-def _response_events(
-    payload: dict[str, Any],
-    *,
-    trace_id: str,
-    run_id: str | None,
-    runtime: Any,
-) -> Iterator[dict[str, Any]]:
-    """Build response deltas lazily; the caller performs async checks."""
-    reply = str(payload.get("reply", ""))
-    for index, chunk in enumerate(chunks(reply)):
-        data: dict[str, Any] = {
-            "traceId": trace_id,
-            "runId": run_id,
-            "text": chunk,
-        }
-        if index == 0:
-            data["performance"] = runtime._performance.for_phase(FillerPhase.SPEAKING).model_dump(
-                mode="json", by_alias=True
-            )
-        yield {"event": "delta", "data": data}

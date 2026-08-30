@@ -8,6 +8,7 @@ from typing import Any
 from .docling_parser import DocumentParseError
 from .models import IngestRequest, IngestResult, SearchRequest, SearchResult
 from .service import RagService, build_default_rag_service
+from ..observability.redaction import redact_text
 
 try:  # Keep importing the package possible for non-HTTP workers.
     from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
@@ -75,14 +76,21 @@ def build_router(service: RagService | None = None, *, prefix: str = "/internal/
     async def health() -> dict[str, Any]:
         count = await selected.count()
         parser = getattr(selected.parser, "available", None)
-        return {"status": "ok", "documents": count, "docling_available": parser}
+        return {
+            "status": "ok",
+            "documents": count,
+            "docling_available": parser,
+            "docling_loaded": bool(getattr(selected.parser, "loaded", False)),
+            "docling_load_error": getattr(selected.parser, "load_error", None),
+            "parse_concurrency": selected.parse_concurrency,
+        }
 
     @api.post("/ingest", response_model=IngestResult)
     async def ingest(request: IngestRequest, context: InternalContext) -> IngestResult:
         try:
             return await selected.ingest(request, owner_id=context["user_id"])
         except (DocumentParseError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=_public_error(exc)) from exc
 
     @api.post("/ingest/file", response_model=IngestResult)
     async def ingest_file(
@@ -121,7 +129,7 @@ def build_router(service: RagService | None = None, *, prefix: str = "/internal/
         try:
             return await selected.ingest(request, owner_id=context["user_id"])
         except (DocumentParseError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=_public_error(exc)) from exc
 
     @api.post("/search", response_model=SearchResult)
     async def search(request: SearchRequest, context: InternalContext) -> SearchResult:
@@ -143,6 +151,14 @@ def _encode(payload: bytes) -> str:
     import base64
 
     return base64.b64encode(payload).decode("ascii")
+
+
+def _public_error(exc: Exception) -> str:
+    """Keep document diagnostics useful without reflecting user-controlled data."""
+
+    raw = str(exc).strip()
+    message = raw.splitlines()[0] if raw else exc.__class__.__name__
+    return redact_text(message, max_length=300) or exc.__class__.__name__
 
 
 router = build_router()

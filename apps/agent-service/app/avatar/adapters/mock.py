@@ -17,7 +17,12 @@ class MockProvider:
         self._sessions: set[str] = set()
 
     async def capabilities(self) -> AvatarCapabilities:
-        return AvatarCapabilities(text_input=True, interrupt=True, streaming=True)
+        return AvatarCapabilities(
+            text_input=True,
+            interrupt=True,
+            interrupt_scope="run",
+            streaming=True,
+        )
 
     async def health(self) -> AvatarHealth:
         return AvatarHealth(provider=self.name, status="ready", configured=True, detail="deterministic local provider")

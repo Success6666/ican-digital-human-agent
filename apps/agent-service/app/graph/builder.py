@@ -2,27 +2,33 @@
 
 from __future__ import annotations
 
-import asyncio
-from contextlib import nullcontext
 import time
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
-from ..agent.models import FillerPhase, IntentDecision, ToolRoutePlan
+from ..agent.models import FillerPhase, IntentDecision
 from ..agent.performance import PerformancePlanner
 from ..agent.response import build_agent_response
 from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan, safe_refusal
-from ..agent.steering import RunToken, should_stop
 from ..agent.tool_catalog import ProgressiveToolRouter, ToolRouter
 from ..avatar.registry import ProviderRegistry
 from ..avatar.presentation import PresentationLayer, ProviderRuntime
 from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
 from ..rag.models import SearchRequest
-from .state import AgentGraphState
+from .concurrency import bounded_map
+from .builder_support import attrs as _attrs
+from .builder_support import decision_from_state as _decision
+from .builder_support import plan_from_state as _plan
+from .builder_support import run_token as _run_token
+from .builder_support import safe_error as _safe_error
+from .builder_support import span_context as _span
+from .builder_support import stopped as _stopped
+from .builder_support import tool_arguments as _tool_arguments
 from .runtime_support import run_with_steering
+from .state import AgentGraphState
 
 
 def build_graph(
@@ -36,10 +42,11 @@ def build_graph(
     tool_router: ToolRouter | None = None,
     performance: PerformancePlanner | None = None,
     provider_cancel_grace_seconds: float = 0.25,
+    max_parallel_tools: int = 4,
 ):
     """Return a compiled graph with all external decisions injected.
 
-    The graph intentionally remains deterministic in v0.1.1.  Replacing the
+    The graph intentionally remains deterministic in v0.1.2.  Replacing the
     classifier or route policy does not change the API or provider adapters.
     """
 
@@ -161,8 +168,10 @@ def build_graph(
                     return ToolCallRecord(name=name, arguments=arguments, error=_safe_error(exc))
 
         # Independent MCP probes run concurrently, reducing latency without
-        # exposing more tools than the route plan selected.
-        calls = list(await asyncio.gather(*(call_one(name) for name in plan.selected_tools)))
+        # exposing more tools than the route plan selected. A bounded worker
+        # pool prevents a custom route plan from creating an unbounded task
+        # set, and retains deterministic input order for the stream.
+        calls = await bounded_map(plan.selected_tools, call_one, limit=max_parallel_tools)
         if await _stopped(sessions, state):
             return {
                 "tool_calls": calls,
@@ -230,6 +239,20 @@ def build_graph(
                 # its result so stale output cannot complete the old run.
                 if await _stopped(sessions, state):
                     return {"interrupted": True, "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+                provider_status = str(getattr(result, "status", "ok") or "ok").casefold()
+                if provider_status in {"interrupted", "cancelled", "canceled"}:
+                    return {
+                        "provider_result": result,
+                        "interrupted": True,
+                        "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                    }
+                if provider_status in {"error", "failed"}:
+                    return {
+                        "agent_response": response,
+                        "provider_result": result,
+                        "provider_error": "provider returned an error",
+                        "digital_human_latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                    }
                 return {
                     "agent_response": response,
                     "provider_result": result,
@@ -260,58 +283,3 @@ def build_graph(
     graph.add_edge("respond", "provider")
     graph.add_edge("provider", END)
     return graph.compile()
-
-
-def _tool_arguments(name: str, message: str) -> dict[str, Any]:
-    return {"message": message} if name == "echo" else {}
-
-
-def _decision(state: AgentGraphState) -> IntentDecision | None:
-    value = state.get("intent")
-    if not value:
-        return None
-    return value if isinstance(value, IntentDecision) else IntentDecision.model_validate(value)
-
-
-def _plan(state: AgentGraphState) -> ToolRoutePlan | None:
-    value = state.get("tool_plan")
-    if not value:
-        return None
-    return value if isinstance(value, ToolRoutePlan) else ToolRoutePlan.model_validate(value)
-
-
-async def _stopped(sessions: SessionStore, state: AgentGraphState) -> bool:
-    token = RunToken(session_id=state["session_id"], run_id=state["run_id"]) if state.get("run_id") else None
-    return await should_stop(sessions, token)
-
-
-def _attrs(state: AgentGraphState, values: dict[str, Any]) -> dict[str, Any]:
-    return {"owner_id": state.get("user_id", "unknown"), "run_id": state.get("run_id"), **values}
-
-
-def _span(
-    observer: Any | None,
-    factory: str,
-    name: str,
-    attributes: dict[str, Any],
-    *,
-    provider: str | None = None,
-):
-    if observer is None:
-        return nullcontext()
-    method = getattr(observer, factory)
-    if factory == "provider_event":
-        return method(provider or "unknown", name, attributes=attributes)
-    return method(name, attributes=attributes)
-
-
-def _safe_error(exc: Exception) -> str:
-    message = str(exc).strip().splitlines()[0] if str(exc).strip() else exc.__class__.__name__
-    return message[:300]
-
-
-def _run_token(state: AgentGraphState) -> RunToken | None:
-    run_id = state.get("run_id")
-    if not run_id:
-        return None
-    return RunToken(session_id=state["session_id"], run_id=run_id)

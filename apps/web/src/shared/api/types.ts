@@ -55,6 +55,11 @@ export interface ChatResponse {
   runId?: string
   toolCalls?: ToolCall[]
   agentResponse?: AgentResponse
+  agentLatencyMs?: number
+  digitalHumanLatencyMs?: number
+  firstEventLatencyMs?: number
+  firstVisibleLatencyMs?: number
+  cancellationLatencyMs?: number
 }
 
 export interface AgentResponse {

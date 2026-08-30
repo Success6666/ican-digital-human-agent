@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import asyncio
 import logging
 import os
+import threading
 from typing import Any
 
 from .futureagi_runtime import FutureAGIRuntime, flush_runtime, register_runtime
@@ -58,6 +60,7 @@ class FutureAGISink:
         self._runtime: FutureAGIRuntime | None = None
         self._error: str | None = None
         self._initialized = False
+        self._state_lock = threading.RLock()
 
     @property
     def backend(self) -> str:
@@ -77,27 +80,20 @@ class FutureAGISink:
         return self.fallback
 
     async def emit(self, event: TelemetryEvent) -> None:
-        self._ensure_initialized()
-        if self._runtime is None:
-            await self.fallback.emit(event)
-            return
-        try:
-            self._emit_remote(event)
-        except Exception as exc:
-            self._degrade(exc)
-            await self.fallback.emit(event)
+        """Export asynchronously without blocking the event loop on SDK I/O."""
+
+        await asyncio.to_thread(self.emit_sync, event)
 
     def emit_sync(self, event: TelemetryEvent) -> None:
         """Synchronous counterpart used by span start/end hooks."""
+        self._mirror_local(event)
         self._ensure_initialized()
         if self._runtime is None:
-            self.fallback.record_sync(event)
             return
         try:
             self._emit_remote(event)
         except Exception as exc:
             self._degrade(exc)
-            self.fallback.record_sync(event)
 
     async def flush(self) -> None:
         try:
@@ -107,21 +103,22 @@ class FutureAGISink:
         await self.fallback.flush()
 
     def _ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        self._initialized = True
-        if not self.configured:
-            self._error = "FutureAGI credentials are not configured"
-            return
-        try:
-            self._runtime = register_runtime(
-                api_key=self.config.api_key or "",
-                secret_key=self.config.secret_key or "",
-                project=self.config.project,
-                endpoint=self.config.endpoint,
-            )
-        except Exception as exc:
-            self._degrade(exc)
+        with self._state_lock:
+            if self._initialized:
+                return
+            self._initialized = True
+            if not self.configured:
+                self._error = "FutureAGI credentials are not configured"
+                return
+            try:
+                self._runtime = register_runtime(
+                    api_key=self.config.api_key or "",
+                    secret_key=self.config.secret_key or "",
+                    project=self.config.project,
+                    endpoint=self.config.endpoint,
+                )
+            except Exception as exc:
+                self._degrade(exc)
 
     def _emit_remote(self, event: TelemetryEvent) -> None:
         runtime = self._runtime
@@ -151,9 +148,21 @@ class FutureAGISink:
             span.end()
 
     def _degrade(self, exc: Exception) -> None:
-        self._runtime = None
-        self._error = redact_text(f"{type(exc).__name__}: {exc}")
-        self.logger.warning("FutureAGI telemetry degraded to local logging: %s", self._error)
+        with self._state_lock:
+            self._runtime = None
+            self._error = redact_text(f"{type(exc).__name__}: {exc}")
+            error = self._error
+        self.logger.warning("FutureAGI telemetry degraded to local logging: %s", error)
+
+    def _mirror_local(self, event: TelemetryEvent) -> None:
+        """Best-effort local retention; diagnostics must never block export."""
+
+        try:
+            recorder = getattr(self.fallback, "record_sync", None)
+            if callable(recorder):
+                recorder(event)
+        except Exception as exc:
+            self.logger.debug("local telemetry mirror unavailable: %s", type(exc).__name__)
 
 
 def _otel_value(value: Any) -> str | int | float | bool:

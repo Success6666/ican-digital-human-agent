@@ -63,6 +63,9 @@ class ChatResponse(BaseModel):
     tool_calls: list[dict[str, Any]] = Field(default_factory=list, alias="toolCalls")
     agent_latency_ms: float | None = Field(default=None, alias="agentLatencyMs")
     digital_human_latency_ms: float | None = Field(default=None, alias="digitalHumanLatencyMs")
+    first_event_latency_ms: float | None = Field(default=None, alias="firstEventLatencyMs")
+    first_visible_latency_ms: float | None = Field(default=None, alias="firstVisibleLatencyMs")
+    cancellation_latency_ms: float | None = Field(default=None, alias="cancellationLatencyMs")
     interrupted: bool = False
     agent_response: AgentResponse | None = Field(default=None, alias="agentResponse")
 

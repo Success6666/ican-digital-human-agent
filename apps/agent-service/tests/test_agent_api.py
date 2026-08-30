@@ -25,6 +25,8 @@ def test_auth_session_chat_and_sse() -> None:
         providers = client.get("/internal/providers", headers=headers)
         assert providers.status_code == 200
         assert {item["provider"] for item in providers.json()} == {"mock", "aliyun", "mofa", "iflytek", "fay"}
+        mock_capabilities = next(item["capabilities"] for item in providers.json() if item["provider"] == "mock")
+        assert mock_capabilities["interrupt_scope"] == "run"
 
         created = client.post("/internal/sessions", headers=headers, json={"provider": "mock"})
         assert created.status_code == 201

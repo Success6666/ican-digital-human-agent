@@ -48,6 +48,7 @@ def test_agent_response_contract_is_vendor_neutral() -> None:
     assert response.gesture is None
     assert response.run_id is None
     assert AvatarCapabilities(external_runtime=True).external_runtime is True
+    assert AvatarCapabilities().interrupt_scope == "local"
 
 
 def test_chat_result_populates_alias_fields_from_domain_names() -> None:

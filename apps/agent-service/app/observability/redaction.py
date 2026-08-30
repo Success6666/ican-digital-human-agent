@@ -22,6 +22,7 @@ _SECRET_PARTS = (
 )
 _MAX_STRING = 2048
 _MAX_TEXT = 512
+_MAX_ITEMS = 128
 
 _AUTH_TEXT = re.compile(
     r"(?i)(?P<label>\b(?:authorization|proxy-authorization)\b\s*[:=]\s*)"
@@ -44,12 +45,30 @@ def redact(value: Any, *, key: str | None = None, depth: int = 0) -> Any:
     if depth > 5:
         return "[TRUNCATED]"
     if isinstance(value, Mapping):
-        return {str(item_key): redact(item_value, key=str(item_key), depth=depth + 1) for item_key, item_value in value.items()}
+        result: dict[str, Any] = {}
+        for index, (item_key, item_value) in enumerate(value.items()):
+            if index >= _MAX_ITEMS:
+                break
+            result[str(item_key)] = redact(item_value, key=str(item_key), depth=depth + 1)
+        return result
     if isinstance(value, (list, tuple, set)):
-        return [redact(item, depth=depth + 1) for item in value]
-    if isinstance(value, str) and len(value) > _MAX_STRING:
-        return value[:_MAX_STRING] + "...[TRUNCATED]"
-    return value
+        result = []
+        for index, item in enumerate(value):
+            if index >= _MAX_ITEMS:
+                break
+            result.append(redact(item, depth=depth + 1))
+        return result
+    if isinstance(value, str):
+        return redact_text(value, max_length=_MAX_STRING)
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if value == value and abs(value) != float("inf") else "[REDACTED]"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return "[REDACTED]"
+    # Avoid handing arbitrary object reprs to a remote exporter. Convert them
+    # to a bounded, credential-scrubbed string instead.
+    return redact_text(str(value), max_length=_MAX_STRING) or "[REDACTED]"
 
 
 def redact_text(value: str | None, *, max_length: int = _MAX_TEXT) -> str | None:

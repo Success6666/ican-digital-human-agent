@@ -23,6 +23,9 @@ class AgentGraphState(TypedDict, total=False):
     agent_response: AgentResponse
     agent_latency_ms: float
     digital_human_latency_ms: float
+    first_event_latency_ms: float
+    first_visible_latency_ms: float
+    cancellation_latency_ms: float
     provider_error: str
     reply: str
     error: str

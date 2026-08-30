@@ -88,12 +88,21 @@ def score_run(
         EvaluationDimension.DIGITAL_HUMAN_LATENCY: _measurement_score(
             EvaluationDimension.DIGITAL_HUMAN_LATENCY, "数字人延迟", request.digital_human_latency_ms
         ),
+        EvaluationDimension.FIRST_EVENT_LATENCY: _measurement_score(
+            EvaluationDimension.FIRST_EVENT_LATENCY, "首事件延迟", request.first_event_latency_ms
+        ),
+        EvaluationDimension.FIRST_VISIBLE_LATENCY: _measurement_score(
+            EvaluationDimension.FIRST_VISIBLE_LATENCY, "首可见内容延迟", request.first_visible_latency_ms
+        ),
+        EvaluationDimension.CANCELLATION_LATENCY: _measurement_score(
+            EvaluationDimension.CANCELLATION_LATENCY, "取消生效延迟", request.cancellation_latency_ms
+        ),
         EvaluationDimension.TASK_SUCCESS: _binary_score(
             EvaluationDimension.TASK_SUCCESS,
             "任务成功率",
             request.task_success
             if request.task_success is not None
-            else request.status == "success" or (expected_blocked and request.status == "blocked"),
+            else request.status == "success",
         ),
         EvaluationDimension.TOOL_CALL_ACCURACY: _tool_score(expected_tools, request.actual_tools),
         EvaluationDimension.RESULT_CORRECTNESS: _keyword_score(

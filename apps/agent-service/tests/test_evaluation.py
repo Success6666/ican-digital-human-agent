@@ -65,6 +65,7 @@ def test_deterministic_metrics_cover_tokens_cost_tools_grounding_and_injection()
     assert scores[EvaluationDimension.FACTUAL_GROUNDING].score == 1
     assert scores[EvaluationDimension.RESULT_CONSISTENCY].score == 1
     assert scores[EvaluationDimension.PROMPT_INJECTION_DEFENSE].score == 1
+    assert scores[EvaluationDimension.TASK_SUCCESS].score == 0
     assert scores[EvaluationDimension.AGENT_LATENCY].numerator is None
 
 
@@ -173,6 +174,40 @@ def test_overview_aggregates_all_retained_runs_and_keeps_long_owners_isolated() 
     service.record(EvaluationRunRequest(input_text="b"), owner_id=long_b)
     assert service.overview(owner_id=long_a).total_runs == 1
     assert service.overview(owner_id=long_b).total_runs == 1
+
+
+def test_realtime_latency_statuses_and_zero_price_are_recorded_without_fake_quality_scores() -> None:
+    service = EvaluationService(max_runs=10, input_price_per_1k=0.0, output_price_per_1k=0.0)
+    service.record(
+        EvaluationRunRequest(
+            input_text="slow",
+            output_text="",
+            status="interrupted",
+            first_event_latency_ms=12.5,
+            first_visible_latency_ms=35.0,
+            cancellation_latency_ms=8.0,
+            agent_latency_ms=45.0,
+        ),
+        owner_id="realtime",
+    )
+    overview = service.overview(owner_id="realtime")
+    assert overview.total_cost == 0
+    assert overview.first_event_latency_ms == 12.5
+    assert overview.first_visible_latency_ms == 35
+    assert overview.cancellation_latency_ms == 8
+    assert overview.status_counts == {
+        "success": 0,
+        "failed": 0,
+        "error": 0,
+        "blocked": 0,
+        "interrupted": 1,
+    }
+    assert overview.cancellation_rate == 1
+    assert overview.task_success_rate == 0
+    run = service.runs(owner_id="realtime", limit=1)[0]
+    assert run.scores[EvaluationDimension.FIRST_EVENT_LATENCY].numerator == 12.5
+    assert run.scores[EvaluationDimension.FIRST_VISIBLE_LATENCY].numerator == 35
+    assert run.scores[EvaluationDimension.CANCELLATION_LATENCY].numerator == 8
 
 
 def test_evaluation_http_api_is_authenticated_and_owner_scoped() -> None:

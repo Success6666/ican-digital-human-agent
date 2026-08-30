@@ -5,7 +5,6 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from io import BytesIO
 import importlib.util
-import mimetypes
 import os
 from pathlib import Path, PurePath
 import threading
@@ -13,6 +12,7 @@ from typing import Any
 from dataclasses import dataclass
 
 from .models import ParsedDocument
+from .parser_support import infer_content_type, positive_int, public_load_error, truthy
 
 
 class DocumentParseError(RuntimeError):
@@ -30,19 +30,29 @@ class DoclingRuntimeConfig:
     do_ocr: bool = True
     do_table_structure: bool = True
     table_mode: str = "accurate"
+    max_concurrency: int = 1
+
+    def __post_init__(self) -> None:
+        if self.max_concurrency < 1:
+            raise ValueError("max_concurrency must be positive")
+        if self.table_mode not in {"fast", "accurate"}:
+            raise ValueError("table_mode must be fast or accurate")
+        if not self.ocr_languages:
+            raise ValueError("ocr_languages must not be empty")
 
     @classmethod
     def from_env(cls) -> "DoclingRuntimeConfig":
         raw_languages = os.getenv("DOCLING_OCR_LANG", "chinese")
         languages = tuple(item.strip() for item in raw_languages.split(",") if item.strip())
         return cls(
-            enabled=_truthy(os.getenv("DOCLING_ENABLED", "true")),
+            enabled=truthy(os.getenv("DOCLING_ENABLED", "true")),
             artifacts_path=os.getenv("DOCLING_ARTIFACTS_PATH") or None,
             ocr_backend=os.getenv("DOCLING_OCR_BACKEND", "onnxruntime").strip().lower(),
             ocr_languages=languages or ("chinese",),
-            do_ocr=_truthy(os.getenv("DOCLING_DO_OCR", "true")),
-            do_table_structure=_truthy(os.getenv("DOCLING_DO_TABLE_STRUCTURE", "true")),
+            do_ocr=truthy(os.getenv("DOCLING_DO_OCR", "true")),
+            do_table_structure=truthy(os.getenv("DOCLING_DO_TABLE_STRUCTURE", "true")),
             table_mode=os.getenv("DOCLING_TABLE_MODE", "accurate").strip().lower(),
+            max_concurrency=positive_int(os.getenv("DOCLING_MAX_CONCURRENCY"), 1),
         )
 
 
@@ -82,6 +92,7 @@ class DoclingParser:
         self._converter: Any = None
         self._converter_error: str | None = None
         self._lock = threading.Lock()
+        self._conversion_slots = threading.BoundedSemaphore(self.config.max_concurrency)
 
     @property
     def available(self) -> bool:
@@ -91,13 +102,32 @@ class DoclingParser:
             return False
         try:
             return importlib.util.find_spec("docling.document_converter") is not None
-        except (ImportError, ModuleNotFoundError):
+        except (ImportError, ModuleNotFoundError, ValueError):
             return False
 
     @property
     def converter_error(self) -> str | None:
         self._load_converter()
-        return self._converter_error
+        return public_load_error(self._converter_error)
+
+    @property
+    def loaded(self) -> bool:
+        """Whether the converter has been constructed without triggering load."""
+
+        return self._converter is not None
+
+    @property
+    def load_error(self) -> str | None:
+        """Return a cached load error without constructing the converter."""
+
+        return public_load_error(self._converter_error)
+
+    def reset(self) -> None:
+        """Drop the converter so a changed model directory can be reloaded."""
+
+        with self._lock:
+            self._converter = None
+            self._converter_error = None
 
     def parse(
         self,
@@ -110,7 +140,7 @@ class DoclingParser:
     ) -> ParsedDocument:
         if not payload:
             raise DocumentParseError("document payload is empty")
-        normalized_type = self._content_type(source_name, content_type)
+        normalized_type = self._content_type(source_name, content_type, payload)
         details = dict(metadata or {})
         details.update({"source_name": source_name, "content_type": normalized_type})
         try:
@@ -126,11 +156,13 @@ class DoclingParser:
                 details["parser"] = "lossy-binary-fallback"
                 details["parser_warning"] = type(exc).__name__
             else:
-                raise DocumentParseError(
-                    f"Docling could not parse {source_name}: {type(exc).__name__}"
-                ) from exc
+                # Source names are user-controlled and can contain local
+                # paths, credentials, or other sensitive context. Keep the
+                # diagnostic category while leaving the raw detail in the
+                # exception chain for server-side debugging only.
+                raise DocumentParseError(f"文档解析失败（{type(exc).__name__}）") from exc
         if not content.strip():
-            raise DocumentParseError(f"parsed document {source_name} is empty")
+            raise DocumentParseError("文档解析结果为空")
         return ParsedDocument(
             document_id=document_id,
             source_name=source_name,
@@ -146,7 +178,10 @@ class DoclingParser:
         from docling.datamodel.base_models import DocumentStream  # type: ignore[import-not-found]
 
         source = DocumentStream(name=PurePath(source_name).name, stream=BytesIO(payload))
-        result = converter.convert(source)
+        # Docling conversion is CPU/memory heavy. Keep the limit inside the
+        # parser as a second line of defence for callers that bypass RagService.
+        with self._conversion_slots:
+            result = converter.convert(source)
         document = getattr(result, "document", result)
         export = getattr(document, "export_to_markdown", None)
         if export is None:
@@ -206,20 +241,8 @@ class DoclingParser:
         return self._converter
 
     @staticmethod
-    def _content_type(source_name: str, content_type: str | None) -> str:
-        if content_type:
-            return content_type.split(";", 1)[0].strip().lower()
-        guessed, _ = mimetypes.guess_type(source_name)
-        if guessed:
-            return guessed.lower()
-        suffix = PurePath(source_name).suffix.lower()
-        return {
-            ".md": "text/markdown",
-            ".markdown": "text/markdown",
-            ".html": "text/html",
-            ".htm": "text/html",
-            ".txt": "text/plain",
-        }.get(suffix, "application/octet-stream")
+    def _content_type(source_name: str, content_type: str | None, payload: bytes | None = None) -> str:
+        return infer_content_type(source_name, content_type, payload)
 
     @staticmethod
     def _text_fallback(payload: bytes, content_type: str) -> str:
@@ -229,7 +252,3 @@ class DoclingParser:
             parser.feed(text)
             return "\n".join(parser.parts)
         return text
-
-
-def _truthy(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "on"}

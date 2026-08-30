@@ -78,6 +78,9 @@ class EvaluationService:
             currency=self.currency,
             agent_latency_ms=request.agent_latency_ms,
             digital_human_latency_ms=request.digital_human_latency_ms,
+            first_event_latency_ms=request.first_event_latency_ms,
+            first_visible_latency_ms=request.first_visible_latency_ms,
+            cancellation_latency_ms=request.cancellation_latency_ms,
             total_latency_ms=total_latency,
             scores=scores,
             input_preview=_preview(request.input_text),
@@ -109,7 +112,16 @@ class EvaluationService:
         output_tokens = sum(item.output_tokens for item in runs)
         agent_values = [item.agent_latency_ms for item in runs if item.agent_latency_ms is not None]
         avatar_values = [item.digital_human_latency_ms for item in runs if item.digital_human_latency_ms is not None]
+        first_event_values = [item.first_event_latency_ms for item in runs if item.first_event_latency_ms is not None]
+        first_visible_values = [item.first_visible_latency_ms for item in runs if item.first_visible_latency_ms is not None]
+        cancellation_values = [item.cancellation_latency_ms for item in runs if item.cancellation_latency_ms is not None]
         total_values = [item.total_latency_ms for item in runs if item.total_latency_ms is not None]
+        status_counts = {status: sum(1 for item in runs if item.status == status) for status in _STATUSES}
+        cancellation_rate = (
+            status_counts["interrupted"] / len(runs)
+            if runs
+            else None
+        )
         with self._lock:
             dataset_count = len(self._datasets)
             case_count = sum(item.case_count for item in self._datasets.values())
@@ -130,11 +142,22 @@ class EvaluationService:
             prompt_injection_protection=_metric_value(metrics, EvaluationDimension.PROMPT_INJECTION_DEFENSE),
             agent_latency_ms=_average(agent_values),
             digital_human_latency_ms=_average(avatar_values),
+            first_event_latency_ms=_average(first_event_values),
+            first_visible_latency_ms=_average(first_visible_values),
+            cancellation_latency_ms=_average(cancellation_values),
             total_latency_ms=_average(total_values),
             agent_latency_p50_ms=_percentile(agent_values, 0.50),
             agent_latency_p95_ms=_percentile(agent_values, 0.95),
             digital_human_latency_p50_ms=_percentile(avatar_values, 0.50),
             digital_human_latency_p95_ms=_percentile(avatar_values, 0.95),
+            first_event_latency_p50_ms=_percentile(first_event_values, 0.50),
+            first_event_latency_p95_ms=_percentile(first_event_values, 0.95),
+            first_visible_latency_p50_ms=_percentile(first_visible_values, 0.50),
+            first_visible_latency_p95_ms=_percentile(first_visible_values, 0.95),
+            cancellation_latency_p50_ms=_percentile(cancellation_values, 0.50),
+            cancellation_latency_p95_ms=_percentile(cancellation_values, 0.95),
+            cancellation_rate=cancellation_rate,
+            status_counts=status_counts,
             metrics=metrics,
             updated_at=datetime.now(timezone.utc),
             source="evaluation" if runs else "empty",
@@ -203,14 +226,17 @@ def _preview(value: str, limit: int = 240) -> str:
     return compact[:limit] + ("..." if len(compact) > limit else "")
 
 
+_STATUSES = ("success", "failed", "error", "blocked", "interrupted")
+
+
 def _positive_float(value: float | None, env_name: str, default: float) -> float:
-    if value is not None and value > 0:
+    if value is not None and math.isfinite(value) and value >= 0:
         return value
     try:
         parsed = float(os.getenv(env_name, str(default)))
-    except ValueError:
+    except (TypeError, ValueError):
         parsed = default
-    return parsed if parsed > 0 else default
+    return parsed if math.isfinite(parsed) and parsed >= 0 else default
 
 
 def _owner_key(owner_id: str) -> str:
