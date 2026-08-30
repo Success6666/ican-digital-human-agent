@@ -31,7 +31,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.7")
+    return HealthResponse(service=container.settings.service_name, version="0.1.8")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -56,7 +56,8 @@ async def providers(context: InternalContext, request: Request) -> list[Provider
 
 @router.get("/internal/configuration")
 async def configuration(context: InternalContext, request: Request) -> dict[str, Any]:
-    del context
+    if context.get("user_role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅管理员可查看运行配置")
     return await get_container(request).configuration_service.view()
 
 

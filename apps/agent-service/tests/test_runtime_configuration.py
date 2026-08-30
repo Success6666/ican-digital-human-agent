@@ -87,7 +87,10 @@ def test_configuration_response_does_not_expose_credentials(tmp_path, monkeypatc
     container = build_container(settings)
 
     with TestClient(create_app(container=container)) as client:
-        response = client.get("/internal/configuration", headers=_headers(role="user"))
+        forbidden = client.get("/internal/configuration", headers=_headers(role="user"))
+        assert forbidden.status_code == 403
+
+        response = client.get("/internal/configuration", headers=_headers())
         assert response.status_code == 200
         serialized = response.text
         assert "private-app-id" not in serialized
