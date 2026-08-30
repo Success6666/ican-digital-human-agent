@@ -9,6 +9,10 @@ class SessionNotFoundError(ApplicationError):
     status_code = 404
 
 
+class SessionCapacityExceededError(ApplicationError):
+    status_code = 429
+
+
 class SessionOwnershipError(ApplicationError):
     status_code = 403
 

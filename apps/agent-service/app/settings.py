@@ -11,7 +11,7 @@ from functools import lru_cache
 import math
 import os
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .mcp.limits import (
     DEFAULT_MAX_RESULT_BYTES,
@@ -25,6 +25,16 @@ from .rag.limits import (
     DEFAULT_MAX_METADATA_ITEMS,
 )
 
+_DEFAULT_INTERNAL_TOKEN = "dev-internal-token"
+_PRODUCTION_TOKEN_MIN_LENGTH = 32
+_PRODUCTION_TOKEN_PLACEHOLDERS = frozenset(
+    {
+        _DEFAULT_INTERNAL_TOKEN,
+        "replace-with-a-long-random-token",
+        "replace-with-a-different-long-random-token",
+    }
+)
+
 
 class Settings(BaseModel):
     service_name: str = "agent-service"
@@ -36,8 +46,35 @@ class Settings(BaseModel):
     mcp_internal_token: str = Field(default="", alias="MCP_INTERNAL_TOKEN")
     mcp_allow_local_fallback: bool = Field(default=True, alias="MCP_ALLOW_LOCAL_FALLBACK")
     default_provider: str = Field(default="mock", alias="DEFAULT_PROVIDER")
-    session_ttl_seconds: int = Field(default=1800, alias="SESSION_TTL_SECONDS")
-    cleanup_interval_seconds: int = Field(default=30, alias="SESSION_CLEANUP_INTERVAL_SECONDS")
+    session_ttl_seconds: int = Field(default=1800, alias="SESSION_TTL_SECONDS", ge=1, le=86_400)
+    cleanup_interval_seconds: int = Field(default=30, alias="SESSION_CLEANUP_INTERVAL_SECONDS", ge=1, le=3_600)
+    session_max_sessions: int = Field(default=1024, alias="SESSION_MAX_SESSIONS", ge=1, le=100_000)
+    session_cleanup_batch_size: int = Field(default=100, alias="SESSION_CLEANUP_BATCH_SIZE", ge=1, le=10_000)
+    session_idle_timeout_seconds: int = Field(default=1800, alias="SESSION_IDLE_TIMEOUT_SECONDS", ge=1, le=86_400)
+    session_heartbeat_interval_seconds: int = Field(
+        default=15,
+        alias="SESSION_HEARTBEAT_INTERVAL_SECONDS",
+        ge=1,
+        le=3_600,
+    )
+    realtime_handshake_timeout_seconds: float = Field(
+        default=5.0,
+        alias="REALTIME_HANDSHAKE_TIMEOUT_SECONDS",
+        gt=0,
+        le=60,
+    )
+    realtime_idle_timeout_seconds: float = Field(
+        default=45.0,
+        alias="REALTIME_IDLE_TIMEOUT_SECONDS",
+        gt=0,
+        le=86_400,
+    )
+    realtime_interrupt_timeout_seconds: float = Field(
+        default=0.25,
+        alias="REALTIME_INTERRUPT_TIMEOUT_SECONDS",
+        gt=0,
+        le=10,
+    )
     max_message_length: int = Field(default=4000, alias="MAX_MESSAGE_LENGTH")
     max_request_body_bytes: int = Field(default=16 * 1024 * 1024, alias="AGENT_MAX_REQUEST_BODY_BYTES")
     request_timeout_seconds: float = Field(default=8.0, alias="MCP_REQUEST_TIMEOUT_SECONDS")
@@ -69,7 +106,14 @@ class Settings(BaseModel):
         gt=0,
         le=60,
     )
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8088",
+            "http://127.0.0.1:8088",
+        ]
+    )
     provider_enabled: dict[str, bool] = Field(default_factory=dict)
 
     model_config = {"populate_by_name": True}
@@ -77,6 +121,10 @@ class Settings(BaseModel):
     @field_validator(
         "session_ttl_seconds",
         "cleanup_interval_seconds",
+        "session_max_sessions",
+        "session_cleanup_batch_size",
+        "session_idle_timeout_seconds",
+        "session_heartbeat_interval_seconds",
         "max_message_length",
         "max_request_body_bytes",
         "mcp_max_result_bytes",
@@ -98,6 +146,27 @@ class Settings(BaseModel):
             raise ValueError("must be positive")
         return value
 
+    @model_validator(mode="after")
+    def validate_session_lease_window(self) -> "Settings":
+        if self.session_idle_timeout_seconds <= self.session_heartbeat_interval_seconds:
+            raise ValueError(
+                "session_idle_timeout_seconds must exceed session_heartbeat_interval_seconds"
+            )
+        if self.realtime_idle_timeout_seconds <= self.session_heartbeat_interval_seconds:
+            raise ValueError(
+                "realtime_idle_timeout_seconds must exceed session_heartbeat_interval_seconds"
+            )
+        if self.realtime_idle_timeout_seconds > self.session_idle_timeout_seconds:
+            raise ValueError(
+                "realtime_idle_timeout_seconds must not exceed session_idle_timeout_seconds"
+            )
+        if self.environment.strip().casefold() in {"prod", "production"}:
+            if _unsafe_production_token(self.internal_token):
+                raise ValueError("AGENT_INTERNAL_TOKEN must be replaced in production")
+            if _unsafe_production_token(self.mcp_internal_token):
+                raise ValueError("MCP_INTERNAL_TOKEN must be replaced in production")
+        return self
+
     @field_validator("mcp_max_result_bytes")
     @classmethod
     def result_bytes_minimum(cls, value: int) -> int:
@@ -109,6 +178,9 @@ class Settings(BaseModel):
         "request_timeout_seconds",
         "mcp_fast_path_timeout_seconds",
         "provider_cancel_grace_seconds",
+        "realtime_handshake_timeout_seconds",
+        "realtime_idle_timeout_seconds",
+        "realtime_interrupt_timeout_seconds",
         "observability_pending_flush_timeout_seconds",
     )
     @classmethod
@@ -138,9 +210,14 @@ class Settings(BaseModel):
         # The MCP container can use the same secret as the Agent when a
         # dedicated MCP_INTERNAL_TOKEN is not supplied.
         if not values.get("mcp_internal_token"):
-            values["mcp_internal_token"] = os.getenv("AGENT_INTERNAL_TOKEN", "dev-internal-token")
+            values["mcp_internal_token"] = os.getenv("AGENT_INTERNAL_TOKEN", _DEFAULT_INTERNAL_TOKEN)
 
-        values["cors_origins"] = _csv(os.getenv("CORS_ORIGINS", "http://localhost:5173"))
+        values["cors_origins"] = _csv(
+            os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8088,http://127.0.0.1:8088",
+            )
+        )
         values["provider_enabled"] = {
             name: _truthy_any(
                 os.getenv(f"PROVIDER_{name.upper()}_ENABLED"),
@@ -153,6 +230,15 @@ class Settings(BaseModel):
 
 def _truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _unsafe_production_token(value: str) -> bool:
+    normalized = value.strip().casefold() if value else ""
+    return (
+        not normalized
+        or normalized in _PRODUCTION_TOKEN_PLACEHOLDERS
+        or len(value.strip()) < _PRODUCTION_TOKEN_MIN_LENGTH
+    )
 
 
 def _truthy_any(primary: str | None, fallback: str) -> bool:

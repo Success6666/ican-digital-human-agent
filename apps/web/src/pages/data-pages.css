@@ -1,0 +1,14 @@
+/* Data page style modules */
+@import "./data-base.css";
+@import "./evaluation-pages.css";
+@import "./rag-pages.css";
+@import "./quality-pages.css";
+@import "./audit-pages.css";
+@import "./audit-pages.overview.css";
+@import "./settings-pages.css";
+@import "./settings-pages.catalog.css";
+@import "./data-filters.css";
+@import "./rag-pages.responsive.css";
+@import "./quality-pages.responsive.css";
+@import "./audit-pages.responsive.css";
+@import "./settings-pages.responsive.css";

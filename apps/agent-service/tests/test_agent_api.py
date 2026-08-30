@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from starlette.testclient import TestClient
 
+from app.api.routes import _session_response
+from app.domain.models import AvatarCapabilities, AvatarSession
 from app.main import build_container, create_app
 from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from app.settings import Settings
@@ -108,3 +112,48 @@ def test_message_validation_and_ownership() -> None:
             headers=second,
             json={"sessionId": session_id, "message": "x"},
         ).status_code == 403
+
+
+def test_session_capacity_is_reported_as_too_many_requests() -> None:
+    settings = Settings(
+        internal_token="test-token",
+        mcp_allow_local_fallback=False,
+        session_max_sessions=1,
+    )
+    local = LocalToolClient()
+    tools = CompositeToolClient(
+        StreamableHttpToolClient("http://127.0.0.1:1/mcp", internal_token="test-token", timeout_seconds=0.1),
+        local,
+        allow_fallback=False,
+    )
+    with TestClient(create_app(container=build_container(settings, tool_client=tools))) as client:
+        headers = {"X-Internal-Token": "test-token", "X-User-Id": "u1", "X-User-Name": "Tester"}
+        assert client.post("/internal/sessions", headers=headers, json={"provider": "mock"}).status_code == 201
+        response = client.post("/internal/sessions", headers=headers, json={"provider": "mock"})
+        assert response.status_code == 429
+        assert response.json()["detail"] == "session capacity reached"
+
+
+def test_session_response_does_not_expose_provider_credentials() -> None:
+    session = AvatarSession(
+        session_id="safe-session",
+        provider="mock",
+        user_id="u1",
+        capabilities=AvatarCapabilities(),
+        created_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC),
+        client_params={
+            "mode": "local-mock",
+            "accessToken": "should-not-cross-boundary",
+            "ticket": "should-not-cross-boundary",
+            "apiKey": "should-not-cross-boundary",
+            "realtime": {
+                "protocol": "realtime.v1",
+                "token": "should-not-cross-boundary",
+            },
+        },
+    )
+
+    response = _session_response(session)
+    assert response is not None
+    assert response.client_params == {"mode": "local-mock", "realtime": {"protocol": "realtime.v1"}}

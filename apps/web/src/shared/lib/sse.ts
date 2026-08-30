@@ -60,12 +60,13 @@ export async function streamSse(
   }
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
+    credentials: 'include',
     headers,
     body: JSON.stringify(body),
     signal,
   })
   if (!response.ok) {
-    if (response.status === 401) window.dispatchEvent(new CustomEvent('auth:expired'))
+    if (response.status === 401 && token) window.dispatchEvent(new CustomEvent('auth:expired'))
     const text = await response.text().catch(() => '')
     throw new Error(text || `流式请求失败（${response.status}）`)
   }

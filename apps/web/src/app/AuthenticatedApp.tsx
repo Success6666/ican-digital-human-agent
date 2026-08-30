@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../features/auth/model'
 import { useAvatar } from '../features/avatar/model'
 import { useChat } from '../features/chat/model'
+import { useRealtimeSession } from '../features/realtime/model'
 import { AuditPage } from '../pages/AuditPage'
 import { EvaluationPage } from '../pages/EvaluationPage'
 import { HomePage } from '../pages/HomePage'
@@ -14,6 +15,7 @@ export function AuthenticatedApp() {
   const { user, logout } = useAuth()
   const avatar = useAvatar()
   const chat = useChat(avatar.session)
+  const realtime = useRealtimeSession(avatar.session, { onInterrupt: chat.stop })
   const [page, setPage] = useState<PageKey>(() => pageFromHash(window.location.hash))
 
   useEffect(() => {
@@ -29,10 +31,11 @@ export function AuthenticatedApp() {
   }
 
   async function handleLogout() {
+    await realtime.disconnect()
     await avatar.close()
     await logout()
   }
 
-  const content = page === 'rag' ? <RagPage /> : page === 'evaluation' ? <EvaluationPage /> : page === 'audit' ? <AuditPage /> : page === 'settings' ? <SettingsPage avatar={avatar} /> : <HomePage avatar={avatar} chat={chat} />
+  const content = page === 'rag' ? <RagPage /> : page === 'evaluation' ? <EvaluationPage /> : page === 'audit' ? <AuditPage /> : page === 'settings' ? <SettingsPage avatar={avatar} /> : <HomePage avatar={avatar} chat={chat} realtime={realtime} />
   return <ConsoleShell user={user} activePage={page} onNavigate={navigate} onLogout={handleLogout}>{content}</ConsoleShell>
 }

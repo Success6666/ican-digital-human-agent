@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+
+from app.main import build_container, create_app
+from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.realtime.state import ConnectionState
+from app.settings import Settings
+
+
+def _client() -> TestClient:
+    settings = Settings(internal_token="test-token", mcp_allow_local_fallback=False)
+    tools = CompositeToolClient(
+        StreamableHttpToolClient(
+            "http://127.0.0.1:1/mcp",
+            internal_token="test-token",
+            timeout_seconds=0.05,
+        ),
+        LocalToolClient(),
+        allow_fallback=False,
+    )
+    return TestClient(create_app(container=build_container(settings, tool_client=tools)))
+
+
+def _headers() -> dict[str, str]:
+    return {
+        "X-Internal-Token": "test-token",
+        "X-User-Id": "u1",
+        "X-User-Name": "Tester",
+    }
+
+
+def _session(client: TestClient) -> str:
+    response = client.post("/internal/sessions", headers=_headers(), json={"provider": "mock"})
+    assert response.status_code == 201
+    return response.json()["sessionId"]
+
+
+def _hello(ws, session_id: str) -> dict[str, object]:
+    ws.send_json({"type": "hello", "protocol": "realtime.v1", "sessionId": session_id, "requestId": "h1"})
+    ready = ws.receive_json()
+    assert ready["type"] == "ready"
+    assert ready["sessionId"] == session_id
+    assert ready["protocol"] == "realtime.v1"
+    return ready
+
+
+def test_realtime_requires_internal_identity() -> None:
+    with _client() as client:
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect("/internal/realtime"):
+                pass
+        assert error.value.code == 4401
+
+
+def test_realtime_text_stream_preserves_run_generation() -> None:
+    with _client() as client:
+        session_id = _session(client)
+        with client.websocket_connect("/internal/realtime", headers=_headers()) as ws:
+            _hello(ws, session_id)
+            ws.send_json(
+                {
+                    "type": "text",
+                    "sessionId": session_id,
+                    "utteranceId": "utt-1",
+                    "revision": 1,
+                    "text": "你好",
+                }
+            )
+            ack = ws.receive_json()
+            started = ws.receive_json()
+            assert ack["type"] == "ack"
+            assert ack["accepted"] is True
+            assert started["type"] == "run_started"
+            run_id = str(started["runId"])
+
+            events: list[dict[str, object]] = []
+            while True:
+                event = ws.receive_json()
+                events.append(event)
+                if event["type"] == "run_done":
+                    break
+            assert any(event["type"] == "delta" for event in events)
+            assert all(event.get("runId") == run_id for event in events if event.get("runId"))
+            all_events = [ack, started, *events]
+            assert [int(event["seq"]) for event in all_events] == list(
+                range(2, 2 + len(all_events))
+            )
+
+
+def test_realtime_audio_frame_boundary_and_explicit_unsupported_asr() -> None:
+    with _client() as client:
+        session_id = _session(client)
+        with client.websocket_connect("/internal/realtime", headers=_headers()) as ws:
+            _hello(ws, session_id)
+            ws.send_json(
+                {
+                    "type": "audio_start",
+                    "sessionId": session_id,
+                    "utteranceId": "utt-audio",
+                    "revision": 1,
+                    "codec": "pcm_s16le",
+                    "sampleRate": 16000,
+                    "channels": 1,
+                    "frameMs": 20,
+                }
+            )
+            assert ws.receive_json()["action"] == "audio_start"
+            assert ws.receive_json()["type"] == "audio_queue"
+
+            ws.send_bytes(b"\x00" * 640)
+            queue_event = ws.receive_json()
+            assert queue_event["type"] == "audio_queue"
+            assert queue_event["frames"] == 1
+            assert queue_event["bytesReceived"] == 640
+
+            ws.send_json(
+                {
+                    "type": "audio_end",
+                    "sessionId": session_id,
+                    "utteranceId": "utt-audio",
+                    "revision": 1,
+                }
+            )
+            transcript = ws.receive_json()
+            ack = ws.receive_json()
+            assert transcript["type"] == "transcript"
+            assert transcript["status"] == "unsupported"
+            assert transcript["reason"] == "asr_unconfigured"
+            assert ack["type"] == "ack"
+            assert ack["accepted"] is True
+
+
+def test_realtime_ready_uses_configured_session_lease_window() -> None:
+    settings = Settings(
+        internal_token="test-token",
+        mcp_allow_local_fallback=False,
+        session_heartbeat_interval_seconds=7,
+        session_idle_timeout_seconds=21,
+        realtime_handshake_timeout_seconds=3.0,
+        realtime_idle_timeout_seconds=14.0,
+        realtime_interrupt_timeout_seconds=0.5,
+    )
+    tools = CompositeToolClient(
+        StreamableHttpToolClient(
+            "http://127.0.0.1:1/mcp",
+            internal_token="test-token",
+            timeout_seconds=0.05,
+        ),
+        LocalToolClient(),
+        allow_fallback=False,
+    )
+    container = build_container(settings, tool_client=tools)
+    assert container.realtime_limits.heartbeat_interval_seconds == 7
+    assert container.realtime_limits.idle_timeout_seconds == 14
+    assert container.realtime_limits.handshake_timeout_seconds == 3.0
+    assert container.realtime_limits.interrupt_timeout_seconds == 0.5
+    with TestClient(create_app(container=container)) as client:
+        session_id = _session(client)
+        with client.websocket_connect("/internal/realtime", headers=_headers()) as ws:
+            ready = _hello(ws, session_id)
+            assert ready["heartbeatMs"] == 7_000
+
+
+def test_realtime_rejects_stale_revision_without_starting_second_run() -> None:
+    with _client() as client:
+        session_id = _session(client)
+        with client.websocket_connect("/internal/realtime", headers=_headers()) as ws:
+            _hello(ws, session_id)
+            frame = {
+                "type": "text",
+                "sessionId": session_id,
+                "utteranceId": "utt-correction",
+                "revision": 2,
+                "isFinal": False,
+                "text": "北京天气",
+            }
+            ws.send_text(json.dumps(frame, ensure_ascii=False))
+            partial = ws.receive_json()
+            accepted = ws.receive_json()
+            assert partial["type"] == "transcript"
+            assert accepted["accepted"] is True
+
+            stale_frame = {**frame, "revision": 1}
+            ws.send_text(json.dumps(stale_frame, ensure_ascii=False))
+            stale = ws.receive_json()
+            assert stale["type"] == "ack"
+            assert stale["accepted"] is False
+            assert stale["reason"] == "stale_revision"
+
+
+@pytest.mark.asyncio
+async def test_revision_accepts_interim_then_final_once() -> None:
+    state = ConnectionState()
+
+    assert await state.accept_revision("utt-1", 1, is_final=False, allow_open_update=True) is True
+    assert await state.accept_revision("utt-1", 1, is_final=False, allow_open_update=True) is True
+    assert await state.accept_revision("utt-1", 1, is_final=True, allow_open_update=True) is True
+    assert await state.accept_revision("utt-1", 1, is_final=True) is False
+    assert await state.accept_revision("utt-1", 0, is_final=True) is False
+    assert await state.accept_revision("utt-1", 2, is_final=True) is True

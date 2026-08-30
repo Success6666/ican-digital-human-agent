@@ -1,7 +1,7 @@
 """Alibaba Cloud digital-human adapter skeleton.
 
 Only server-side configuration and short-lived session shape are exposed. No
-AK/SK is returned to callers and no vendor SDK is imported in v0.1.2.
+AK/SK is returned to callers and no vendor SDK is imported in v0.1.3.
 """
 
 from ...domain.models import AvatarCapabilities

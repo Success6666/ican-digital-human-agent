@@ -74,7 +74,6 @@ export function LoginForm() {
         <p className="auth-footnote">演示环境默认使用 mock Provider，真实厂商凭证由服务端托管。</p>
       </section>
       <aside className="auth-aside" aria-label="系统概览">
-        <div className="signal-grid" aria-hidden="true" />
         <div className="aside-content">
           <span className="live-dot" />
           <p className="eyebrow">RUNTIME / 01</p>

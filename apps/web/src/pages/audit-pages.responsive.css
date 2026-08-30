@@ -1,0 +1,7 @@
+/* Audit responsive rules */
+@media (max-width: 620px) {
+  .audit-bars {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}

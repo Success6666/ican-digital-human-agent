@@ -71,11 +71,23 @@ class ChatApplicationService:
         return result
 
     async def stream(
-        self, *, user_id: str, user_name: str, session_id: str, message: str
+        self,
+        *,
+        user_id: str,
+        user_name: str,
+        session_id: str,
+        message: str,
+        run_id: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         clean = self._validate(message)
-        await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
-        run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
+        record = await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
+        if run_id is None:
+            run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
+        elif record.active_run_id != run_id:
+            # A realtime connection can reserve a run before handing the
+            # stream to this service. Reject a stale reservation instead of
+            # silently superseding it with a second generation.
+            raise InvalidMessageError("run is not active")
         if not run_id:
             raise InvalidMessageError("session is not available")
         return self._stream_events(

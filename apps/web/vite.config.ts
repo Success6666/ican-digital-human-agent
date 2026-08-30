@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: agentTarget,
           changeOrigin: true,
+          ws: true,
         },
       },
     },

@@ -1,0 +1,16 @@
+/* RAG responsive rules */
+@media (max-width: 820px) {
+  .rag-overview-grid {
+    grid-template-columns: 1fr;
+  }
+  .rag-trend {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+  .rag-tabs {
+    overflow-x: auto;
+  }
+  .rag-tab {
+    flex: none;
+  }
+}

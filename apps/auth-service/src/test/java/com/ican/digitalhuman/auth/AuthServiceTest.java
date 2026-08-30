@@ -3,6 +3,7 @@ package com.ican.digitalhuman.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.dev33.satoken.SaManager;
 import com.ican.digitalhuman.auth.dto.LoginRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,11 +11,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import jakarta.servlet.http.Cookie;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,6 +43,25 @@ class AuthServiceTest {
 
         assertThat(response).contains("\"token\"");
         assertThat(response).contains("\"role\":\"user\"");
+    }
+
+    @Test
+    void loginCookieAuthenticatesSameOriginRequests() throws Exception {
+        assertThat(SaManager.getConfig().getCookieAutoFillPrefix()).isTrue();
+        var login = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest("demo", "demo123"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String setCookie = login.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertThat(setCookie).isNotBlank();
+        assertThat(setCookie).contains("HttpOnly", "SameSite=Lax");
+        String cookie = setCookie.substring(0, setCookie.indexOf(';'));
+
+        String[] cookieParts = cookie.split("=", 2);
+        mockMvc.perform(get("/api/auth/me").cookie(new Cookie(cookieParts[0], cookieParts[1])))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"username\":\"demo\"")));
     }
 
     @Test

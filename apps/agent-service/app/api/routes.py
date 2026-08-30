@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from ..application.errors import ApplicationError
 from ..domain.models import AvatarSession, ChatResult
+from .client_params import browser_safe_client_params
 from .dependencies import InternalContext, get_container
 from .sse import iter_sse_frames
 from .schemas import (
@@ -29,7 +30,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.2")
+    return HealthResponse(service=container.settings.service_name, version="0.1.3")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -154,7 +155,7 @@ def _session_response(session: AvatarSession | None) -> SessionResponse | None:
         createdAt=session.created_at,
         expiresAt=session.expires_at,
         status=session.status,
-        clientParams=session.client_params,
+        clientParams=browser_safe_client_params(session.client_params),
     )
 
 

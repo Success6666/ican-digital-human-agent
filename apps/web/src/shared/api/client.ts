@@ -1,5 +1,6 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
-const TOKEN_KEY = 'digital-human-agent.token'
+const LEGACY_TOKEN_KEY = 'digital-human-agent.token'
+let sessionToken: string | null = null
 
 export class ApiError extends Error {
   readonly status: number
@@ -14,15 +15,17 @@ export class ApiError extends Error {
 }
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
+  return sessionToken
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
+  sessionToken = token
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
 }
 
 export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY)
+  sessionToken = null
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
 }
 
 function buildHeaders(init?: HeadersInit): Headers {
@@ -52,11 +55,12 @@ async function parseBody(response: Response): Promise<unknown> {
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: 'include',
     headers: buildHeaders(init.headers),
   })
   const data = await parseBody(response)
   if (!response.ok) {
-    if (response.status === 401) window.dispatchEvent(new CustomEvent('auth:expired'))
+    if (response.status === 401 && getToken()) window.dispatchEvent(new CustomEvent('auth:expired'))
     const message = typeof data === 'object' && data && 'message' in data
       ? String((data as { message: unknown }).message)
       : `请求失败（${response.status}）`

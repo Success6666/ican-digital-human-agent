@@ -1,0 +1,113 @@
+/* Runtime and provider settings */
+.settings-section {
+  display: grid;
+  gap: 0;
+}
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.status-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.status-card-icon {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+.status-card > div:not(.status-card-end) {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+}
+.status-card strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-card > div small {
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-card-end {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.status-card-end .status-pill {
+  padding: 3px 5px;
+  font-size: 9px;
+}
+.provider-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.provider-status-card {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.provider-status-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.provider-status-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.provider-status-head strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-status-head small {
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-status-head .status-pill {
+  padding: 3px 5px;
+  font-size: 9px;
+}
+.provider-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+.provider-capabilities span {
+  padding: 3px 5px;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  background: var(--surface-soft);
+  font-size: 9px;
+}

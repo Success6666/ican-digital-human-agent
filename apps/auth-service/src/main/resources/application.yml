@@ -20,12 +20,25 @@ sa-token:
   is-read-header: true
   is-read-body: false
   is-read-cookie: true
+  # Cookies are written without the HTTP auth prefix; add it when reading
+  # the browser session so same-origin WebSocket handshakes remain usable.
+  cookie-auto-fill-prefix: true
+  cookie:
+    http-only: true
+    same-site: Lax
+    secure: ${AUTH_COOKIE_SECURE:false}
 
 agent:
+  environment: ${ENVIRONMENT:development}
   base-url: ${AGENT_BASE_URL:http://localhost:8000}
   internal-token: ${AGENT_INTERNAL_TOKEN:dev-internal-token}
   connect-timeout: ${AGENT_CONNECT_TIMEOUT:3s}
   read-timeout: ${AGENT_READ_TIMEOUT:45s}
+  realtime-path: ${AGENT_REALTIME_PATH:/internal/realtime}
+  realtime-max-queue-bytes: ${AGENT_REALTIME_MAX_QUEUE_BYTES:262144}
+  realtime-send-time-limit-ms: ${AGENT_REALTIME_SEND_TIME_LIMIT_MS:10000}
+  realtime-buffer-size-bytes: ${AGENT_REALTIME_BUFFER_SIZE_BYTES:524288}
+  realtime-max-connections: ${AGENT_REALTIME_MAX_CONNECTIONS:256}
 
 security:
-  cors-origins: ${CORS_ORIGINS:http://localhost:5173}
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8088,http://127.0.0.1:8088}

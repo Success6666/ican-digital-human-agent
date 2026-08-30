@@ -9,25 +9,58 @@ from ..avatar.errors import ProviderError
 from ..avatar.registry import ProviderRegistry
 from ..avatar.runtime_calls import interrupt as interrupt_provider
 from ..domain.models import AvatarSession, SessionRecord, SessionStatus
-from ..domain.ports import SessionStore
+from ..domain.ports import SessionCapacityError, SessionStore
+from ..infrastructure.provider_lifecycle import ProviderLifecycleRegistry
 from ..infrastructure.session_operations import SessionOperationRegistry
-from .errors import ProviderUnavailableError, SessionNotFoundError, SessionOwnershipError
+from .session_admission import rollback_provider_session
+from .session_cleanup import SessionCleanupCoordinator
+from .session_close import abort_close_claim
+from .errors import (
+    ProviderUnavailableError,
+    SessionCapacityExceededError,
+    SessionNotFoundError,
+    SessionOwnershipError,
+)
 
 
 class SessionApplicationService:
-    def __init__(self, *, providers: ProviderRegistry, store: SessionStore) -> None:
+    def __init__(
+        self,
+        *,
+        providers: ProviderRegistry,
+        store: SessionStore,
+        provider_lifecycle: ProviderLifecycleRegistry | None = None,
+    ) -> None:
         self.providers = providers
         self.store = store
         self._operations = SessionOperationRegistry()
+        self._provider_lifecycle = provider_lifecycle or ProviderLifecycleRegistry()
+        self._cleanup = SessionCleanupCoordinator(
+            providers=providers,
+            store=store,
+            operations=self._operations,
+            provider_lifecycle=self._provider_lifecycle,
+        )
 
     async def create(self, *, user_id: str, provider_name: str) -> AvatarSession:
-        try:
-            provider = self.providers.get(provider_name)
-            session = await provider.create_session(user_id)
-        except ProviderError as exc:
-            raise ProviderUnavailableError(str(exc)) from exc
-        await self.store.create(session)
-        return session
+        async with self._provider_lifecycle.hold(provider_name):
+            try:
+                provider = self.providers.get(provider_name)
+                session = await provider.create_session(user_id)
+            except ProviderError as exc:
+                raise ProviderUnavailableError(str(exc)) from exc
+            try:
+                await self.store.create(session)
+            except SessionCapacityError as exc:
+                # Do not leak a remote provider session when local admission fails.
+                await rollback_provider_session(provider, session.session_id)
+                raise SessionCapacityExceededError("session capacity reached") from exc
+            except Exception:
+                # A custom store can fail for reasons other than capacity.  Keep
+                # the remote runtime lifecycle balanced before surfacing it.
+                await rollback_provider_session(provider, session.session_id)
+                raise
+            return session
 
     async def get_for_user(self, *, user_id: str, session_id: str) -> SessionRecord:
         record = await self.store.get(session_id)
@@ -133,8 +166,34 @@ class SessionApplicationService:
             # DELETE is intentionally idempotent for an already-expired session.
             return None
         self._ensure_owner(record, user_id)
-        close_claim_token: str | None = None
-        if record.session.status != SessionStatus.CLOSED:
+        if record.session.status == SessionStatus.CLOSED:
+            return record.session
+
+        # Acquire the provider lock before the generation/close claim.  Store
+        # creation follows the same provider -> generation order; taking the
+        # locks in the reverse order here would deadlock a slow close against a
+        # same-provider create waiting in ``store.create``.
+        provider_name = record.session.provider
+        async with self._provider_lifecycle.hold(provider_name):
+            # A create that started while the request was waiting for the
+            # provider lock may have replaced this id.  Re-read before making
+            # a claim so the old close cannot target the replacement runtime.
+            latest = await self.store.get(session_id)
+            if latest is None:
+                return None
+            self._ensure_owner(latest, user_id)
+            if latest.session.status == SessionStatus.CLOSED:
+                return latest.session
+            if latest.session.provider != provider_name:
+                return latest.session
+            if (
+                record.generation_id is not None
+                and latest.generation_id != record.generation_id
+            ):
+                return latest.session
+            record = latest
+
+            close_claim_token: str | None = None
             # Claim the close atomically before touching the remote runtime.
             # Provider teardown can be slow; keeping the claim authoritative
             # prevents a new run from being created in the teardown window.
@@ -165,77 +224,72 @@ class SessionApplicationService:
             else:
                 # Compatibility path for stores that predate close claims.
                 await self.store.mark_interrupted(session_id, run_id=record.active_run_id)
+            if claimed and close_claim_token is not None:
+                # The record may have been replaced just before the claim was
+                # acquired. Re-read the claimed generation before touching a
+                # provider addressed only by session id; otherwise an old
+                # request could close the newly-created remote runtime.
+                latest = await self.store.get(session_id)
+                if latest is None:
+                    await abort_close_claim(self.store, session_id, close_claim_token)
+                    return None
+                self._ensure_owner(latest, user_id)
+                if (
+                    latest.session.provider != provider_name
+                    or (
+                        record.generation_id is not None
+                        and latest.generation_id != record.generation_id
+                    )
+                ):
+                    await abort_close_claim(self.store, session_id, close_claim_token)
+                    return latest.session
+                record = latest
             try:
                 provider = self.providers.get(record.session.provider)
                 await provider.close_session(session_id)
             except ProviderError as exc:
-                await self._abort_close_claim(session_id, close_claim_token)
+                await abort_close_claim(self.store, session_id, close_claim_token)
                 raise ProviderUnavailableError(str(exc)) from exc
             except asyncio.CancelledError:
-                await self._abort_close_claim(session_id, close_claim_token)
+                await abort_close_claim(self.store, session_id, close_claim_token)
                 raise
             except Exception:
                 # Custom SDK adapters are not required to normalize every
                 # exception to ProviderError. Never leave the atomic close
                 # lease stuck when one of them fails unexpectedly.
-                await self._abort_close_claim(session_id, close_claim_token)
+                await abort_close_claim(self.store, session_id, close_claim_token)
                 raise ProviderUnavailableError("provider teardown failed")
-        complete_close = getattr(self.store, "complete_close", None)
-        if callable(complete_close):
-            try:
-                if close_claim_token is None:
-                    updated = await complete_close(session_id)
-                else:
-                    updated = await complete_close(session_id, claim_token=close_claim_token)
-            except asyncio.CancelledError:
-                # A cancellation after provider teardown must not strand the
-                # close lease and block every later operation on this id.
-                await self._abort_close_claim(session_id, close_claim_token)
-                raise
-            except Exception:
-                await self._abort_close_claim(session_id, close_claim_token)
-                raise
-            if updated is None:
-                # The close claim may have been replaced by a newly-created
-                # session with the same id. Never apply the old teardown to
-                # that new record, and return its current state if present.
-                latest = await self.store.get(session_id)
-                if latest is not None:
-                    self._ensure_owner(latest, user_id)
-                return latest.session if latest is not None else None
-        else:
-            updated = await self.store.close(session_id)
-        return (updated or record).session
+            complete_close = getattr(self.store, "complete_close", None)
+            if callable(complete_close):
+                try:
+                    if close_claim_token is None:
+                        updated = await complete_close(session_id)
+                    else:
+                        updated = await complete_close(session_id, claim_token=close_claim_token)
+                except asyncio.CancelledError:
+                    # A cancellation after provider teardown must not strand the
+                    # close lease and block every later operation on this id.
+                    await abort_close_claim(self.store, session_id, close_claim_token)
+                    raise
+                except Exception:
+                    await abort_close_claim(self.store, session_id, close_claim_token)
+                    raise
+                if updated is None:
+                    # The close claim may have been replaced by a newly-created
+                    # session with the same id. Never apply the old teardown to
+                    # that new record, and return its current state if present.
+                    latest = await self.store.get(session_id)
+                    if latest is not None:
+                        self._ensure_owner(latest, user_id)
+                    return latest.session if latest is not None else None
+            else:
+                updated = await self.store.close(session_id)
+            return (updated or record).session
 
     async def cleanup_expired(self) -> int:
-        expired = await self.store.remove_expired()
-        for record in expired:
-            async with self._operations.hold(record.session.session_id):
-                if record.session.status == SessionStatus.CLOSED:
-                    continue
-                try:
-                    await self.providers.get(record.session.provider).close_session(record.session.session_id)
-                except Exception:
-                    # Cleanup must continue even when a remote runtime is unavailable.
-                    continue
-        return len(expired)
+        return await self._cleanup.run()
 
     @staticmethod
     def _ensure_owner(record: SessionRecord, user_id: str) -> None:
         if record.session.user_id != user_id:
             raise SessionOwnershipError("session does not belong to user")
-
-    async def _abort_close_claim(self, session_id: str, claim_token: str | None = None) -> None:
-        abort_close = getattr(self.store, "abort_close", None)
-        if not callable(abort_close):
-            return
-        try:
-            if claim_token is None:
-                await abort_close(session_id)
-            else:
-                await abort_close(session_id, claim_token=claim_token)
-        except Exception:
-            # Preserve the provider error and avoid leaving the request with
-            # an unrelated cleanup exception. The store remains replaceable;
-            # a later cleanup pass can repair an unavailable backend.
-            return

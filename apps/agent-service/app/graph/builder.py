@@ -46,7 +46,7 @@ def build_graph(
 ):
     """Return a compiled graph with all external decisions injected.
 
-    The graph intentionally remains deterministic in v0.1.2.  Replacing the
+    The graph intentionally remains deterministic in v0.1.3.  Replacing the
     classifier or route policy does not change the API or provider adapters.
     """
 

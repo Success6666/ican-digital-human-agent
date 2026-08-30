@@ -35,10 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     async function hydrate() {
-      if (!token) {
-        setLoading(false)
-        return
-      }
       try {
         const currentUser = await authApi.getCurrentUser()
         if (!cancelled) setUser(currentUser)
@@ -67,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null)
       try {
         const response = await authApi.login(request)
+        // Sa-Token's HttpOnly cookie is the browser source of truth. Keep the
+        // returned token only in memory for explicit cross-origin dev setups.
         setToken(response.token)
         setTokenState(response.token)
         setUser(response.user)
@@ -79,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     logout: async () => {
       try {
-        if (token) await authApi.logout()
+        await authApi.logout()
       } catch {
         // 即使网关暂时不可用，也清理本地凭证，避免留下失效会话。
       } finally {

@@ -28,6 +28,7 @@ export interface StreamEventPresenterContext {
   assistantId: string
   addTimeline: (item: Omit<TimelineItem, 'id' | 'createdAt'>) => void
   updateAssistant: (messageId: string, patch: Partial<ChatMessage>) => void
+  updateAssistantBatched?: (messageId: string, patch: Partial<ChatMessage>) => void
   setError: (message: string) => void
 }
 
@@ -88,7 +89,7 @@ export function presentStreamEvent(
     const chunk = eventText(event)
     if (!chunk) return
     state.accumulated += chunk
-    context.updateAssistant(context.assistantId, { content: state.accumulated, statusText: undefined, traceId: state.traceId })
+    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, { content: state.accumulated, statusText: undefined, traceId: state.traceId })
     if (state.deltaCount === 0 || state.deltaCount % 16 === 0) {
       context.addTimeline({ type: 'delta', title: '正在生成响应', detail: `已接收 ${state.accumulated.length} 字符`, seq: event.seq })
     }

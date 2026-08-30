@@ -48,6 +48,7 @@ export function ChatPanel({ session, messages, timeline, isSending, error, onSen
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       event.currentTarget.form?.requestSubmit()
@@ -64,7 +65,7 @@ export function ChatPanel({ session, messages, timeline, isSending, error, onSen
         <div className="chat-empty"><div className="empty-icon"><MessageSquareText size={25} /></div><h3>先建立一个数字人会话</h3><p>选择 Provider 后建立会话，消息会通过认证网关进入 Agent。</p></div>
       ) : (
         <>
-          <div ref={scrollRef} className="message-list" aria-live="polite" onScroll={handleMessageScroll}>
+          <div ref={scrollRef} className="message-list" aria-live="off" onScroll={handleMessageScroll}>
             {messages.length === 0 && <div className="chat-empty chat-empty--compact"><div className="empty-icon"><MessageSquareText size={22} /></div><h3>会话已就绪</h3><p>试着发送一句问候，观察完整的事件链路。</p></div>}
             {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
           </div>

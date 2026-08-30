@@ -23,6 +23,8 @@ from .mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpTool
 from .mcp.limits import ToolResultLimiter
 from .observability.service import ObservabilityService, build_default_observability
 from .rag.service import RagService, build_default_rag_service
+from .realtime.limits import RealtimeLimits
+from .realtime.router import router as realtime_router
 from .settings import Settings, get_settings
 
 
@@ -41,6 +43,7 @@ class ServiceContainer:
     configuration_service: ConfigurationApplicationService
     evaluation: EvaluationService
     cleanup: CleanupWorker
+    realtime_limits: RealtimeLimits
 
 
 def build_container(
@@ -51,7 +54,18 @@ def build_container(
 ) -> ServiceContainer:
     settings = settings or get_settings()
     providers = providers or build_default_registry(settings)
-    store = InMemorySessionStore(ttl_seconds=settings.session_ttl_seconds)
+    realtime_limits = RealtimeLimits(
+        heartbeat_interval_seconds=float(settings.session_heartbeat_interval_seconds),
+        idle_timeout_seconds=settings.realtime_idle_timeout_seconds,
+        handshake_timeout_seconds=settings.realtime_handshake_timeout_seconds,
+        interrupt_timeout_seconds=settings.realtime_interrupt_timeout_seconds,
+    )
+    store = InMemorySessionStore(
+        ttl_seconds=settings.session_ttl_seconds,
+        max_sessions=settings.session_max_sessions,
+        cleanup_batch_size=settings.session_cleanup_batch_size,
+        idle_timeout_seconds=settings.session_idle_timeout_seconds,
+    )
     session_service = SessionApplicationService(providers=providers, store=store)
     observability = build_default_observability(
         max_pending_tasks=settings.observability_max_pending_tasks,
@@ -125,6 +139,7 @@ def build_container(
         configuration_service=configuration_service,
         evaluation=evaluation,
         cleanup=cleanup,
+        realtime_limits=realtime_limits,
     )
 
 
@@ -144,7 +159,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.2", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.3", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,
@@ -158,6 +173,7 @@ def create_app(
         allow_headers=["Content-Type", "Authorization", "satoken", "X-Internal-Token", "X-User-Id", "X-User-Name"],
     )
     app.include_router(router)
+    app.include_router(realtime_router)
     _include_optional_routers(app, service_container)
     return app
 

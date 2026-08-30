@@ -1,4 +1,4 @@
-import { Menu, PanelLeftClose, PanelLeftOpen, X, LogOut } from 'lucide-react'
+import { Bell, LogOut, Maximize2, Menu, MoreVertical, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { User } from '../api/types'
 import { navigationItems, pageLabel, type PageKey, systemNavigationIcon } from '../navigation'
@@ -33,6 +33,15 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
     setMobileOpen(false)
   }
 
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch {
+      // 浏览器策略可能禁用全屏，保持控制台可用即可。
+    }
+  }
+
   const displayName = user?.name || user?.username || '用户'
   const initial = displayName.slice(0, 1).toUpperCase()
 
@@ -47,17 +56,23 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
         <div className="console-context"><CurrentPageIcon size={15} /><span>{pageLabel(activePage)}</span></div>
         <div className="console-topbar-actions">
           <div className="runtime-state"><span className="live-dot" />系统在线</div>
+          <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="全屏显示" title="全屏显示"><Maximize2 size={16} /></button>
+          <button className="icon-button console-notification" type="button" onClick={() => navigate('audit')} aria-label="查看通知与审计" title="查看通知与审计"><Bell size={16} /><i aria-hidden="true" /></button>
           <div className="user-chip"><span>{initial}</span><strong>{displayName}</strong></div>
           <button className="icon-button" type="button" onClick={() => void onLogout()} aria-label="退出登录" title="退出登录"><LogOut size={16} /></button>
         </div>
       </header>
       <div className="console-body">
         <aside className="console-nav" aria-label="主导航">
-          <div className="console-nav-head">
-            <span>{collapsed ? '导航' : '工作区'}</span>
+          <div className="console-nav-brand">
+            <div className="brand-mark" aria-hidden="true"><span /></div>
+            <div className="console-brand-copy"><strong>Digital Human</strong><span>Agent Console</span></div>
             <button className="icon-button console-collapse-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
               {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
             </button>
+          </div>
+          <div className="console-nav-head">
+            <span>{collapsed ? '导航' : '工作区'}</span>
             <button className="icon-button console-nav-close" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" title="关闭导航"><X size={17} /></button>
           </div>
           <nav className="console-nav-list">
@@ -69,6 +84,11 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
           </nav>
           <div className="console-nav-footer">
             <div className="console-system-line"><SystemIcon size={15} /><span>运行服务</span><StatusPill status="online" label="READY" /></div>
+            <div className="console-nav-account">
+              <span className="console-nav-avatar">{initial}</span>
+              <span className="console-nav-account-copy"><strong>{displayName}</strong><small>{user?.role || '超级管理员'}</small></span>
+              <button className="icon-button" type="button" onClick={() => void onLogout()} aria-label="退出登录" title="退出登录"><MoreVertical size={16} /></button>
+            </div>
           </div>
         </aside>
         {mobileOpen && <button className="console-nav-backdrop" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" />}

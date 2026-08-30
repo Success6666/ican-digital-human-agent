@@ -67,7 +67,7 @@ class ConfigProvider:
         run_id: str | None = None,
     ) -> ProviderResult:
         self._ensure_session(session_id)
-        raise ProviderNotConfiguredError(f"{self.name} text operation is not enabled in v0.1.2")
+        raise ProviderNotConfiguredError(f"{self.name} text operation is not enabled in v0.1.3")
 
     async def interrupt(self, session_id: str, *, run_id: str | None = None) -> ProviderResult:
         self._ensure_session(session_id)

@@ -6,6 +6,7 @@ import { StreamEventGate } from './streamOrdering'
 import { presentStreamEvent, type StreamEventState } from './streamEventPresenter'
 import { recoverableStreamMessage, streamFailureAction } from './streamRecovery'
 import { normalizeToolCall, toolDetail } from './streamPresentation'
+import { AssistantDeltaBatcher } from './deltaBatch'
 
 export interface ChatMessage {
   id: string
@@ -138,6 +139,9 @@ export function useChat(session: AvatarSession | null) {
       deltaCount: 0,
     }
     const eventGate = new StreamEventGate()
+    const deltaBatcher = new AssistantDeltaBatcher((messageId, patch) => {
+      if (isCurrentTurn()) updateAssistant(messageId, patch)
+    })
 
     const onEvent = (event: ChatStreamEvent) => {
       if (!isCurrentTurn() || controller.signal.aborted) return
@@ -149,6 +153,7 @@ export function useChat(session: AvatarSession | null) {
         assistantId,
         addTimeline,
         updateAssistant,
+        updateAssistantBatched: (messageId, patch) => deltaBatcher.enqueue(messageId, patch),
         setError: (messageText) => setError(messageText),
       })
       const eventKind = String(accepted.type ?? '').toLowerCase()
@@ -168,11 +173,14 @@ export function useChat(session: AvatarSession | null) {
       if (!isCurrentTurn()) return
       const action = streamFailureAction({ executionStarted: eventState.executionStarted, preExecutionError: eventState.preExecutionError, terminal: eventState.sawTerminal || eventState.sawInterrupted, aborted: controller.signal.aborted })
       if (action === 'fallback') {
+        deltaBatcher.flush()
         await completeWithSyncFallback()
       } else if (action === 'stopped') {
+        deltaBatcher.flush()
         updateAssistant(assistantId, { content: eventState.accumulated || '本次响应已停止。', pending: false, statusText: undefined, traceId: eventState.traceId })
         addTimeline({ type: 'info', title: '已停止生成' })
       } else if (!eventState.sawTerminal && !eventState.sawInterrupted) {
+        deltaBatcher.flush()
         updateAssistant(assistantId, { content: eventState.accumulated || '服务端已结束响应。', pending: false, statusText: undefined, traceId: eventState.traceId })
         addTimeline({ type: 'done', title: '响应完成', detail: '运行链路已完成' })
       }
@@ -180,25 +188,32 @@ export function useChat(session: AvatarSession | null) {
       if (!isCurrentTurn()) return
       const action = streamFailureAction({ executionStarted: eventState.executionStarted, preExecutionError: eventState.preExecutionError, terminal: eventState.sawTerminal || eventState.sawInterrupted, aborted: controller.signal.aborted })
       if (action === 'stopped') {
+        deltaBatcher.flush()
         updateAssistant(assistantId, { content: eventState.accumulated || '本次响应已停止。', pending: false, statusText: undefined, traceId: eventState.traceId })
         addTimeline({ type: 'info', title: '已停止生成' })
       } else if (action === 'fallback') {
+        deltaBatcher.flush()
         await completeWithSyncFallback(cause)
       } else if (action === 'recoverable') {
+        deltaBatcher.flush()
         const recoverable = recoverableStreamMessage(Boolean(eventState.accumulated))
         updateAssistant(assistantId, { content: eventState.accumulated || recoverable, pending: false, statusText: undefined, traceId: eventState.traceId })
         setError(recoverable)
         addTimeline({ type: 'error', title: '流式响应中断', detail: recoverable })
       } else {
+        deltaBatcher.flush()
         updateAssistant(assistantId, { content: eventState.accumulated || '服务端已结束响应。', pending: false, statusText: undefined, traceId: eventState.traceId })
       }
     } finally {
       if (isCurrentTurn()) {
+        deltaBatcher.flush()
         abortRef.current = null
         // A completed turn no longer owns the session. Leaving this id in the
         // ref would make clear/unmount issue a late session-level interrupt.
         activeRunIdRef.current = null
         setSending(false)
+      } else {
+        deltaBatcher.cancel()
       }
     }
 
@@ -218,6 +233,7 @@ export function useChat(session: AvatarSession | null) {
         addTimeline({ type: 'done', title: '同步响应完成', detail: '运行链路已完成' })
       } catch (fallbackCause) {
         if (!isCurrentTurn()) return
+        deltaBatcher.flush()
         const messageText = sanitizeDisplayText(fallbackCause instanceof Error ? fallbackCause.message : (streamCause instanceof Error ? streamCause.message : '请求失败'))
         updateAssistant(assistantId, { content: '暂时无法获得 Agent 响应。', pending: false, statusText: undefined })
         setError(messageText)
@@ -239,9 +255,10 @@ export function useChat(session: AvatarSession | null) {
   const clear = useCallback(() => {
     const currentSession = session
     const currentRunId = activeRunIdRef.current ?? undefined
+    const hasActiveRun = Boolean(abortRef.current || currentRunId)
     turnRevisionRef.current += 1
     abortRef.current?.abort()
-    if (currentSession) void requestInterrupt(currentSession.sessionId, currentRunId)
+    if (currentSession && hasActiveRun) void requestInterrupt(currentSession.sessionId, currentRunId)
     abortRef.current = null
     activeRunIdRef.current = null
     setSending(false)

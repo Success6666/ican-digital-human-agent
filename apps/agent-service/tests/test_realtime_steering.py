@@ -212,16 +212,19 @@ async def test_rebuilding_same_session_id_is_not_closed_by_old_teardown() -> Non
     closing = asyncio.create_task(service.close(user_id="u1", session_id="s-rebuild"))
     await asyncio.wait_for(provider.started.wait(), timeout=1)
 
-    # A provider may recycle an id while the old remote teardown is still
-    # settling. The old close claim must no longer own the replacement.
-    await store.create(session("s-rebuild", now))
+    # A replacement waits for the old remote teardown to settle.  Allowing it
+    # into the provider while close_session is in flight could close the new
+    # generation when an SDK addresses runtimes by session id only.
+    replacement = asyncio.create_task(store.create(session("s-rebuild", now)))
+    await asyncio.sleep(0)
+    assert replacement.done() is False
+
+    provider.release.set()
+    await asyncio.wait_for(closing, timeout=1)
+    await asyncio.wait_for(replacement, timeout=1)
     replacement_run = await store.begin_run("s-rebuild")
     assert replacement_run
 
-    provider.release.set()
-    old_result = await asyncio.wait_for(closing, timeout=1)
-    assert old_result is not None
-    assert old_result.status == SessionStatus.ACTIVE
     current = await store.get("s-rebuild")
     assert current is not None
     assert current.session.status == SessionStatus.ACTIVE
@@ -240,13 +243,17 @@ async def test_stale_close_does_not_expose_rebuilt_session_to_other_user() -> No
 
     closing = asyncio.create_task(service.close(user_id="u1", session_id="s-cross-user-close"))
     await asyncio.wait_for(provider.started.wait(), timeout=1)
-    await store.create(
-        session("s-cross-user-close", now).model_copy(update={"user_id": "u2"})
+    replacement = asyncio.create_task(
+        store.create(session("s-cross-user-close", now).model_copy(update={"user_id": "u2"}))
     )
+    await asyncio.sleep(0)
+    assert replacement.done() is False
     provider.release.set()
 
-    with pytest.raises(SessionOwnershipError):
-        await asyncio.wait_for(closing, timeout=1)
+    closed = await asyncio.wait_for(closing, timeout=1)
+    assert closed is not None
+    assert closed.status == SessionStatus.CLOSED
+    await asyncio.wait_for(replacement, timeout=1)
     current = await store.get("s-cross-user-close")
     assert current is not None
     assert current.session.user_id == "u2"
@@ -348,9 +355,16 @@ async def test_stale_close_claim_cannot_abort_or_complete_newer_claim() -> None:
     first_claim = await store.claim_close_token("s-close-generation")
     assert first_claim
 
-    # Reusing the id starts a new generation while the first provider close is
-    # still in flight. A second close is then allowed to claim that replacement.
-    await store.create(session("s-close-generation", now))
+    # A replacement waits until the first provider close claim is released;
+    # otherwise a slow SDK call could close the new remote generation.
+    replacement_task = asyncio.create_task(store.create(session("s-close-generation", now)))
+    await asyncio.sleep(0)
+    assert replacement_task.done() is False
+    await store.abort_close("s-close-generation", claim_token=first_claim)
+    await asyncio.wait_for(replacement_task, timeout=1)
+
+    # Reusing the id now starts a new generation, and a second close can claim
+    # that replacement independently of the stale first token.
     second_claim = await store.claim_close_token("s-close-generation")
     assert second_claim and second_claim != first_claim
 
@@ -367,6 +381,59 @@ async def test_stale_close_claim_cannot_abort_or_complete_newer_claim() -> None:
     closed = await store.complete_close("s-close-generation", claim_token=second_claim)
     assert closed is not None
     assert closed.session.status == SessionStatus.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_old_close_release_cannot_remove_reused_generation_mapping() -> None:
+    now = datetime(2026, 8, 29, tzinfo=UTC)
+
+    class InterleavedReleaseStore(InMemorySessionStore):
+        def __init__(self) -> None:
+            super().__init__(ttl_seconds=60, clock=lambda: now)
+            self.pause_release = False
+            self.release_started = asyncio.Event()
+            self.resume_release = asyncio.Event()
+
+        async def _release_generation_lock(self, session_id: str, lock: asyncio.Lock) -> None:
+            if not self.pause_release:
+                await super()._release_generation_lock(session_id, lock)
+                return
+            # Let a waiting claim acquire this exact lock before the old
+            # close-release bookkeeping resumes.
+            lock.release()
+            self.release_started.set()
+            await self.resume_release.wait()
+            async with self._generation_lock_guard:
+                users = max(0, self._generation_lock_users.get(session_id, 1) - 1)
+                if users:
+                    self._generation_lock_users[session_id] = users
+                else:
+                    self._generation_lock_users.pop(session_id, None)
+                    if session_id not in self._expired_cleanup_claims:
+                        self._generation_locks.pop(session_id, None)
+
+    session_id = "s-close-mapping-reuse"
+    store = InterleavedReleaseStore()
+    await store.create(session(session_id, now))
+    first_claim = await store.claim_close_token(session_id)
+    assert first_claim
+    reused_lock = store._close_generation_locks[session_id]
+    store.pause_release = True
+
+    aborting = asyncio.create_task(store.abort_close(session_id, claim_token=first_claim))
+    await asyncio.wait_for(store.release_started.wait(), timeout=1)
+
+    second_claim = await asyncio.wait_for(store.claim_close_token(session_id), timeout=1)
+    assert second_claim and second_claim != first_claim
+    assert store._close_generation_locks[session_id] is reused_lock
+
+    store.resume_release.set()
+    await asyncio.wait_for(aborting, timeout=1)
+
+    # The old release must not delete the mapping owned by the newer claim.
+    assert store._close_generation_locks[session_id] is reused_lock
+    store.pause_release = False
+    assert await store.complete_close(session_id, claim_token=second_claim)
 
 
 @pytest.mark.asyncio

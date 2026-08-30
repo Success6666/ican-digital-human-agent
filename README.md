@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.2）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.3）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-认证网关可使用 `apps/auth-service/mvnw.cmd spring-boot:run` 启动，并将 `AGENT_BASE_URL` 指向 `http://localhost:8000`。生产环境应替换演示账号、内部令牌和所有 Provider 配置。
+认证网关可使用 `apps/auth-service/mvnw.cmd spring-boot:run` 启动，并将 `AGENT_BASE_URL` 指向 `http://localhost:8000`。生产环境应替换演示账号、内部令牌和所有 Provider 配置；内部令牌需使用至少 32 字符的随机值，HTTPS 部署时设置 `AUTH_COOKIE_SECURE=true`。
 
 ## 已实现链路
 
@@ -114,4 +114,5 @@ Set-Location ..\web
 npm run build
 ```
 
-本版本实时交互验收记录见 [`tmp-docs/digital-human-agent-v0.1.2-optimization-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.2-optimization-task-book-已完成.md)，历史基线见 [`tmp-docs/digital-human-agent-v0.1.1-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.1-realtime-task-book-已完成.md)。
+本版本实时交互验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-realtime-transport-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-realtime-transport-task-book-已完成.md)，上一版记录见 [`tmp-docs/digital-human-agent-v0.1.2-optimization-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.2-optimization-task-book-已完成.md)。
+控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。

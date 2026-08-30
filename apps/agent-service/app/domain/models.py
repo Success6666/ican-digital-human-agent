@@ -111,3 +111,7 @@ class SessionRecord(BaseModel):
     # A new token is issued for every request run.  Replacing it automatically
     # steers an older run to stop without making the session unusable.
     active_run_id: str | None = None
+    # Store generation token used by expiry cleanup.  It is deliberately
+    # separate from the provider session id, which may be reused by an
+    # adapter or test double.
+    generation_id: str | None = None

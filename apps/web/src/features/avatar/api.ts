@@ -1,6 +1,7 @@
 import { api } from '../../shared/api/client'
 import type { AvatarSession, ProviderName, ProviderStatus } from '../../shared/api/types'
 import { capabilityNames } from './capabilities'
+import { normalizeClientParams } from './clientParams'
 
 interface ProviderListResponse {
   providers?: ProviderWire[]
@@ -25,6 +26,7 @@ interface SessionResponse {
   capabilities?: string[] | Record<string, unknown>
   expiresAt?: string
   status?: string
+  clientParams?: unknown
 }
 
 export async function listProviders(): Promise<ProviderWire[]> {
@@ -41,12 +43,14 @@ export async function createSession(provider: ProviderName): Promise<AvatarSessi
       capabilities: capabilityNames(response.capabilities),
       expiresAt: response.expiresAt,
       status: response.status,
+      clientParams: normalizeClientParams(response.clientParams),
     }
   }
   if (response.session) {
     return {
       ...response.session,
       capabilities: capabilityNames(response.session.capabilities),
+      clientParams: normalizeClientParams(response.session.clientParams),
     }
   }
   throw new Error('服务端未返回有效会话')

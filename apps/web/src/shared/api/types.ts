@@ -34,6 +34,42 @@ export interface AvatarSession {
   capabilities: string[]
   expiresAt?: string
   status?: 'active' | 'closed' | 'expired' | string
+  /**
+   * 仅包含短时、浏览器侧运行时需要的连接参数；长期厂商密钥不应出现在这里。
+   */
+  clientParams?: AvatarClientParams
+}
+
+export interface AvatarClientParams {
+  endpoint?: string
+  wsUrl?: string
+  websocketUrl?: string
+  realtimeUrl?: string
+  protocol?: string
+  codec?: string
+  sampleRate?: number
+  channels?: number
+  frameMs?: number
+  maxFrameBytes?: number
+  heartbeatMs?: number
+  accessToken?: string
+  ticket?: string
+  expiresAt?: string
+  realtime?: {
+    endpoint?: string
+    wsUrl?: string
+    websocketUrl?: string
+    protocol?: string
+    codec?: string
+    sampleRate?: number
+    channels?: number
+    frameMs?: number
+    maxFrameBytes?: number
+    heartbeatMs?: number
+    accessToken?: string
+    ticket?: string
+    expiresAt?: string
+  }
 }
 
 export interface ToolCall {

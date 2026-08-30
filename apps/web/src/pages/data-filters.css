@@ -1,0 +1,26 @@
+/* Shared compact filter tabs */
+.filter-tabs {
+  display: flex;
+  gap: 5px;
+  margin: -2px 0 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+}
+.filter-tab {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-muted);
+  background: transparent;
+  font-size: 10px;
+}
+.filter-tab:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+.filter-tab--active {
+  color: var(--brand-strong);
+  border-color: color-mix(in oklch, var(--brand) 24%, var(--line));
+  background: var(--brand-soft);
+}

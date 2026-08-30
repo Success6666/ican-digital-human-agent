@@ -1,0 +1,57 @@
+/* Audit event surfaces */
+.audit-panel {
+  min-height: 300px;
+}
+.audit-list {
+  display: grid;
+}
+.audit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.audit-item:last-child {
+  border-bottom: 0;
+}
+.audit-icon {
+  flex: none;
+  color: var(--brand);
+}
+.audit-item--error .audit-icon {
+  color: var(--danger);
+}
+.audit-copy {
+  min-width: 0;
+  flex: 1;
+}
+.audit-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.audit-title strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+.audit-title span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+.audit-copy p {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audit-meta {
+  display: grid;
+  flex: none;
+  gap: 3px;
+  color: var(--ink-faint);
+  font-size: 9px;
+  text-align: right;
+}

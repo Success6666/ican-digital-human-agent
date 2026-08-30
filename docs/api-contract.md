@@ -1,4 +1,4 @@
-# API 契约（v0.1.2）
+# API 契约（v0.1.3）
 
 ## 浏览器 API
 
@@ -24,6 +24,22 @@
 | GET | `/api/evaluation/datasets` | 项目自建评测集 |
 | POST | `/api/evaluation/runs` | 记录评测样本和分数 |
 | GET | `/api/evaluation/runs` | 当前用户评测运行 |
+
+## WebSocket 实时契约
+
+浏览器使用 `WS /api/realtime` 建立实时连接。握手沿用 Sa-Token 登录态（同源浏览器会自动携带认证 Cookie）；浏览器不设置 `X-Internal-Token`、`X-User-Id` 或 `X-User-Name`，这些字段只由认证网关注入到 Agent 内部连接。
+
+连接建立后，客户端必须先发送一帧 JSON `hello`：
+
+```json
+{"type":"hello","protocol":"realtime.v1","sessionId":"mock-...","requestId":"hello-1"}
+```
+
+服务端返回 `ready`，其中包含 `connectionId`、心跳周期、当前能力和资源上限。之后可发送 `text`、`interrupt`、`audio_start`、`audio_end`、`ping`、`pong` 和 `close` 控制帧；每个事件带递增 `seq`，运行相关事件同时带 `runId`、`utteranceId` 和 `revision`。新一轮改口使用更大的 `revision`，旧代际事件会在服务端和浏览器两侧丢弃。
+
+语音输入使用二进制 PCM16 little-endian 帧：16 kHz、单声道、20 ms，默认每帧 640 bytes。`audio_start` 只声明格式和代际，`audio_end` 结束当前语音段；如果未配置 ASR，服务端返回 `transcript.status=unsupported` 和 `reason=asr_unconfigured`，不会伪造转写结果。`interrupt` 先确认本地运行令牌，再异步通知 Provider，随后返回 `ack` 与 `interrupted/run_done`，用于前端立即清空播放队列并切换到最新 revision。
+
+当前实时传输层不承诺生产 WebRTC、真实 ASR/TTS 或厂商视频渲染；这些能力通过 Provider/Runtime 端口接入，不改变上述浏览器协议。
 
 ## SSE 事件
 
