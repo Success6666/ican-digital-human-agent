@@ -11,6 +11,49 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+def apply_mofa_environment(configuration: "MofaRuntimeConfiguration") -> None:
+    """Apply persisted provider settings to the current process environment."""
+    os.environ["MOFA_AVATAR_ENABLED"] = "true" if configuration.enabled else "false"
+    for key, value in {
+        "MOFA_APP_ID": configuration.app_id,
+        "MOFA_APP_SECRET": configuration.app_secret,
+        "MOFA_AUTHORIZATION": configuration.authorization,
+        "MOFA_GATEWAY_URL": configuration.gateway_url,
+        "MOFA_SDK_URL": configuration.sdk_url,
+        "MOFA_CRYPTO_URL": configuration.crypto_url,
+    }.items():
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
+
+
+class MofaRuntimeConfiguration(BaseModel):
+    """Server-owned Xingyun settings; secrets are never returned by the API."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    app_id: str = Field(default="", max_length=128)
+    app_secret: str = Field(default="", max_length=256)
+    authorization: str = Field(default="", max_length=256)
+    gateway_url: str = Field(default="", max_length=512)
+    sdk_url: str = Field(default="", max_length=512)
+    crypto_url: str = Field(default="", max_length=512)
+
+    @classmethod
+    def from_env(cls) -> "MofaRuntimeConfiguration":
+        return cls(
+            enabled=os.getenv("MOFA_AVATAR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+            app_id=os.getenv("MOFA_APP_ID", "").strip(),
+            app_secret=os.getenv("MOFA_APP_SECRET", "").strip(),
+            authorization=os.getenv("MOFA_AUTHORIZATION", "").strip(),
+            gateway_url=os.getenv("MOFA_GATEWAY_URL", "").strip(),
+            sdk_url=os.getenv("MOFA_SDK_URL", "").strip(),
+            crypto_url=os.getenv("MOFA_CRYPTO_URL", "").strip(),
+        )
+
+
 class RuntimeConfiguration(BaseModel):
     """The small set of settings that can be changed without secrets."""
 
@@ -19,6 +62,7 @@ class RuntimeConfiguration(BaseModel):
     default_provider: str = Field(default="mock", min_length=1, max_length=64)
     session_ttl_seconds: int = Field(default=1800, ge=60, le=86_400)
     cleanup_interval_seconds: int = Field(default=30, ge=5, le=3_600)
+    mofa: "MofaRuntimeConfiguration" = Field(default_factory=lambda: MofaRuntimeConfiguration())
 
     @classmethod
     def from_settings(cls, settings: Any) -> "RuntimeConfiguration":
@@ -26,6 +70,7 @@ class RuntimeConfiguration(BaseModel):
             default_provider=settings.default_provider,
             session_ttl_seconds=settings.session_ttl_seconds,
             cleanup_interval_seconds=settings.cleanup_interval_seconds,
+            mofa=MofaRuntimeConfiguration.from_env(),
         )
 
 
@@ -68,4 +113,4 @@ class RuntimeConfigurationRepository:
             raise
 
 
-__all__ = ["RuntimeConfiguration", "RuntimeConfigurationRepository"]
+__all__ = ["MofaRuntimeConfiguration", "RuntimeConfiguration", "RuntimeConfigurationRepository", "apply_mofa_environment"]

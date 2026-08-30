@@ -144,6 +144,10 @@ h1, h2, h3 { text-wrap: balance; }
   background: var(--success);
   box-shadow: 0 0 0 4px var(--success-soft);
 }
+.live-dot--offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px var(--danger-soft);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -19,7 +19,7 @@ from .avatar.registry import ProviderRegistry, build_default_registry
 from .evaluation.service import EvaluationService
 from .graph.runtime import AgentGraphRuntime
 from .infrastructure.session_store import InMemorySessionStore
-from .infrastructure.runtime_configuration import RuntimeConfigurationRepository
+from .infrastructure.runtime_configuration import RuntimeConfigurationRepository, apply_mofa_environment
 from .mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from .mcp.limits import ToolResultLimiter
 from .observability.service import ObservabilityService, build_default_observability
@@ -56,6 +56,8 @@ def build_container(
     settings = settings or get_settings()
     repository = RuntimeConfigurationRepository(settings.runtime_configuration_file)
     persisted = repository.load(settings)
+    apply_mofa_environment(persisted.mofa)
+    settings.provider_enabled["mofa"] = persisted.mofa.enabled
     settings.default_provider = persisted.default_provider
     settings.session_ttl_seconds = persisted.session_ttl_seconds
     settings.session_idle_timeout_seconds = persisted.session_ttl_seconds
@@ -169,7 +171,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.6", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.7", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

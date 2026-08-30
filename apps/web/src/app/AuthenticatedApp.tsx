@@ -9,7 +9,7 @@ import { HomePage } from '../pages/HomePage'
 import { RagPage } from '../pages/RagPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { ConsoleShell } from '../shared/components/ConsoleShell'
-import { pageFromHash, pageToHash, type PageKey } from '../shared/navigation'
+import { pageAllowedForRole, pageFromHash, pageToHash, type PageKey } from '../shared/navigation'
 
 export function AuthenticatedApp() {
   const { user, logout } = useAuth()
@@ -23,6 +23,10 @@ export function AuthenticatedApp() {
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
+
+  useEffect(() => {
+    if (user && !pageAllowedForRole(page, user.role)) navigate('home')
+  }, [page, user])
 
   function navigate(next: PageKey) {
     if (next === page) return

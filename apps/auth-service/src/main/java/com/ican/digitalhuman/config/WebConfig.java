@@ -37,7 +37,7 @@ public class WebConfig implements WebMvcConfigurer {
         List<String> origins = corsProperties.origins();
         registry.addMapping("/api/**")
                 .allowedOriginPatterns(origins.toArray(String[]::new))
-                .allowedMethods("GET", "POST", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("Content-Type", "Cache-Control")
                 .allowCredentials(true)

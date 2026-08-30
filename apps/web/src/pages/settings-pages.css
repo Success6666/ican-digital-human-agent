@@ -9,7 +9,7 @@
 }
 .configuration-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 .configuration-summary-card {
@@ -178,6 +178,13 @@ button.configuration-summary-card:not(:disabled):hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
 }
+.configuration-mofa-form { display: grid; gap: 10px; }
+.dialog-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
+.dialog-switch span { display: grid; gap: 3px; }
+.dialog-switch strong { color: var(--ink); font-size: 11px; }
+.dialog-switch small, .configuration-dialog-hint { color: var(--ink-faint); font-size: 9px; }
+.dialog-switch input { width: 34px; height: 18px; accent-color: var(--brand); }
+.configuration-dialog-hint { margin: 0; line-height: 1.6; }
 .dialog-input {
   min-width: 0;
   display: grid;

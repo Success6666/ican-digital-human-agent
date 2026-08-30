@@ -25,12 +25,32 @@ export interface RuntimeConfiguration {
   rag?: ConfigurationService
   mcp?: ConfigurationService
   observability?: ConfigurationService
+  mofa?: {
+    enabled?: boolean
+    configured?: boolean
+    appId?: string
+    appSecret?: string
+    authorization?: string
+    gatewayUrl?: string
+    sdkUrl?: string
+    cryptoUrl?: string
+    detail?: string
+  }
   [key: string]: unknown
 }
 
 export interface RuntimeConfigurationPatch {
   defaultProvider?: string
   session?: { ttlSeconds?: number; cleanupIntervalSeconds?: number }
+  mofa?: {
+    enabled?: boolean
+    appId?: string
+    appSecret?: string
+    authorization?: string
+    gatewayUrl?: string
+    sdkUrl?: string
+    cryptoUrl?: string
+  }
 }
 
 export function useConfiguration() {

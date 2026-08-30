@@ -17,9 +17,17 @@ export const navigationItems: NavigationItem[] = [
   { key: 'settings', label: '后台配置', shortLabel: '配置', icon: Settings2 },
 ]
 
+export function navigationForRole(role?: string): NavigationItem[] {
+  return role === 'admin' ? navigationItems : navigationItems.filter((item) => item.key === 'home' || item.key === 'rag')
+}
+
 export function pageFromHash(hash: string): PageKey {
   const value = hash.replace(/^#\/?/, '') as PageKey
   return navigationItems.some((item) => item.key === value) ? value : 'home'
+}
+
+export function pageAllowedForRole(page: PageKey, role?: string): boolean {
+  return navigationForRole(role).some((item) => item.key === page)
 }
 
 export function pageToHash(page: PageKey): string {

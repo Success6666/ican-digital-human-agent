@@ -4,8 +4,8 @@ import { useAuth } from '../model'
 
 export function LoginForm() {
   const { login, error, clearError, isLoading } = useAuth()
-  const [username, setUsername] = useState('demo')
-  const [password, setPassword] = useState('demo123')
+  const [username, setUsername] = useState('admin')
+  const [password, setPassword] = useState('admin123')
   const [showPassword, setShowPassword] = useState(false)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -71,7 +71,7 @@ export function LoginForm() {
             {isLoading ? '正在验证…' : '登录控制台'}
           </button>
         </form>
-        <p className="auth-footnote">演示环境默认使用 mock Provider，真实厂商凭证由服务端托管。</p>
+        <p className="auth-footnote">管理员可访问完整控制台；普通用户仅开放首页与 RAG 工作区。</p>
       </section>
       <aside className="auth-aside" aria-label="系统概览">
         <div className="aside-content">
@@ -80,7 +80,7 @@ export function LoginForm() {
           <h2>让每一次对话，都能被看见。</h2>
           <p>从认证、会话到工具调用，实时查看数字人 Agent 的完整链路。</p>
         </div>
-        <div className="aside-stat"><strong>5</strong><span>可插拔 Provider</span></div>
+        <div className="aside-stat"><strong>Agent</strong><span>运行控制台</span></div>
       </aside>
     </main>
   )

@@ -85,16 +85,31 @@ class SessionConfigurationPatch(BaseModel):
     )
 
 
+class MofaConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    app_id: str | None = Field(default=None, alias="appId", max_length=128)
+    app_secret: str | None = Field(default=None, alias="appSecret", max_length=256)
+    authorization: str | None = Field(default=None, max_length=256)
+    gateway_url: str | None = Field(default=None, alias="gatewayUrl", max_length=512)
+    sdk_url: str | None = Field(default=None, alias="sdkUrl", max_length=512)
+    crypto_url: str | None = Field(default=None, alias="cryptoUrl", max_length=512)
+
+
 class ConfigurationPatch(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     default_provider: str | None = Field(default=None, alias="defaultProvider", min_length=1, max_length=64)
     session: SessionConfigurationPatch | None = None
+    mofa: MofaConfigurationPatch | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "ConfigurationPatch":
-        if self.default_provider is None and self.session is None:
+        if self.default_provider is None and self.session is None and self.mofa is None:
             raise ValueError("至少需要提交一项配置")
         if self.session is not None and self.session.ttl_seconds is None and self.session.cleanup_interval_seconds is None:
             raise ValueError("会话配置不能为空")
+        if self.mofa is not None and all(value is None for value in self.mofa.model_dump().values()):
+            raise ValueError("星云配置不能为空")
         return self

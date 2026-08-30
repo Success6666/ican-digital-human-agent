@@ -9,7 +9,7 @@ from ..observability.service import ObservabilityService
 from ..rag.service import RagService
 from ..avatar.registry import ProviderRegistry
 from ..settings import Settings
-from ..infrastructure.runtime_configuration import RuntimeConfiguration, RuntimeConfigurationRepository
+from ..infrastructure.runtime_configuration import MofaRuntimeConfiguration, RuntimeConfiguration, RuntimeConfigurationRepository, apply_mofa_environment
 
 
 class ConfigurationApplicationService:
@@ -73,8 +73,20 @@ class ConfigurationApplicationService:
                 "localFallback": self.settings.mcp_allow_local_fallback,
             },
             "observability": self.observability.health().model_dump(mode="json"),
+            "mofa": _mofa_view(self.settings),
             "providers": [item.model_dump(mode="json") for item in provider_health],
-            "runtimeEditable": ["defaultProvider", "session.ttlSeconds", "session.cleanupIntervalSeconds"],
+            "runtimeEditable": [
+                "defaultProvider",
+                "session.ttlSeconds",
+                "session.cleanupIntervalSeconds",
+                "mofa.enabled",
+                "mofa.appId",
+                "mofa.appSecret",
+                "mofa.authorization",
+                "mofa.gatewayUrl",
+                "mofa.sdkUrl",
+                "mofa.cryptoUrl",
+            ],
         }
 
     async def update(self, payload: Any) -> dict[str, Any]:
@@ -88,6 +100,10 @@ class ConfigurationApplicationService:
                     changes["session_ttl_seconds"] = payload.session.ttl_seconds
                 if payload.session.cleanup_interval_seconds is not None:
                     changes["cleanup_interval_seconds"] = payload.session.cleanup_interval_seconds
+            if payload.mofa is not None:
+                current_mofa = current.mofa
+                next_mofa = current_mofa.model_copy(update=payload.mofa.model_dump(exclude_none=True, by_alias=False))
+                changes["mofa"] = next_mofa
             next_configuration = current.model_copy(update=changes)
 
             if next_configuration.default_provider not in self.providers.names():
@@ -106,6 +122,10 @@ class ConfigurationApplicationService:
             self.store.idle_timeout_seconds = next_configuration.session_ttl_seconds
             self.cleanup.interval_seconds = next_configuration.cleanup_interval_seconds
             self.providers.set_session_ttl(next_configuration.session_ttl_seconds)
+            apply_mofa_environment(next_configuration.mofa)
+            mofa_provider = self.providers.get("mofa")
+            if hasattr(mofa_provider, "enabled"):
+                mofa_provider.enabled = next_configuration.mofa.enabled
             return await self.view()
 
 
@@ -123,3 +143,28 @@ def _docling_models(parser: Any) -> list[str]:
         languages = "、".join(getattr(parser, "ocr_languages", ())) or "默认语言"
         models.append(f"RapidOCR / {backend}（{languages}）")
     return models
+
+
+def _mofa_view(settings: Settings) -> dict[str, Any]:
+    app_id = getattr(settings, "mofa_app_id", None) or __import__("os").getenv("MOFA_APP_ID", "")
+    app_secret = getattr(settings, "mofa_app_secret", None) or __import__("os").getenv("MOFA_APP_SECRET", "")
+    configured = bool(app_id and app_secret)
+    return {
+        "enabled": __import__("os").getenv("MOFA_AVATAR_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+        "configured": configured,
+        "appId": _mask(app_id),
+        "appSecret": "已配置" if app_secret else "未配置",
+        "authorization": _mask(__import__("os").getenv("MOFA_AUTHORIZATION", "")),
+        "gatewayUrl": __import__("os").getenv("MOFA_GATEWAY_URL", "") or "星云默认网关",
+        "sdkUrl": __import__("os").getenv("MOFA_SDK_URL", "") or "星云官方 SDK",
+        "cryptoUrl": __import__("os").getenv("MOFA_CRYPTO_URL", "") or "CryptoJS 官方 CDN",
+        "detail": "凭证由服务端托管，浏览器只接收短时会话参数",
+    }
+
+
+def _mask(value: str) -> str:
+    if not value:
+        return "未配置"
+    if len(value) <= 8:
+        return "••••••••"
+    return f"{value[:4]}••••{value[-4:]}"

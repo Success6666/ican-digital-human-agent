@@ -92,3 +92,27 @@ def test_configuration_response_does_not_expose_credentials(tmp_path, monkeypatc
         serialized = response.text
         assert "private-app-id" not in serialized
         assert "private-app-secret" not in serialized
+
+
+def test_mofa_configuration_is_editable_and_persisted(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOFA_APP_ID", "existing-app-id")
+    monkeypatch.setenv("MOFA_APP_SECRET", "existing-app-secret")
+    configuration_path = str(tmp_path / "runtime.json")
+    settings = _settings(configuration_path).model_copy(update={"provider_enabled": {"mofa": True}})
+    container = build_container(settings)
+
+    with TestClient(create_app(container=container)) as client:
+        response = client.patch(
+            "/internal/configuration",
+            headers=_headers(),
+            json={"mofa": {"enabled": True, "appId": "existing-app-id", "authorization": "888jn"}},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mofa"]["enabled"] is True
+        assert body["mofa"]["configured"] is True
+        assert "existing-app-secret" not in response.text
+
+    restarted = build_container(_settings(configuration_path))
+    assert restarted.settings.provider_enabled["mofa"] is True
+    assert restarted.providers.get("mofa").enabled is True
