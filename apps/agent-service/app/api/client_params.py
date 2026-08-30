@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 _TEXT_LIMITS = {
     "mode": 64,
+    "runtime": 64,
     "protocol": 32,
     "codec": 32,
     "expiresAt": 128,
@@ -16,6 +17,14 @@ _TEXT_LIMITS = {
     "wsUrl": 4096,
     "websocketUrl": 4096,
     "realtimeUrl": 4096,
+    "sdkUrl": 4096,
+    "cryptoUrl": 4096,
+    "gatewayServer": 4096,
+    "appId": 512,
+    "appSecret": 1024,
+    "authorization": 512,
+    "dataSource": 128,
+    "customId": 128,
 }
 _NUMBER_LIMITS = {
     "sampleRate": (8_000, 96_000),
@@ -28,11 +37,12 @@ _NESTED_KEYS = frozenset(_TEXT_LIMITS) | frozenset(_NUMBER_LIMITS)
 
 
 def browser_safe_client_params(value: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Return only short-lived, non-secret parameters needed by a browser adapter.
+    """Return only allowlisted parameters needed by a browser adapter.
 
-    Provider SDK credentials, tickets and arbitrary metadata are intentionally
-    excluded here. Frontend normalization is a convenience layer, not a
-    security boundary.
+    Some vendor Web SDKs require application credentials in the browser. Those
+    fields are returned only on an authenticated provider session; arbitrary
+    adapter metadata remains excluded. Frontend normalization is not a security
+    boundary.
     """
     if not isinstance(value, Mapping):
         return {}
@@ -54,7 +64,15 @@ def _filter(value: Mapping[str, Any]) -> dict[str, Any]:
         text = candidate.strip()
         if not text or len(text) > limit:
             continue
-        if key in {"endpoint", "wsUrl", "websocketUrl", "realtimeUrl"} and not _safe_url(text):
+        if key in {
+            "endpoint",
+            "wsUrl",
+            "websocketUrl",
+            "realtimeUrl",
+            "sdkUrl",
+            "cryptoUrl",
+            "gatewayServer",
+        } and not _safe_url(text):
             continue
         result[key] = text
     for key, (minimum, maximum) in _NUMBER_LIMITS.items():

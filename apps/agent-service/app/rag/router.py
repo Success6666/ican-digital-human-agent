@@ -73,12 +73,14 @@ def build_router(service: RagService | None = None, *, prefix: str = "/internal/
     api = APIRouter(prefix=prefix, tags=["rag"], dependencies=[Depends(_auth_dependency())])
 
     @api.get("/health")
-    async def health() -> dict[str, Any]:
-        count = await selected.count()
+    async def health(context: InternalContext) -> dict[str, Any]:
+        statistics = await selected.statistics(owner_id=context["user_id"])
         parser = getattr(selected.parser, "available", None)
         return {
             "status": "ok",
-            "documents": count,
+            "documents": statistics.documents,
+            "chunks": statistics.chunks,
+            "collections": [item.model_dump(mode="json") for item in statistics.collections],
             "docling_available": parser,
             "docling_loaded": bool(getattr(selected.parser, "loaded", False)),
             "docling_load_error": getattr(selected.parser, "load_error", None),

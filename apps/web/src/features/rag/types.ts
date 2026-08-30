@@ -1,8 +1,16 @@
 export interface RagHealth {
   status?: string
   documents?: number
+  chunks?: number
+  collections?: RagCollectionStatistics[]
   docling_available?: boolean | null
   doclingAvailable?: boolean | null
+}
+
+export interface RagCollectionStatistics {
+  name: string
+  documents: number
+  chunks: number
 }
 
 export interface IngestInput {

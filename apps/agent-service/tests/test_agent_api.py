@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from starlette.testclient import TestClient
 
 from app.api.routes import _session_response
+from app.avatar.adapters.mofa import MofaProvider
 from app.domain.models import AvatarCapabilities, AvatarSession
 from app.main import build_container, create_app
 from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
@@ -157,3 +158,21 @@ def test_session_response_does_not_expose_provider_credentials() -> None:
     response = _session_response(session)
     assert response is not None
     assert response.client_params == {"mode": "local-mock", "realtime": {"protocol": "realtime.v1"}}
+
+
+def test_mofa_session_returns_only_browser_runtime_parameters(monkeypatch) -> None:
+    monkeypatch.setenv("MOFA_APP_ID", "browser-app")
+    monkeypatch.setenv("MOFA_APP_SECRET", "browser-secret")
+    provider = MofaProvider(enabled=True)
+
+    import asyncio
+
+    session = asyncio.run(provider.create_session("user-1"))
+    response = _session_response(session)
+
+    assert response is not None
+    assert response.client_params["runtime"] == "mofa-web-sdk"
+    assert response.client_params["appId"] == "browser-app"
+    assert response.client_params["appSecret"] == "browser-secret"
+    assert "customId" not in response.client_params
+    assert "dataSource" not in response.client_params

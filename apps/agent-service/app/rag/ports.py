@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol
 
-from .models import DocumentChunk, ParsedDocument, SearchHit
+from .models import DocumentChunk, ParsedDocument, RagStatistics, SearchHit
 
 
 class DocumentParser(Protocol):
@@ -49,3 +49,5 @@ class VectorStore(Protocol):
     async def delete_document(self, document_id: str, *, namespace: str) -> int: ...
 
     async def count(self, *, namespace: str | None = None) -> int: ...
+
+    async def statistics(self, *, owner_id: str) -> RagStatistics: ...

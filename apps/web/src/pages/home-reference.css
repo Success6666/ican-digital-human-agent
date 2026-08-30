@@ -11,30 +11,6 @@
   isolation: isolate;
 }
 
-.home-reference-stage::before,
-.home-reference-stage::after {
-  position: absolute;
-  left: 50%;
-  border: 1px solid rgba(120, 160, 224, .16);
-  border-radius: 50%;
-  content: '';
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.home-reference-stage::before {
-  top: 8%;
-  width: min(62vw, 760px);
-  aspect-ratio: 1;
-}
-
-.home-reference-stage::after {
-  top: 18%;
-  width: min(42vw, 500px);
-  aspect-ratio: 1;
-  border-color: rgba(120, 160, 224, .11);
-}
-
 .avatar-stage {
   position: absolute;
   inset: 0 0 104px;
@@ -57,7 +33,46 @@
 .avatar-runtime-host {
   position: absolute;
   inset: 0;
+  height: 100% !important;
 }
+
+.avatar-runtime-host canvas {
+  display: block;
+}
+
+.avatar-runtime-host .avatar-sdk-widget-container img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  object-position: center;
+}
+
+.avatar-runtime-shell {
+  position: absolute;
+  inset: 0;
+}
+
+.avatar-runtime-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #7892bc;
+  background: rgba(237, 244, 255, .78);
+  backdrop-filter: blur(3px);
+}
+
+.avatar-runtime-overlay strong {
+  color: #5878ab;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.avatar-runtime-overlay span { font-size: 10px; }
 
 .avatar-waiting {
   position: absolute;
@@ -78,6 +93,35 @@
 }
 
 .avatar-waiting-spinner { animation: spin 1s linear infinite; }
+
+.avatar-preview-surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+}
+
+.avatar-preview-surface img {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: auto;
+  height: 100%;
+  max-width: none;
+  transform: translateX(-50%);
+}
+
+.avatar-preview-foreground {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+}
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

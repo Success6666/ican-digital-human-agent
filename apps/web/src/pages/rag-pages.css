@@ -97,7 +97,7 @@
 .collection-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 35px minmax(0, 1fr) 43px 43px 18px;
+  grid-template-columns: 35px minmax(0, 1fr) 43px 43px 35px;
   align-items: center;
   gap: 8px;
   padding: 10px 5px;
@@ -105,9 +105,6 @@
 }
 .collection-row:last-child {
   border-bottom: 0;
-}
-.collection-row--active {
-  background: color-mix(in oklch, var(--brand-soft) 38%, transparent);
 }
 .collection-icon {
   width: 32px;
@@ -159,28 +156,22 @@
   color: var(--ink);
   font-size: 11px;
 }
-.collection-switch {
-  width: 18px;
-  height: 11px;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--line-strong);
+.collection-state {
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 700;
 }
-.collection-switch i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--surface);
-  transition: transform 0.18s ease;
+.collection-empty {
+  min-height: 132px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  color: var(--ink-faint);
+  text-align: center;
 }
-.collection-switch--on {
-  background: var(--success);
-}
-.collection-switch--on i {
-  transform: translateX(7px);
-}
+.collection-empty strong { color: var(--ink-muted); font-size: 11px; }
+.collection-empty span { font-size: 9px; }
 .collection-add {
   width: 100%;
   min-height: 34px;

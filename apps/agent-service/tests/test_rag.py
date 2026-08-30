@@ -70,6 +70,33 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
         hits = await self.service.search(SearchRequest(query="private alpha"), owner_id="bob")
         self.assertEqual(hits.hits, [])
 
+    async def test_statistics_count_unique_documents_chunks_and_collections_per_owner(self) -> None:
+        await self.service.ingest(
+            IngestRequest(
+                document_id="guide",
+                source_name="guide.md",
+                collection="manuals",
+                content="A" * 180,
+            ),
+            owner_id="alice",
+        )
+        await self.service.ingest(
+            IngestRequest(source_name="api.md", collection="project", content="API reference"),
+            owner_id="alice",
+        )
+        await self.service.ingest(
+            IngestRequest(source_name="private.md", collection="manuals", content="Bob only"),
+            owner_id="bob",
+        )
+
+        statistics = await self.service.statistics(owner_id="alice")
+
+        self.assertEqual(statistics.documents, 2)
+        self.assertGreaterEqual(statistics.chunks, 3)
+        self.assertEqual([item.name for item in statistics.collections], ["manuals", "project"])
+        self.assertEqual(statistics.collections[0].documents, 1)
+        self.assertGreaterEqual(statistics.collections[0].chunks, 2)
+
     async def test_upsert_replaces_document_and_store_is_bounded(self) -> None:
         request = IngestRequest(document_id="stable", source_name="a.md", content="old text")
         await self.service.ingest(request)

@@ -27,6 +27,7 @@ from .models import (
     IngestResult,
     SearchRequest,
     SearchResult,
+    RagStatistics,
 )
 from .ports import Chunker, DocumentParser, VectorStore
 
@@ -180,6 +181,9 @@ class RagService:
     async def count(self, *, owner_id: str | None = None, collection: str = "default") -> int:
         namespace = _namespace(owner_id, collection) if owner_id is not None else None
         return await self.store.count(namespace=namespace)
+
+    async def statistics(self, *, owner_id: str) -> RagStatistics:
+        return await self.store.statistics(owner_id=owner_id)
 
     async def _observe(self, name: str, attributes: dict[str, Any], error: Exception | None = None) -> None:
         if self.observer is None:

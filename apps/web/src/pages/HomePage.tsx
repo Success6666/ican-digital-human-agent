@@ -19,6 +19,8 @@ interface HomePageProps {
 
 export function HomePage({ avatar, chat, realtime }: HomePageProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && !message.pending && message.content.trim())
+  const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
 
   useEffect(() => {
     if (!avatar.session) {
@@ -32,7 +34,14 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
   return (
     <div className="page-stack home-page">
       <main className="home-reference-stage">
-        <AvatarStage session={avatar.session} realtime={realtime.state} onCreate={() => void avatar.create()} />
+        <AvatarStage
+          session={avatar.session}
+          isCreating={avatar.isCreating}
+          speech={latestAssistant ? { id: latestAssistant.id, text: latestAssistant.content } : undefined}
+          interruptKey={latestUser?.id}
+          activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
+          onCreate={() => void avatar.create()}
+        />
         <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} onSend={(message) => void chat.sendMessage(message)} />
         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
           <History size={18} />

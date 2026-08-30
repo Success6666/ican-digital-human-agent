@@ -20,6 +20,7 @@ export function normalizeClientParams(value: unknown): AvatarClientParams | unde
 
 function pickParams(source: Record<string, unknown>): AvatarClientParams {
   const result: AvatarClientParams = {}
+  const runtime = text(source.runtime, 64)
   const endpoint = text(source.endpoint, MAX_URL)
   const wsUrl = text(source.wsUrl ?? source.ws_url, MAX_URL)
   const websocketUrl = text(source.websocketUrl ?? source.websocket_url, MAX_URL)
@@ -29,6 +30,15 @@ function pickParams(source: Record<string, unknown>): AvatarClientParams {
   const accessToken = text(source.accessToken ?? source.access_token, MAX_TEXT)
   const ticket = text(source.ticket, MAX_TEXT)
   const expiresAt = text(source.expiresAt ?? source.expires_at, 128)
+  const sdkUrl = text(source.sdkUrl ?? source.sdk_url, MAX_URL)
+  const cryptoUrl = text(source.cryptoUrl ?? source.crypto_url, MAX_URL)
+  const gatewayServer = text(source.gatewayServer ?? source.gateway_server, MAX_URL)
+  const appId = text(source.appId ?? source.app_id, MAX_TEXT)
+  const appSecret = text(source.appSecret ?? source.app_secret, MAX_TEXT)
+  const authorization = text(source.authorization, MAX_TEXT)
+  const dataSource = text(source.dataSource ?? source.data_source, 128)
+  const customId = text(source.customId ?? source.custom_id, 128)
+  if (runtime) result.runtime = runtime
   if (endpoint) result.endpoint = endpoint
   if (wsUrl) result.wsUrl = wsUrl
   if (websocketUrl) result.websocketUrl = websocketUrl
@@ -38,6 +48,14 @@ function pickParams(source: Record<string, unknown>): AvatarClientParams {
   if (accessToken) result.accessToken = accessToken
   if (ticket) result.ticket = ticket
   if (expiresAt) result.expiresAt = expiresAt
+  if (sdkUrl) result.sdkUrl = sdkUrl
+  if (cryptoUrl) result.cryptoUrl = cryptoUrl
+  if (gatewayServer) result.gatewayServer = gatewayServer
+  if (appId) result.appId = appId
+  if (appSecret) result.appSecret = appSecret
+  if (authorization) result.authorization = authorization
+  if (dataSource) result.dataSource = dataSource
+  if (customId) result.customId = customId
   const sampleRate = boundedNumber(source.sampleRate ?? source.sample_rate, 8_000, 96_000)
   const channels = boundedInteger(source.channels, 1, 2)
   const frameMs = boundedNumber(source.frameMs ?? source.frame_ms, 10, 100)

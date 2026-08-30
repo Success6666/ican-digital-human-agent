@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .embeddings import HashEmbeddingProvider
-from .models import DocumentChunk, SearchHit
+from .models import CollectionStatistics, DocumentChunk, RagStatistics, SearchHit
 from .ports import EmbeddingProvider
 
 
@@ -99,6 +99,33 @@ class InMemoryVectorStore:
             if namespace is None:
                 return len(self._items)
             return sum(1 for key in self._items if key[0] == namespace)
+
+    async def statistics(self, *, owner_id: str) -> RagStatistics:
+        async with self._lock:
+            snapshot = [
+                stored.chunk.model_copy(deep=False)
+                for stored in self._items.values()
+                if stored.chunk.metadata.get("owner_id") == owner_id
+            ]
+
+        document_ids: set[str] = set()
+        collection_documents: dict[str, set[str]] = {}
+        collection_chunks: dict[str, int] = {}
+        for chunk in snapshot:
+            collection = str(chunk.metadata.get("collection") or "default")
+            document_ids.add(chunk.document_id)
+            collection_documents.setdefault(collection, set()).add(chunk.document_id)
+            collection_chunks[collection] = collection_chunks.get(collection, 0) + 1
+
+        collections = [
+            CollectionStatistics(
+                name=name,
+                documents=len(collection_documents[name]),
+                chunks=collection_chunks[name],
+            )
+            for name in sorted(collection_documents, key=str.casefold)
+        ]
+        return RagStatistics(documents=len(document_ids), chunks=len(snapshot), collections=collections)
 
     async def clear(self) -> None:
         async with self._lock:

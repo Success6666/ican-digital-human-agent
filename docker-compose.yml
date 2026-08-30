@@ -111,6 +111,10 @@ services:
       MOFA_GATEWAY_URL: ${MOFA_GATEWAY_URL:-}
       MOFA_APP_ID: ${MOFA_APP_ID:-}
       MOFA_APP_SECRET: ${MOFA_APP_SECRET:-}
+      MOFA_SDK_URL: ${MOFA_SDK_URL:-https://media.xingyun3d.com/xingyun3d/general/litesdk/xmovAvatar@latest.js}
+      MOFA_CRYPTO_URL: ${MOFA_CRYPTO_URL:-https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js}
+      MOFA_AUTHORIZATION: ${MOFA_AUTHORIZATION:-}
+      MOFA_DATA_SOURCE: ${MOFA_DATA_SOURCE:-}
       IFLYTEK_AVATAR_ENABLED: ${IFLYTEK_AVATAR_ENABLED:-false}
       IFLYTEK_GATEWAY_URL: ${IFLYTEK_GATEWAY_URL:-}
       IFLYTEK_APP_ID: ${IFLYTEK_APP_ID:-}

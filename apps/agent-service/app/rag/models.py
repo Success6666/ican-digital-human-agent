@@ -47,6 +47,18 @@ class SearchResult(BaseModel):
     hits: list[SearchHit] = Field(default_factory=list)
 
 
+class CollectionStatistics(BaseModel):
+    name: str
+    documents: int = Field(ge=0)
+    chunks: int = Field(ge=0)
+
+
+class RagStatistics(BaseModel):
+    documents: int = Field(ge=0)
+    chunks: int = Field(ge=0)
+    collections: list[CollectionStatistics] = Field(default_factory=list)
+
+
 class IngestRequest(BaseModel):
     """JSON-friendly ingest request.
 

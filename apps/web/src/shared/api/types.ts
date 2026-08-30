@@ -35,12 +35,13 @@ export interface AvatarSession {
   expiresAt?: string
   status?: 'active' | 'closed' | 'expired' | string
   /**
-   * 仅包含短时、浏览器侧运行时需要的连接参数；长期厂商密钥不应出现在这里。
+   * 仅包含当前已认证会话的浏览器 Runtime 参数。具体字段由供应商白名单控制。
    */
   clientParams?: AvatarClientParams
 }
 
 export interface AvatarClientParams {
+  runtime?: string
   endpoint?: string
   wsUrl?: string
   websocketUrl?: string
@@ -55,6 +56,14 @@ export interface AvatarClientParams {
   accessToken?: string
   ticket?: string
   expiresAt?: string
+  sdkUrl?: string
+  cryptoUrl?: string
+  gatewayServer?: string
+  appId?: string
+  appSecret?: string
+  authorization?: string
+  dataSource?: string
+  customId?: string
   realtime?: {
     endpoint?: string
     wsUrl?: string
