@@ -1,5 +1,8 @@
 /* Audit responsive rules */
 @media (max-width: 620px) {
+  .audit-trace-grid {
+    grid-template-columns: 1fr;
+  }
   .audit-bars {
     grid-template-columns: 1fr;
     gap: 12px;

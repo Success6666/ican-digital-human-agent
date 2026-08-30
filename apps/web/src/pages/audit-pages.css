@@ -2,6 +2,15 @@
 .audit-panel {
   min-height: 300px;
 }
+.audit-trace-grid {
+  display: grid;
+  grid-template-columns: minmax(230px, .76fr) minmax(0, 1.24fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.audit-trace-grid .trace-list-panel {
+  min-height: 410px;
+}
 .audit-list {
   display: grid;
 }

@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.3）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.4）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
