@@ -19,6 +19,7 @@ from .avatar.registry import ProviderRegistry, build_default_registry
 from .evaluation.service import EvaluationService
 from .graph.runtime import AgentGraphRuntime
 from .infrastructure.session_store import InMemorySessionStore
+from .infrastructure.runtime_configuration import RuntimeConfigurationRepository
 from .mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from .mcp.limits import ToolResultLimiter
 from .observability.service import ObservabilityService, build_default_observability
@@ -53,6 +54,12 @@ def build_container(
     tool_client: CompositeToolClient | None = None,
 ) -> ServiceContainer:
     settings = settings or get_settings()
+    repository = RuntimeConfigurationRepository(settings.runtime_configuration_file)
+    persisted = repository.load(settings)
+    settings.default_provider = persisted.default_provider
+    settings.session_ttl_seconds = persisted.session_ttl_seconds
+    settings.session_idle_timeout_seconds = persisted.session_ttl_seconds
+    settings.cleanup_interval_seconds = persisted.cleanup_interval_seconds
     providers = providers or build_default_registry(settings)
     realtime_limits = RealtimeLimits(
         heartbeat_interval_seconds=float(settings.session_heartbeat_interval_seconds),
@@ -118,13 +125,16 @@ def build_container(
         max_message_length=settings.max_message_length,
         evaluation=evaluation,
     )
+    cleanup = CleanupWorker(session_service, interval_seconds=settings.cleanup_interval_seconds)
     configuration_service = ConfigurationApplicationService(
         settings=settings,
         providers=providers,
         rag=rag,
         observability=observability,
+        store=store,
+        cleanup=cleanup,
+        repository=repository,
     )
-    cleanup = CleanupWorker(session_service, interval_seconds=settings.cleanup_interval_seconds)
     return ServiceContainer(
         settings=settings,
         providers=providers,
@@ -159,7 +169,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.3", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.5", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,
@@ -169,8 +179,8 @@ def create_app(
         CORSMiddleware,
         allow_origins=service_container.settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "satoken", "X-Internal-Token", "X-User-Id", "X-User-Name"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "satoken", "X-Internal-Token", "X-User-Id", "X-User-Name", "X-User-Role"],
     )
     app.include_router(router)
     app.include_router(realtime_router)

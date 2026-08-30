@@ -19,6 +19,7 @@ async def require_internal_context(
     internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
     user_id: Annotated[str | None, Header(alias="X-User-Id")] = None,
     user_name: Annotated[str | None, Header(alias="X-User-Name")] = None,
+    user_role: Annotated[str | None, Header(alias="X-User-Role")] = None,
 ):
     settings = request.app.state.container.settings
     if not internal_token or not secrets.compare_digest(internal_token, settings.internal_token):
@@ -29,7 +30,7 @@ async def require_internal_context(
     clean_name = _bounded_header(user_name)
     if not clean_id or not clean_name:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user context required")
-    return {"user_id": clean_id, "user_name": clean_name}
+    return {"user_id": clean_id, "user_name": clean_name, "user_role": _bounded_header(user_role or "user")}
 
 
 def _bounded_header(value: str, *, identity: bool = False) -> str:

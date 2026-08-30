@@ -47,6 +47,14 @@ public class AgentGatewayClient {
         return sendJson(request);
     }
 
+    public JsonNode patch(String path, JsonNode body, String userId, String userName, String userRole) {
+        HttpRequest request = baseRequest(path, userId, userName)
+                .header("X-User-Role", userRole)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(write(body)))
+                .build();
+        return sendJson(request);
+    }
+
     public void delete(String path, String userId, String userName) {
         HttpRequest request = baseRequest(path, userId, userName).DELETE().build();
         sendJson(request);

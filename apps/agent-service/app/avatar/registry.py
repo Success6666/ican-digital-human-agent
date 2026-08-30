@@ -30,6 +30,11 @@ class ProviderRegistry:
     async def health(self) -> list[AvatarHealth]:
         return [await self._providers[name].health() for name in self.names()]
 
+    def set_session_ttl(self, ttl_seconds: int) -> None:
+        for provider in self._providers.values():
+            if hasattr(provider, "ttl_seconds"):
+                provider.ttl_seconds = ttl_seconds
+
 
 def build_default_registry(settings: Settings | None = None) -> ProviderRegistry:
     settings = settings or get_settings()

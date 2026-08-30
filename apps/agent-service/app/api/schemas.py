@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..domain.models import AgentResponse, SessionStatus
 
@@ -74,3 +74,27 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     service: str
     version: str
+
+
+class SessionConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    ttl_seconds: int | None = Field(default=None, alias="ttlSeconds", ge=60, le=86_400)
+    cleanup_interval_seconds: int | None = Field(
+        default=None, alias="cleanupIntervalSeconds", ge=5, le=3_600
+    )
+
+
+class ConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    default_provider: str | None = Field(default=None, alias="defaultProvider", min_length=1, max_length=64)
+    session: SessionConfigurationPatch | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ConfigurationPatch":
+        if self.default_provider is None and self.session is None:
+            raise ValueError("至少需要提交一项配置")
+        if self.session is not None and self.session.ttl_seconds is None and self.session.cleanup_interval_seconds is None:
+            raise ValueError("会话配置不能为空")
+        return self

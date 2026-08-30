@@ -78,6 +78,31 @@ class AgentGatewayClientTest {
     }
 
     @Test
+    void forwardsConfigurationPatchWithRoleContext() throws Exception {
+        AtomicReference<String> method = new AtomicReference<>();
+        AtomicReference<String> role = new AtomicReference<>();
+        AtomicReference<String> body = new AtomicReference<>();
+        server.createContext("/internal/configuration", exchange -> {
+            method.set(exchange.getRequestMethod());
+            role.set(exchange.getRequestHeaders().getFirst("X-User-Role"));
+            body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] payload = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, payload.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(payload);
+            }
+        });
+        server.start();
+
+        ObjectNode request = new ObjectMapper().createObjectNode().put("defaultProvider", "mock");
+        client.patch("/internal/configuration", request, "u1", "demo", "admin");
+
+        org.assertj.core.api.Assertions.assertThat(method).hasValue("PATCH");
+        org.assertj.core.api.Assertions.assertThat(role).hasValue("admin");
+        org.assertj.core.api.Assertions.assertThat(body).hasValue("{\"defaultProvider\":\"mock\"}");
+    }
+
+    @Test
     void forwardsStreamingPayloadInFlushableChunks() throws Exception {
         server.createContext("/internal/chat/stream", exchange -> {
             exchange.getResponseHeaders().set("Content-Type", "text/event-stream");

@@ -28,9 +28,15 @@ export interface RuntimeConfiguration {
   [key: string]: unknown
 }
 
+export interface RuntimeConfigurationPatch {
+  defaultProvider?: string
+  session?: { ttlSeconds?: number; cleanupIntervalSeconds?: number }
+}
+
 export function useConfiguration() {
   const [configuration, setConfiguration] = useState<RuntimeConfiguration | null>(null)
   const [isLoading, setLoading] = useState(true)
+  const [isSaving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
@@ -46,5 +52,22 @@ export function useConfiguration() {
   }, [])
 
   useEffect(() => { void refresh() }, [refresh])
-  return { configuration, isLoading, error, refresh }
+
+  const save = useCallback(async (payload: RuntimeConfigurationPatch) => {
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await api.patch<RuntimeConfiguration>('/configuration', payload)
+      setConfiguration(updated)
+      return updated
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '配置保存失败'
+      setError(message)
+      throw cause
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  return { configuration, isLoading, isSaving, error, refresh, save }
 }

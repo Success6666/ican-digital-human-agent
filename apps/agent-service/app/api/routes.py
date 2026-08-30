@@ -15,6 +15,7 @@ from .sse import iter_sse_frames
 from .schemas import (
     ChatRequest,
     ChatResponse,
+    ConfigurationPatch,
     CreateSessionRequest,
     HealthResponse,
     InterruptRequest,
@@ -30,7 +31,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.3")
+    return HealthResponse(service=container.settings.service_name, version="0.1.5")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -57,6 +58,20 @@ async def providers(context: InternalContext, request: Request) -> list[Provider
 async def configuration(context: InternalContext, request: Request) -> dict[str, Any]:
     del context
     return await get_container(request).configuration_service.view()
+
+
+@router.patch("/internal/configuration")
+async def update_configuration(
+    payload: ConfigurationPatch,
+    context: InternalContext,
+    request: Request,
+) -> dict[str, Any]:
+    if context.get("user_role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅管理员可修改运行配置")
+    try:
+        return await get_container(request).configuration_service.update(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
 
 @router.post("/internal/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)

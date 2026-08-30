@@ -46,6 +46,10 @@ class Settings(BaseModel):
     mcp_internal_token: str = Field(default="", alias="MCP_INTERNAL_TOKEN")
     mcp_allow_local_fallback: bool = Field(default=True, alias="MCP_ALLOW_LOCAL_FALLBACK")
     default_provider: str = Field(default="mock", alias="DEFAULT_PROVIDER")
+    runtime_configuration_file: str = Field(
+        default="data/runtime-configuration.json",
+        alias="RUNTIME_CONFIGURATION_FILE",
+    )
     session_ttl_seconds: int = Field(default=1800, alias="SESSION_TTL_SECONDS", ge=1, le=86_400)
     cleanup_interval_seconds: int = Field(default=30, alias="SESSION_CLEANUP_INTERVAL_SECONDS", ge=1, le=3_600)
     session_max_sessions: int = Field(default=1024, alias="SESSION_MAX_SESSIONS", ge=1, le=100_000)

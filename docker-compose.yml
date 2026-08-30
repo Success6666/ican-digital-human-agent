@@ -60,6 +60,7 @@ services:
       MCP_MAX_RESULT_DEPTH: ${MCP_MAX_RESULT_DEPTH:-8}
       MCP_MAX_PARALLEL_TOOLS: ${MCP_MAX_PARALLEL_TOOLS:-4}
       DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-mock}
+      RUNTIME_CONFIGURATION_FILE: /app/data/runtime-configuration.json
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1800}
       SESSION_CLEANUP_INTERVAL_SECONDS: ${SESSION_CLEANUP_INTERVAL_SECONDS:-30}
       SESSION_MAX_SESSIONS: ${SESSION_MAX_SESSIONS:-1024}
@@ -119,6 +120,8 @@ services:
       FAY_BASE_URL: ${FAY_BASE_URL:-}
     expose:
       - "8000"
+    volumes:
+      - agent-runtime-config:/app/data
     depends_on:
       mcp-server:
         condition: service_healthy
@@ -151,3 +154,6 @@ services:
 networks:
   internal:
     driver: bridge
+
+volumes:
+  agent-runtime-config:

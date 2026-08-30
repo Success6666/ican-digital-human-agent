@@ -36,6 +36,6 @@ export function AuthenticatedApp() {
     await logout()
   }
 
-  const content = page === 'rag' ? <RagPage /> : page === 'evaluation' ? <EvaluationPage /> : page === 'audit' ? <AuditPage /> : page === 'settings' ? <SettingsPage avatar={avatar} /> : <HomePage avatar={avatar} chat={chat} realtime={realtime} />
+  const content = page === 'rag' ? <RagPage /> : page === 'evaluation' ? <EvaluationPage /> : page === 'audit' ? <AuditPage /> : page === 'settings' ? <SettingsPage avatar={avatar} canManage={user?.role === 'admin'} /> : <HomePage avatar={avatar} chat={chat} realtime={realtime} />
   return <ConsoleShell user={user} activePage={page} onNavigate={navigate} onLogout={handleLogout}>{content}</ConsoleShell>
 }

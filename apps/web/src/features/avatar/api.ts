@@ -34,12 +34,12 @@ export async function listProviders(): Promise<ProviderWire[]> {
   return Array.isArray(response) ? response : response.providers ?? []
 }
 
-export async function createSession(provider: ProviderName): Promise<AvatarSession> {
-  const response = await api.post<AvatarSession | SessionResponse>('/sessions', { provider })
+export async function createSession(provider?: ProviderName): Promise<AvatarSession> {
+  const response = await api.post<AvatarSession | SessionResponse>('/sessions', provider ? { provider } : {})
   if ('sessionId' in response) {
     return {
       sessionId: response.sessionId as string,
-      provider: response.provider ?? provider,
+      provider: response.provider ?? provider ?? 'mock',
       capabilities: capabilityNames(response.capabilities),
       expiresAt: response.expiresAt,
       status: response.status,

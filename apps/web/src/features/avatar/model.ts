@@ -62,14 +62,14 @@ export function useAvatar() {
 
   useEffect(() => { void loadProviders() }, [loadProviders])
 
-  const create = useCallback(async (provider = selectedProvider) => {
+  const create = useCallback(async (provider?: ProviderName) => {
     setCreating(true)
     setError(null)
     try {
       if (session) await avatarApi.closeSession(session.sessionId).catch(() => undefined)
       const next = await avatarApi.createSession(provider)
       setSession(next)
-      setSelectedProvider(provider)
+      setSelectedProvider(next.provider)
       return next
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '会话创建失败'
@@ -78,7 +78,7 @@ export function useAvatar() {
     } finally {
       setCreating(false)
     }
-  }, [selectedProvider, session])
+  }, [session])
 
   const close = useCallback(async () => {
     if (!session) return

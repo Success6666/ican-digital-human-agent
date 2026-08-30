@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from ..observability.service import ObservabilityService
 from ..rag.service import RagService
 from ..avatar.registry import ProviderRegistry
 from ..settings import Settings
+from ..infrastructure.runtime_configuration import RuntimeConfiguration, RuntimeConfigurationRepository
 
 
 class ConfigurationApplicationService:
@@ -18,11 +20,18 @@ class ConfigurationApplicationService:
         providers: ProviderRegistry,
         rag: RagService,
         observability: ObservabilityService,
+        store: Any,
+        cleanup: Any,
+        repository: RuntimeConfigurationRepository,
     ) -> None:
         self.settings = settings
         self.providers = providers
         self.rag = rag
         self.observability = observability
+        self.store = store
+        self.cleanup = cleanup
+        self.repository = repository
+        self._update_lock = asyncio.Lock()
 
     async def view(self) -> dict[str, Any]:
         provider_health = await self.providers.health()
@@ -65,7 +74,39 @@ class ConfigurationApplicationService:
             },
             "observability": self.observability.health().model_dump(mode="json"),
             "providers": [item.model_dump(mode="json") for item in provider_health],
+            "runtimeEditable": ["defaultProvider", "session.ttlSeconds", "session.cleanupIntervalSeconds"],
         }
+
+    async def update(self, payload: Any) -> dict[str, Any]:
+        async with self._update_lock:
+            current = RuntimeConfiguration.from_settings(self.settings)
+            changes: dict[str, Any] = {}
+            if payload.default_provider is not None:
+                changes["default_provider"] = payload.default_provider
+            if payload.session is not None:
+                if payload.session.ttl_seconds is not None:
+                    changes["session_ttl_seconds"] = payload.session.ttl_seconds
+                if payload.session.cleanup_interval_seconds is not None:
+                    changes["cleanup_interval_seconds"] = payload.session.cleanup_interval_seconds
+            next_configuration = current.model_copy(update=changes)
+
+            if next_configuration.default_provider not in self.providers.names():
+                raise ValueError(f"未找到 Provider {next_configuration.default_provider}")
+            provider = self.providers.get(next_configuration.default_provider)
+            health = await provider.health()
+            if not health.configured or health.status in {"unavailable", "error"}:
+                raise ValueError(f"Provider {next_configuration.default_provider} 当前不可用")
+
+            self.repository.save(next_configuration)
+            self.settings.default_provider = next_configuration.default_provider
+            self.settings.session_ttl_seconds = next_configuration.session_ttl_seconds
+            self.settings.session_idle_timeout_seconds = next_configuration.session_ttl_seconds
+            self.settings.cleanup_interval_seconds = next_configuration.cleanup_interval_seconds
+            self.store.ttl_seconds = next_configuration.session_ttl_seconds
+            self.store.idle_timeout_seconds = next_configuration.session_ttl_seconds
+            self.cleanup.interval_seconds = next_configuration.cleanup_interval_seconds
+            self.providers.set_session_ttl(next_configuration.session_ttl_seconds)
+            return await self.view()
 
 
 def _docling_models(parser: Any) -> list[str]:
