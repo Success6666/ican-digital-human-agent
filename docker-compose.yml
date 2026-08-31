@@ -76,7 +76,12 @@ services:
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-512}
-      HF_HOME: ${HF_HOME:-/app/data/huggingface}
+      # 模型缓存必须使用容器内路径，避免宿主机 Windows 路径污染 Linux 容器。
+      HF_HOME: /app/model-cache/huggingface
+      TRANSFORMERS_CACHE: /app/model-cache/huggingface/transformers
+      SENTENCE_TRANSFORMERS_HOME: /app/model-cache/sentence-transformers
+      TORCH_HOME: /app/model-cache/torch
+      XDG_CACHE_HOME: /app/model-cache/xdg
       RUNTIME_CONFIGURATION_FILE: /app/data/runtime-configuration.json
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1800}
       SESSION_CLEANUP_INTERVAL_SECONDS: ${SESSION_CLEANUP_INTERVAL_SECONDS:-30}
@@ -94,7 +99,7 @@ services:
       EVAL_OUTPUT_PRICE_PER_1K: ${EVAL_OUTPUT_PRICE_PER_1K:-0.009}
       EVAL_CURRENCY: ${EVAL_CURRENCY:-CNY}
       DOCLING_ENABLED: ${DOCLING_ENABLED:-true}
-      DOCLING_ARTIFACTS_PATH: ${DOCLING_ARTIFACTS_PATH:-}
+      DOCLING_ARTIFACTS_PATH: /app/model-cache/docling
       DOCLING_MAX_CONCURRENCY: ${DOCLING_MAX_CONCURRENCY:-1}
       DOCLING_OCR_BACKEND: ${DOCLING_OCR_BACKEND:-onnxruntime}
       DOCLING_OCR_LANG: ${DOCLING_OCR_LANG:-chinese}
@@ -144,6 +149,7 @@ services:
       - "8000"
     volumes:
       - agent-runtime-config:/app/data
+      - agent-model-cache:/app/model-cache
     depends_on:
       mcp-server:
         condition: service_healthy
@@ -200,4 +206,5 @@ networks:
 
 volumes:
   agent-runtime-config:
+  agent-model-cache:
   rabbitmq-data:
