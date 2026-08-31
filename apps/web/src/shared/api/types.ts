@@ -20,6 +20,7 @@ export type ProviderName = 'mock' | 'aliyun' | 'mofa' | 'iflytek' | 'fay' | stri
 
 export interface ProviderStatus {
   name: ProviderName
+  default?: boolean
   label: string
   description?: string
   configured: boolean

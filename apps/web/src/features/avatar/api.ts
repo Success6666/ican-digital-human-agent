@@ -10,6 +10,7 @@ interface ProviderListResponse {
 export interface ProviderWire {
   name?: ProviderName
   provider?: ProviderName
+  default?: boolean
   label?: string
   status?: string
   configured?: boolean

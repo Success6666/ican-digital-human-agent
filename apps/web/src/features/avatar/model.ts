@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AvatarSession, ProviderName, ProviderStatus } from '../../shared/api/types'
 import * as avatarApi from './api'
 import type { ProviderWire } from './api'
 import { capabilityNames } from './capabilities'
 
 const providerOrder: ProviderName[] = ['mock', 'aliyun', 'mofa', 'iflytek', 'fay']
+const preferredRuntimeOrder: ProviderName[] = ['mofa', 'aliyun', 'iflytek', 'fay', 'mock']
 const providerLabels: Record<string, string> = {
   mock: 'Mock Runtime',
   aliyun: '阿里云数字人',
@@ -25,6 +26,7 @@ function normalizeProviders(items: ProviderWire[]): ProviderStatus[] {
       description: item.description || item.detail,
       configured: item.configured ?? available,
       available,
+      default: item.default,
       capabilities,
       status,
     }
@@ -40,6 +42,7 @@ export function useAvatar() {
   const [providers, setProviders] = useState<ProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<ProviderName>('mock')
   const [session, setSession] = useState<AvatarSession | null>(null)
+  const selectionInitializedRef = useRef(false)
   const [isLoading, setLoading] = useState(true)
   const [isCreating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +54,13 @@ export function useAvatar() {
       const next = normalizeProviders(await avatarApi.listProviders())
       setProviders(next)
       if (next.length) {
-        setSelectedProvider((current) => next.some((provider) => provider.name === current) ? current : next[0].name)
+        setSelectedProvider((current) => {
+          if (selectionInitializedRef.current && next.some((provider) => provider.name === current && provider.available && provider.configured)) return current
+          const preferred = next.find((provider) => provider.default && provider.available && provider.configured)
+            ?? preferredRuntimeOrder.map((name) => next.find((provider) => provider.name === name && provider.available && provider.configured)).find(Boolean)
+          selectionInitializedRef.current = true
+          return preferred?.name ?? next[0].name
+        })
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Provider 列表加载失败')
@@ -69,6 +78,7 @@ export function useAvatar() {
       if (session) await avatarApi.closeSession(session.sessionId).catch(() => undefined)
       const next = await avatarApi.createSession(provider)
       setSession(next)
+      selectionInitializedRef.current = true
       setSelectedProvider(next.provider)
       return next
     } catch (cause) {
@@ -96,11 +106,16 @@ export function useAvatar() {
     [providers, selectedProvider],
   )
 
+  const chooseProvider = useCallback((provider: ProviderName) => {
+    selectionInitializedRef.current = true
+    setSelectedProvider(provider)
+  }, [])
+
   return {
     providers,
     selected,
     selectedProvider,
-    setSelectedProvider,
+    setSelectedProvider: chooseProvider,
     session,
     isLoading,
     isCreating,

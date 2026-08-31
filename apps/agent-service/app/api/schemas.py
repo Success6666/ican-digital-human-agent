@@ -14,6 +14,7 @@ class ProviderResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     provider: str
+    default: bool = False
     status: str
     configured: bool
     detail: str | None = None
