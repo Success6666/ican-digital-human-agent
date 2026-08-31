@@ -25,7 +25,7 @@ public class ConfigurationProxyController {
     @GetMapping
     public JsonNode view() {
         UserAccount current = authService.requireCurrentUser();
-        return agentGatewayClient.get("/internal/configuration", current.id(), current.username());
+        return agentGatewayClient.get("/internal/configuration", current.id(), current.username(), current.role());
     }
 
     @PatchMapping

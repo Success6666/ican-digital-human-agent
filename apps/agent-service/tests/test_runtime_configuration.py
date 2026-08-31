@@ -158,3 +158,48 @@ def test_vendor_configuration_is_editable_and_masked(tmp_path) -> None:
     restarted = build_container(_settings(configuration_path))
     assert restarted.settings.provider_enabled["aliyun"] is True
     assert restarted.settings.provider_enabled["iflytek"] is True
+
+
+def test_model_rag_and_observability_configuration_is_editable_and_persisted(tmp_path) -> None:
+    configuration_path = str(tmp_path / "runtime.json")
+    container = build_container(_settings(configuration_path))
+
+    with TestClient(create_app(container=container)) as client:
+        response = client.patch(
+            "/internal/configuration",
+            headers=_headers(),
+            json={
+                "llm": {
+                    "enabled": True,
+                    "provider": "openai-compatible",
+                    "baseUrl": "https://llm.example.test/v1",
+                    "apiKey": "llm-secret-value",
+                    "model": "qwen-plus",
+                    "temperature": 0.4,
+                    "maxTokens": 2048,
+                },
+                "embedding": {"provider": "hash-local", "model": "hash-256", "dimensions": 256},
+                "docling": {"enabled": False, "doOcr": False, "doTableStructure": True, "tableMode": "fast"},
+                "futureagi": {
+                    "enabled": True,
+                    "endpoint": "https://futureagi.example.test",
+                    "apiKey": "future-api-key",
+                    "secretKey": "future-secret-value",
+                    "project": "ican-test",
+                },
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["llm"]["configured"] is True
+        assert body["llm"]["apiKey"] == "已配置"
+        assert body["rag"]["enabled"] is False
+        assert body["futureagi"]["configured"] is True
+        assert "llm-secret-value" not in response.text
+        assert "future-secret-value" not in response.text
+
+    restarted = build_container(_settings(configuration_path))
+    configuration = restarted.configuration_service._configuration
+    assert configuration.llm.model == "qwen-plus"
+    assert configuration.docling.enabled is False
+    assert configuration.futureagi.project == "ican-test"

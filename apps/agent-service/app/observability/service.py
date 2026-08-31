@@ -191,6 +191,23 @@ class ObservabilityService(ObservabilityMarkerMixin):
         await _flush_pending_transport(self)
         await self.sink.flush()
 
+    async def reconfigure(self, configuration: Any) -> None:
+        """Swap the optional exporter without dropping the local trace buffer."""
+
+        from .futureagi import FutureAGIConfig, FutureAGISink
+
+        await self.sink.flush()
+        self.sink = FutureAGISink(
+            FutureAGIConfig(
+                enabled=bool(getattr(configuration, "enabled", False)),
+                api_key=getattr(configuration, "api_key", None) or None,
+                secret_key=getattr(configuration, "secret_key", None) or None,
+                project=getattr(configuration, "project", "ican-digital-human"),
+                endpoint=getattr(configuration, "endpoint", None) or None,
+            ),
+            fallback=self.local_sink,
+        )
+
     def _make_event(
         self,
         name: str,

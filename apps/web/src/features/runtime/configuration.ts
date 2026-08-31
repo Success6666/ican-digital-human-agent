@@ -56,6 +56,8 @@ export interface RuntimeConfiguration {
     apiSecret?: string
     detail?: string
   }
+  docling?: ConfigurationService
+  futureagi?: ConfigurationService
   [key: string]: unknown
 }
 
@@ -85,6 +87,40 @@ export interface RuntimeConfigurationPatch {
     appId?: string
     apiKey?: string
     apiSecret?: string
+  }
+  llm?: {
+    enabled?: boolean
+    provider?: string
+    baseUrl?: string
+    apiKey?: string
+    model?: string
+    temperature?: number
+    maxTokens?: number
+  }
+  embedding?: {
+    enabled?: boolean
+    provider?: string
+    baseUrl?: string
+    apiKey?: string
+    model?: string
+    dimensions?: number
+  }
+  docling?: {
+    enabled?: boolean
+    artifactsPath?: string
+    ocrBackend?: string
+    ocrLanguages?: string[]
+    doOcr?: boolean
+    doTableStructure?: boolean
+    tableMode?: string
+    maxConcurrency?: number
+  }
+  futureagi?: {
+    enabled?: boolean
+    endpoint?: string
+    apiKey?: string
+    secretKey?: string
+    project?: string
   }
 }
 

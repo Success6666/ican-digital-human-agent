@@ -17,6 +17,7 @@ from ..agent.tool_catalog import ProgressiveToolRouter, ToolRouter
 from ..avatar.registry import ProviderRegistry
 from ..domain.models import AgentResponse, ChatResult
 from ..domain.ports import SessionStore, ToolClient
+from ..llm.client import LlmClient
 from .builder import build_graph
 from .runtime_support import agent_latency as _agent_latency
 from .runtime_support import ensure_running as _ensure_running
@@ -47,6 +48,7 @@ class AgentGraphRuntime:
         performance: PerformancePlanner | None = None,
         provider_cancel_grace_seconds: float = 0.25,
         max_parallel_tools: int = 4,
+        llm_client: LlmClient | None = None,
     ) -> None:
         self._observer = observer
         self._sessions = sessions
@@ -66,6 +68,7 @@ class AgentGraphRuntime:
             performance=self._performance,
             provider_cancel_grace_seconds=provider_cancel_grace_seconds,
             max_parallel_tools=max_parallel_tools,
+            llm_client=llm_client,
         )
 
     async def invoke(

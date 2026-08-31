@@ -119,6 +119,52 @@ class IflytekConfigurationPatch(BaseModel):
     api_secret: str | None = Field(default=None, alias="apiSecret", max_length=256)
 
 
+class LlmConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    provider: str | None = Field(default=None, max_length=64)
+    base_url: str | None = Field(default=None, alias="baseUrl", max_length=512)
+    api_key: str | None = Field(default=None, alias="apiKey", max_length=512)
+    model: str | None = Field(default=None, max_length=128)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, alias="maxTokens", ge=64, le=16_384)
+
+
+class EmbeddingConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    provider: str | None = Field(default=None, max_length=64)
+    base_url: str | None = Field(default=None, alias="baseUrl", max_length=512)
+    api_key: str | None = Field(default=None, alias="apiKey", max_length=512)
+    model: str | None = Field(default=None, max_length=128)
+    dimensions: int | None = Field(default=None, ge=16, le=4096)
+
+
+class DoclingConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    artifacts_path: str | None = Field(default=None, alias="artifactsPath", max_length=512)
+    ocr_backend: str | None = Field(default=None, alias="ocrBackend", max_length=64)
+    ocr_languages: list[str] | None = Field(default=None, alias="ocrLanguages", min_length=1, max_length=16)
+    do_ocr: bool | None = Field(default=None, alias="doOcr")
+    do_table_structure: bool | None = Field(default=None, alias="doTableStructure")
+    table_mode: str | None = Field(default=None, alias="tableMode", pattern="^(fast|accurate)$")
+    max_concurrency: int | None = Field(default=None, alias="maxConcurrency", ge=1, le=8)
+
+
+class FutureAGIConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    endpoint: str | None = Field(default=None, max_length=512)
+    api_key: str | None = Field(default=None, alias="apiKey", max_length=512)
+    secret_key: str | None = Field(default=None, alias="secretKey", max_length=512)
+    project: str | None = Field(default=None, max_length=128)
+
+
 class ConfigurationPatch(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -127,10 +173,14 @@ class ConfigurationPatch(BaseModel):
     mofa: MofaConfigurationPatch | None = None
     aliyun: AliyunConfigurationPatch | None = None
     iflytek: IflytekConfigurationPatch | None = None
+    llm: LlmConfigurationPatch | None = None
+    embedding: EmbeddingConfigurationPatch | None = None
+    docling: DoclingConfigurationPatch | None = None
+    futureagi: FutureAGIConfigurationPatch | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "ConfigurationPatch":
-        if self.default_provider is None and self.session is None and self.mofa is None and self.aliyun is None and self.iflytek is None:
+        if self.default_provider is None and self.session is None and self.mofa is None and self.aliyun is None and self.iflytek is None and self.llm is None and self.embedding is None and self.docling is None and self.futureagi is None:
             raise ValueError("至少需要提交一项配置")
         if self.session is not None and self.session.ttl_seconds is None and self.session.cleanup_interval_seconds is None:
             raise ValueError("会话配置不能为空")
@@ -140,4 +190,7 @@ class ConfigurationPatch(BaseModel):
             raise ValueError("阿里云配置不能为空")
         if self.iflytek is not None and all(value is None for value in self.iflytek.model_dump().values()):
             raise ValueError("讯飞配置不能为空")
+        for name, value in (("LLM", self.llm), ("Embedding", self.embedding), ("Docling", self.docling), ("FutureAGI", self.futureagi)):
+            if value is not None and all(item is None for item in value.model_dump().values()):
+                raise ValueError(f"{name} 配置不能为空")
         return self

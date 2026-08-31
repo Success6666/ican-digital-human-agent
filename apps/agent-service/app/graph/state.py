@@ -27,6 +27,7 @@ class AgentGraphState(TypedDict, total=False):
     first_visible_latency_ms: float
     cancellation_latency_ms: float
     provider_error: str
+    llm_error: str
     reply: str
     error: str
     interrupted: bool

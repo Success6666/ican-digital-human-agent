@@ -40,6 +40,14 @@ public class AgentGatewayClient {
         return sendJson(request);
     }
 
+    public JsonNode get(String path, String userId, String userName, String userRole) {
+        HttpRequest request = baseRequest(path, userId, userName)
+                .header("X-User-Role", userRole)
+                .GET()
+                .build();
+        return sendJson(request);
+    }
+
     public JsonNode post(String path, JsonNode body, String userId, String userName) {
         HttpRequest request = baseRequest(path, userId, userName)
                 .POST(HttpRequest.BodyPublishers.ofString(write(body)))

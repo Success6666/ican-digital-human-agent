@@ -35,6 +35,10 @@ def _apply_environment(values: dict[str, str]) -> None:
             os.environ.pop(key, None)
 
 
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class MofaRuntimeConfiguration(BaseModel):
     """Server-owned Xingyun settings; secrets are never returned by the API."""
 
@@ -130,6 +134,158 @@ def apply_iflytek_environment(configuration: IflytekRuntimeConfiguration) -> Non
     )
 
 
+class LlmRuntimeConfiguration(BaseModel):
+    """OpenAI-compatible LLM settings kept on the server."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    provider: str = Field(default="openai-compatible", max_length=64)
+    base_url: str = Field(default="", max_length=512)
+    api_key: str = Field(default="", max_length=512)
+    model: str = Field(default="", max_length=128)
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=1024, ge=64, le=16_384)
+
+    @classmethod
+    def from_env(cls) -> "LlmRuntimeConfiguration":
+        return cls(
+            enabled=_truthy(os.getenv("LLM_ENABLED", "false")),
+            provider=os.getenv("LLM_PROVIDER", "openai-compatible").strip(),
+            base_url=os.getenv("LLM_BASE_URL", "").strip(),
+            api_key=os.getenv("LLM_API_KEY", "").strip(),
+            model=os.getenv("LLM_MODEL", "").strip(),
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.2")),
+            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "1024")),
+        )
+
+
+class EmbeddingRuntimeConfiguration(BaseModel):
+    """Embedding settings; hash-local remains the safe default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    provider: str = Field(default="hash-local", max_length=64)
+    base_url: str = Field(default="", max_length=512)
+    api_key: str = Field(default="", max_length=512)
+    model: str = Field(default="hash-256", max_length=128)
+    dimensions: int = Field(default=256, ge=16, le=4096)
+
+    @classmethod
+    def from_env(cls) -> "EmbeddingRuntimeConfiguration":
+        return cls(
+            enabled=_truthy(os.getenv("EMBEDDING_ENABLED", "true")),
+            provider=os.getenv("EMBEDDING_PROVIDER", "hash-local").strip(),
+            base_url=os.getenv("EMBEDDING_BASE_URL", "").strip(),
+            api_key=os.getenv("EMBEDDING_API_KEY", "").strip(),
+            model=os.getenv("EMBEDDING_MODEL", "hash-256").strip(),
+            dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "256")),
+        )
+
+
+class FutureAGIRuntimeConfiguration(BaseModel):
+    """FutureAGI export settings with masked secrets in the API view."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    endpoint: str = Field(default="", max_length=512)
+    api_key: str = Field(default="", max_length=512)
+    secret_key: str = Field(default="", max_length=512)
+    project: str = Field(default="ican-digital-human", max_length=128)
+
+    @classmethod
+    def from_env(cls) -> "FutureAGIRuntimeConfiguration":
+        return cls(
+            enabled=_truthy(os.getenv("FUTUREAGI_ENABLED", "false")),
+            endpoint=os.getenv("FUTUREAGI_ENDPOINT", "").strip(),
+            api_key=os.getenv("FUTUREAGI_API_KEY", "").strip(),
+            secret_key=os.getenv("FUTUREAGI_SECRET_KEY", "").strip(),
+            project=os.getenv("FUTUREAGI_PROJECT", "ican-digital-human").strip(),
+        )
+
+
+class DoclingRuntimeConfiguration(BaseModel):
+    """Persisted controls for the local Docling parser."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    artifacts_path: str = Field(default="", max_length=512)
+    ocr_backend: str = Field(default="onnxruntime", max_length=64)
+    ocr_languages: list[str] = Field(default_factory=lambda: ["chinese"], min_length=1, max_length=16)
+    do_ocr: bool = True
+    do_table_structure: bool = True
+    table_mode: str = Field(default="accurate", pattern="^(fast|accurate)$")
+    max_concurrency: int = Field(default=1, ge=1, le=8)
+
+    @classmethod
+    def from_env(cls) -> "DoclingRuntimeConfiguration":
+        languages = [item.strip() for item in os.getenv("DOCLING_OCR_LANG", "chinese").split(",") if item.strip()]
+        return cls(
+            enabled=_truthy(os.getenv("DOCLING_ENABLED", "true")),
+            artifacts_path=os.getenv("DOCLING_ARTIFACTS_PATH", "").strip(),
+            ocr_backend=os.getenv("DOCLING_OCR_BACKEND", "onnxruntime").strip(),
+            ocr_languages=languages or ["chinese"],
+            do_ocr=_truthy(os.getenv("DOCLING_DO_OCR", "true")),
+            do_table_structure=_truthy(os.getenv("DOCLING_DO_TABLE_STRUCTURE", "true")),
+            table_mode=os.getenv("DOCLING_TABLE_MODE", "accurate").strip(),
+            max_concurrency=int(os.getenv("DOCLING_MAX_CONCURRENCY", "1")),
+        )
+
+
+def apply_llm_environment(configuration: LlmRuntimeConfiguration) -> None:
+    _apply_environment(
+        {
+            "LLM_PROVIDER": configuration.provider,
+            "LLM_BASE_URL": configuration.base_url,
+            "LLM_API_KEY": configuration.api_key,
+            "LLM_MODEL": configuration.model,
+            "LLM_TEMPERATURE": str(configuration.temperature),
+            "LLM_MAX_TOKENS": str(configuration.max_tokens),
+        },
+    )
+
+
+def apply_embedding_environment(configuration: EmbeddingRuntimeConfiguration) -> None:
+    _apply_environment(
+        {
+            "EMBEDDING_PROVIDER": configuration.provider,
+            "EMBEDDING_BASE_URL": configuration.base_url,
+            "EMBEDDING_API_KEY": configuration.api_key,
+            "EMBEDDING_MODEL": configuration.model,
+            "EMBEDDING_DIMENSIONS": str(configuration.dimensions),
+        },
+    )
+
+
+def apply_futureagi_environment(configuration: FutureAGIRuntimeConfiguration) -> None:
+    _apply_environment(
+        {
+            "FUTUREAGI_ENDPOINT": configuration.endpoint,
+            "FUTUREAGI_API_KEY": configuration.api_key,
+            "FUTUREAGI_SECRET_KEY": configuration.secret_key,
+            "FUTUREAGI_PROJECT": configuration.project,
+        },
+    )
+
+
+def apply_docling_environment(configuration: DoclingRuntimeConfiguration) -> None:
+    _apply_environment(
+        {
+            "DOCLING_ARTIFACTS_PATH": configuration.artifacts_path,
+            "DOCLING_OCR_BACKEND": configuration.ocr_backend,
+            "DOCLING_OCR_LANG": ",".join(configuration.ocr_languages),
+            "DOCLING_TABLE_MODE": configuration.table_mode,
+            "DOCLING_MAX_CONCURRENCY": str(configuration.max_concurrency),
+        },
+    )
+    os.environ["DOCLING_ENABLED"] = "true" if configuration.enabled else "false"
+    os.environ["DOCLING_DO_OCR"] = "true" if configuration.do_ocr else "false"
+    os.environ["DOCLING_DO_TABLE_STRUCTURE"] = "true" if configuration.do_table_structure else "false"
+
+
 class RuntimeConfiguration(BaseModel):
     """The small set of settings that can be changed without secrets."""
 
@@ -141,6 +297,10 @@ class RuntimeConfiguration(BaseModel):
     mofa: "MofaRuntimeConfiguration" = Field(default_factory=lambda: MofaRuntimeConfiguration())
     aliyun: "AliyunRuntimeConfiguration" = Field(default_factory=lambda: AliyunRuntimeConfiguration())
     iflytek: "IflytekRuntimeConfiguration" = Field(default_factory=lambda: IflytekRuntimeConfiguration())
+    llm: "LlmRuntimeConfiguration" = Field(default_factory=lambda: LlmRuntimeConfiguration())
+    embedding: "EmbeddingRuntimeConfiguration" = Field(default_factory=lambda: EmbeddingRuntimeConfiguration())
+    docling: "DoclingRuntimeConfiguration" = Field(default_factory=lambda: DoclingRuntimeConfiguration())
+    futureagi: "FutureAGIRuntimeConfiguration" = Field(default_factory=lambda: FutureAGIRuntimeConfiguration())
 
     @classmethod
     def from_settings(cls, settings: Any) -> "RuntimeConfiguration":
@@ -151,6 +311,10 @@ class RuntimeConfiguration(BaseModel):
             mofa=MofaRuntimeConfiguration.from_env(),
             aliyun=AliyunRuntimeConfiguration.from_env(),
             iflytek=IflytekRuntimeConfiguration.from_env(),
+            llm=LlmRuntimeConfiguration.from_env(),
+            embedding=EmbeddingRuntimeConfiguration.from_env(),
+            docling=DoclingRuntimeConfiguration.from_env(),
+            futureagi=FutureAGIRuntimeConfiguration.from_env(),
         )
 
 
@@ -202,4 +366,12 @@ __all__ = [
     "apply_aliyun_environment",
     "apply_iflytek_environment",
     "apply_mofa_environment",
+    "DoclingRuntimeConfiguration",
+    "EmbeddingRuntimeConfiguration",
+    "FutureAGIRuntimeConfiguration",
+    "LlmRuntimeConfiguration",
+    "apply_docling_environment",
+    "apply_embedding_environment",
+    "apply_futureagi_environment",
+    "apply_llm_environment",
 ]

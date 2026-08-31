@@ -129,6 +129,16 @@ class DoclingParser:
             self._converter = None
             self._converter_error = None
 
+    def reconfigure(self, config: DoclingRuntimeConfig) -> None:
+        """Apply a new parser policy and force lazy converter reconstruction."""
+
+        config.__post_init__()
+        with self._lock:
+            self.config = config
+            self._converter = None
+            self._converter_error = None
+            self._conversion_slots = threading.BoundedSemaphore(config.max_concurrency)
+
     def parse(
         self,
         payload: bytes,

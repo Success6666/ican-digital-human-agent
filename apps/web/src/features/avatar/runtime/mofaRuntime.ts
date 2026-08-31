@@ -106,7 +106,10 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const clean = text.trim()
     if (!clean || !this.avatar) return
     this.status?.({ phase: 'speaking', message: '数字人正在表达' })
-    await this.avatar.speak(toSsml(clean), true, true, {})
+    // Xingyun's browser SDK accepts plain text for its TTS queue. SSML is not
+    // consistently supported across SDK versions and can leave the canvas in
+    // an idle/static state without surfacing a useful error.
+    await this.avatar.speak(clean, true, true, {})
     this.status?.({ phase: 'ready', message: '数字人已连接' })
   }
 
@@ -142,11 +145,6 @@ function requiredConfig(params: AvatarClientParams) {
 function ensureContainerId(host: HTMLElement): string {
   if (!host.id) host.id = `mofa-avatar-${crypto.randomUUID()}`
   return host.id
-}
-
-function toSsml(text: string): string {
-  const escaped = text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char] ?? char)
-  return `<speak><prosody rate="medium" pitch="medium" volume="medium">${escaped}</prosody></speak>`
 }
 
 function sdkMessage(value: unknown): string {

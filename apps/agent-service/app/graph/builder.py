@@ -17,6 +17,7 @@ from ..avatar.registry import ProviderRegistry
 from ..avatar.presentation import PresentationLayer, ProviderRuntime
 from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
+from ..llm.client import LlmClient
 from ..rag.models import SearchRequest
 from .concurrency import bounded_map
 from .builder_support import attrs as _attrs
@@ -43,6 +44,7 @@ def build_graph(
     performance: PerformancePlanner | None = None,
     provider_cancel_grace_seconds: float = 0.25,
     max_parallel_tools: int = 4,
+    llm_client: LlmClient | None = None,
 ):
     """Return a compiled graph with all external decisions injected.
 
@@ -187,8 +189,8 @@ def build_graph(
             return {"reply": safe_refusal()}
         if state.get("interrupted") or await _stopped(sessions, state):
             return {"reply": "请求已打断。", "interrupted": True}
-        segments = [f"已收到：{state['message']}"]
         hits = state.get("rag_hits", [])
+        context_texts: list[str] = []
         if hits:
             references = []
             for item in hits[:3]:
@@ -196,11 +198,20 @@ def build_graph(
                 text = str(chunk.get("text", "")).strip().replace("\n", " ")
                 if text:
                     references.append(f"- {text[:180]}")
+                    context_texts.append(text[:180])
             if references:
-                segments.append("参考资料：\n" + "\n".join(references))
+                context_texts = context_texts[:3]
         decision = _decision(state)
         if decision is not None and decision.is_control:
-            segments = ["好的，我先停下来。"]
+            return {"reply": "好的，我先停下来。"}
+        if llm_client is not None and getattr(llm_client, "enabled", False):
+            try:
+                return {"reply": await llm_client.complete(message=state["message"], context=context_texts)}
+            except Exception as exc:
+                return {"reply": f"已收到：{state['message']}\n\n当前模型暂不可用，已切换安全回退。", "llm_error": _safe_error(exc)}
+        segments = [f"已收到：{state['message']}"]
+        if context_texts:
+            segments.append("参考资料：\n" + "\n".join(f"- {item}" for item in context_texts))
         segments.append("MCP 探针：已完成")
         return {"reply": "\n\n".join(segments)}
 

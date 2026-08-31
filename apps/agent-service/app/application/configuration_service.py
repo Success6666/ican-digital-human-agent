@@ -7,6 +7,7 @@ from typing import Any
 
 from ..observability.service import ObservabilityService
 from ..rag.service import RagService
+from ..rag.docling_parser import DoclingRuntimeConfig
 from ..avatar.registry import ProviderRegistry
 from ..settings import Settings
 from ..infrastructure.runtime_configuration import (
@@ -15,6 +16,16 @@ from ..infrastructure.runtime_configuration import (
     apply_aliyun_environment,
     apply_iflytek_environment,
     apply_mofa_environment,
+    apply_docling_environment,
+    apply_embedding_environment,
+    apply_futureagi_environment,
+    apply_llm_environment,
+)
+from ..infrastructure.runtime_configuration import (
+    DoclingRuntimeConfiguration,
+    EmbeddingRuntimeConfiguration,
+    FutureAGIRuntimeConfiguration,
+    LlmRuntimeConfiguration,
 )
 
 
@@ -30,6 +41,7 @@ class ConfigurationApplicationService:
         cleanup: Any,
         repository: RuntimeConfigurationRepository,
         initial_configuration: RuntimeConfiguration | None = None,
+        llm: Any | None = None,
     ) -> None:
         self.settings = settings
         self.providers = providers
@@ -39,6 +51,7 @@ class ConfigurationApplicationService:
         self.cleanup = cleanup
         self.repository = repository
         self._configuration = initial_configuration or repository.load(settings)
+        self.llm = llm
         self._update_lock = asyncio.Lock()
 
     async def view(self) -> dict[str, Any]:
@@ -53,24 +66,24 @@ class ConfigurationApplicationService:
                 "cleanupIntervalSeconds": configuration.cleanup_interval_seconds,
             },
             "llm": {
-                "mode": "deterministic-fallback",
-                "configured": False,
-                "detail": "未配置业务模型，当前使用可验收的确定性响应器",
+                **_llm_view(configuration.llm),
             },
             "embedding": {
-                "provider": "hash-local",
-                "configured": True,
-                "detail": "本地特征哈希向量，后续可替换为远程 Embedding 服务",
+                **_embedding_view(configuration.embedding),
             },
             "rag": {
                 "parser": "Docling",
                 "storage": "SQLite 持久化向量索引",
-                "enabled": bool(getattr(parser, "enabled", True)),
+                "enabled": configuration.docling.enabled,
                 "artifactsConfigured": bool(getattr(parser, "artifacts_path", None)),
-                "ocrBackend": getattr(parser, "ocr_backend", "auto"),
-                "ocrLanguages": list(getattr(parser, "ocr_languages", ())),
-                "tableMode": getattr(parser, "table_mode", "accurate"),
-                "localModels": _docling_models(parser),
+                "artifactsPath": configuration.docling.artifacts_path,
+                "ocrBackend": configuration.docling.ocr_backend,
+                "ocrLanguages": list(configuration.docling.ocr_languages),
+                "tableMode": configuration.docling.table_mode,
+                "localModels": _docling_models(configuration.docling),
+                "doOcr": configuration.docling.do_ocr,
+                "doTableStructure": configuration.docling.do_table_structure,
+                "maxConcurrency": configuration.docling.max_concurrency,
                 "maxDocumentBytes": self.settings.rag_max_document_bytes,
                 "maxMetadataBytes": self.settings.rag_max_metadata_bytes,
                 "maxMetadataItems": self.settings.rag_max_metadata_items,
@@ -83,6 +96,7 @@ class ConfigurationApplicationService:
                 "localFallback": self.settings.mcp_allow_local_fallback,
             },
             "observability": self.observability.health().model_dump(mode="json"),
+            "futureagi": _futureagi_view(configuration.futureagi),
             "mofa": _mofa_view(configuration.mofa),
             "aliyun": _aliyun_view(configuration.aliyun),
             "iflytek": _iflytek_view(configuration.iflytek),
@@ -109,6 +123,32 @@ class ConfigurationApplicationService:
                 "iflytek.appId",
                 "iflytek.apiKey",
                 "iflytek.apiSecret",
+                "llm.enabled",
+                "llm.provider",
+                "llm.baseUrl",
+                "llm.apiKey",
+                "llm.model",
+                "llm.temperature",
+                "llm.maxTokens",
+                "embedding.enabled",
+                "embedding.provider",
+                "embedding.baseUrl",
+                "embedding.apiKey",
+                "embedding.model",
+                "embedding.dimensions",
+                "docling.enabled",
+                "docling.artifactsPath",
+                "docling.ocrBackend",
+                "docling.ocrLanguages",
+                "docling.doOcr",
+                "docling.doTableStructure",
+                "docling.tableMode",
+                "docling.maxConcurrency",
+                "futureagi.enabled",
+                "futureagi.endpoint",
+                "futureagi.apiKey",
+                "futureagi.secretKey",
+                "futureagi.project",
             ],
         }
 
@@ -133,16 +173,30 @@ class ConfigurationApplicationService:
             if payload.iflytek is not None:
                 current_iflytek = current.iflytek
                 changes["iflytek"] = current_iflytek.model_copy(update=payload.iflytek.model_dump(exclude_none=True, by_alias=False))
+            for name in ("llm", "embedding", "docling", "futureagi"):
+                patch_value = getattr(payload, name, None)
+                if patch_value is not None:
+                    current_value = getattr(current, name)
+                    changes[name] = current_value.model_copy(update=patch_value.model_dump(exclude_none=True, by_alias=False))
             next_configuration = current.model_copy(update=changes)
 
             _validate_provider_credentials(next_configuration)
 
-            if next_configuration.default_provider not in self.providers.names():
-                raise ValueError(f"未找到 Provider {next_configuration.default_provider}")
-            provider = self.providers.get(next_configuration.default_provider)
-            health = await provider.health()
-            if not health.configured or health.status in {"unavailable", "error"}:
-                raise ValueError(f"Provider {next_configuration.default_provider} 当前不可用")
+            apply_mofa_environment(next_configuration.mofa)
+            apply_aliyun_environment(next_configuration.aliyun)
+            apply_iflytek_environment(next_configuration.iflytek)
+            for name, enabled in (("mofa", next_configuration.mofa.enabled), ("aliyun", next_configuration.aliyun.enabled), ("iflytek", next_configuration.iflytek.enabled)):
+                provider_instance = self.providers.get(name)
+                if hasattr(provider_instance, "enabled"):
+                    provider_instance.enabled = enabled
+
+            if _provider_change_requested(payload):
+                if next_configuration.default_provider not in self.providers.names():
+                    raise ValueError(f"未找到 Provider {next_configuration.default_provider}")
+                provider = self.providers.get(next_configuration.default_provider)
+                health = await provider.health()
+                if not health.configured or health.status in {"unavailable", "error"}:
+                    raise ValueError(f"Provider {next_configuration.default_provider} 当前不可用")
 
             self.repository.save(next_configuration)
             self._configuration = next_configuration
@@ -154,31 +208,30 @@ class ConfigurationApplicationService:
             self.store.idle_timeout_seconds = next_configuration.session_ttl_seconds
             self.cleanup.interval_seconds = next_configuration.cleanup_interval_seconds
             self.providers.set_session_ttl(next_configuration.session_ttl_seconds)
-            apply_mofa_environment(next_configuration.mofa)
-            apply_aliyun_environment(next_configuration.aliyun)
-            apply_iflytek_environment(next_configuration.iflytek)
-            mofa_provider = self.providers.get("mofa")
-            if hasattr(mofa_provider, "enabled"):
-                mofa_provider.enabled = next_configuration.mofa.enabled
-            for name, enabled in (("aliyun", next_configuration.aliyun.enabled), ("iflytek", next_configuration.iflytek.enabled)):
-                provider_instance = self.providers.get(name)
-                if hasattr(provider_instance, "enabled"):
-                    provider_instance.enabled = enabled
+            apply_llm_environment(next_configuration.llm)
+            apply_embedding_environment(next_configuration.embedding)
+            apply_docling_environment(next_configuration.docling)
+            apply_futureagi_environment(next_configuration.futureagi)
+            if self.llm is not None and hasattr(self.llm, "reconfigure"):
+                self.llm.reconfigure(enabled=next_configuration.llm.enabled, base_url=next_configuration.llm.base_url, api_key=next_configuration.llm.api_key, model=next_configuration.llm.model, temperature=next_configuration.llm.temperature, max_tokens=next_configuration.llm.max_tokens)
+            _reconfigure_parser(self.rag, next_configuration.docling)
+            _reconfigure_embedder(self.rag, next_configuration.embedding)
+            await self.observability.reconfigure(next_configuration.futureagi)
             return await self.view()
 
 
-def _docling_models(parser: Any) -> list[str]:
+def _docling_models(configuration: Any) -> list[str]:
     """Return a human-readable list of the enabled local parsing models."""
 
-    if parser is None or not getattr(parser, "enabled", True):
+    if configuration is None or not getattr(configuration, "enabled", True):
         return ["未启用本地 Docling 模型"]
     models = ["Layout Heron"]
-    if getattr(parser, "do_table_structure", True):
-        mode = "accurate" if getattr(parser, "table_mode", "accurate") == "accurate" else "fast"
+    if getattr(configuration, "do_table_structure", True):
+        mode = "accurate" if getattr(configuration, "table_mode", "accurate") == "accurate" else "fast"
         models.append(f"TableFormer（{mode}）")
-    if getattr(parser, "do_ocr", True):
-        backend = str(getattr(parser, "ocr_backend", "onnxruntime")).upper()
-        languages = "、".join(getattr(parser, "ocr_languages", ())) or "默认语言"
+    if getattr(configuration, "do_ocr", True):
+        backend = str(getattr(configuration, "ocr_backend", "onnxruntime")).upper()
+        languages = "、".join(getattr(configuration, "ocr_languages", ())) or "默认语言"
         models.append(f"RapidOCR / {backend}（{languages}）")
     return models
 
@@ -238,6 +291,40 @@ def _mask(value: str) -> str:
     if len(value) <= 8:
         return "••••••••"
     return f"{value[:4]}••••{value[-4:]}"
+
+
+def _llm_view(configuration: LlmRuntimeConfiguration) -> dict[str, Any]:
+    configured = bool(configuration.enabled and configuration.base_url and configuration.api_key and configuration.model)
+    return {"enabled": configuration.enabled, "provider": configuration.provider, "configured": configured, "baseUrl": configuration.base_url, "apiKey": "已配置" if configuration.api_key else "未配置", "model": configuration.model or "未配置", "temperature": configuration.temperature, "maxTokens": configuration.max_tokens, "mode": "openai-compatible" if configured else "deterministic-fallback", "detail": "已启用 OpenAI 兼容模型" if configured else "未启用业务模型，当前使用确定性回退"}
+
+
+def _embedding_view(configuration: EmbeddingRuntimeConfiguration) -> dict[str, Any]:
+    remote = configuration.provider.casefold() in {"openai", "openai-compatible", "compatible"} and bool(configuration.base_url and configuration.api_key and configuration.model)
+    return {"enabled": configuration.enabled, "provider": configuration.provider, "configured": bool(configuration.enabled and (remote or configuration.provider == "hash-local")), "baseUrl": configuration.base_url, "apiKey": "已配置" if configuration.api_key else "未配置", "model": configuration.model, "dimensions": configuration.dimensions, "detail": "OpenAI 兼容 Embedding" if remote else "本地特征哈希向量"}
+
+
+def _futureagi_view(configuration: FutureAGIRuntimeConfiguration) -> dict[str, Any]:
+    configured = bool(configuration.enabled and configuration.api_key and configuration.secret_key)
+    return {"enabled": configuration.enabled, "configured": configured, "endpoint": configuration.endpoint or "默认端点", "apiKey": "已配置" if configuration.api_key else "未配置", "secretKey": "已配置" if configuration.secret_key else "未配置", "project": configuration.project, "detail": "FutureAGI 实时遥测已启用" if configured else "未启用，使用本地缓冲"}
+
+
+def _provider_change_requested(payload: Any) -> bool:
+    return payload.default_provider is not None or any(getattr(payload, name, None) is not None for name in ("mofa", "aliyun", "iflytek"))
+
+
+def _reconfigure_parser(rag: RagService, configuration: DoclingRuntimeConfiguration) -> None:
+    parser = getattr(rag, "parser", None)
+    if parser is None or not hasattr(parser, "reconfigure"):
+        return
+    parser.reconfigure(DoclingRuntimeConfig(**configuration.model_dump()))
+
+
+def _reconfigure_embedder(rag: RagService, configuration: EmbeddingRuntimeConfiguration) -> None:
+    store = getattr(rag, "store", None)
+    if store is None or not hasattr(store, "embedder"):
+        return
+    from ..rag.embeddings import build_embedding_provider
+    store.embedder = build_embedding_provider(provider=configuration.provider, base_url=configuration.base_url, api_key=configuration.api_key, model=configuration.model, dimensions=configuration.dimensions)
 
 
 def _validate_provider_credentials(configuration: RuntimeConfiguration) -> None:

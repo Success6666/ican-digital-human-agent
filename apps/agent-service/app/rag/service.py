@@ -14,6 +14,7 @@ from uuid import uuid4
 from .chunker import CharacterChunker
 from .docling_parser import DoclingParser
 from .docling_parser import DoclingRuntimeConfig
+from .embeddings import build_embedding_provider
 from .limits import (
     DEFAULT_MAX_METADATA_BYTES,
     DEFAULT_MAX_METADATA_DEPTH,
@@ -218,6 +219,11 @@ def build_default_rag_service(
     parse_concurrency: int | None = None,
     docling_max_concurrency: int | None = None,
     store_path: str | None = None,
+    embedding_provider: str | None = None,
+    embedding_base_url: str | None = None,
+    embedding_api_key: str | None = None,
+    embedding_model: str | None = None,
+    embedding_dimensions: int | None = None,
 ) -> RagService:
     max_chars = _positive_int(os.getenv("RAG_CHUNK_MAX_CHARS"), 1200)
     overlap = _nonnegative_int(os.getenv("RAG_CHUNK_OVERLAP_CHARS"), 120)
@@ -248,8 +254,16 @@ def build_default_rag_service(
     docling_config = DoclingRuntimeConfig.from_env()
     if docling_max_concurrency is not None:
         docling_config = replace(docling_config, max_concurrency=docling_max_concurrency)
+    embedder = build_embedding_provider(
+        provider=embedding_provider or os.getenv("EMBEDDING_PROVIDER", "hash-local"),
+        base_url=embedding_base_url or os.getenv("EMBEDDING_BASE_URL", ""),
+        api_key=embedding_api_key or os.getenv("EMBEDDING_API_KEY", ""),
+        model=embedding_model or os.getenv("EMBEDDING_MODEL", "hash-256"),
+        dimensions=embedding_dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "256")),
+    )
     vector_store = SqliteVectorStore(
         store_path or os.getenv("RAG_STORE_PATH", "data/rag.sqlite3"),
+        embedder=embedder,
         max_chunks=max_chunks,
     )
     return RagService(

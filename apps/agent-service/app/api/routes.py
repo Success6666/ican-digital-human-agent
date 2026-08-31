@@ -31,7 +31,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.12")
+    return HealthResponse(service=container.settings.service_name, version="0.1.14")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -73,7 +73,7 @@ async def update_configuration(
     try:
         return await get_container(request).configuration_service.update(payload)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.post("/internal/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)

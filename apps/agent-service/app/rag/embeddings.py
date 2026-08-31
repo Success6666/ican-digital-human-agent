@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from collections.abc import Sequence
+from urllib.request import Request, urlopen
 
 
 _TOKEN_RE = re.compile(r"[\w]+|[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", re.UNICODE)
@@ -38,3 +40,38 @@ class HashEmbeddingProvider:
         if norm:
             vector = [value / norm for value in vector]
         return vector
+
+
+class OpenAICompatibleEmbeddingProvider:
+    """Synchronous OpenAI-compatible embedding adapter executed off-loop."""
+
+    def __init__(self, *, base_url: str, api_key: str, model: str, dimensions: int = 1536, timeout_seconds: float = 8.0) -> None:
+        if not base_url or not api_key or not model:
+            raise ValueError("base_url, api_key and model are required")
+        if dimensions < 16:
+            raise ValueError("dimensions must be at least 16")
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.dimensions = dimensions
+        self.timeout_seconds = timeout_seconds
+
+    def embed(self, text: str) -> Sequence[float]:
+        request = Request(
+            f"{self.base_url}/embeddings",
+            data=json.dumps({"model": self.model, "input": text}).encode("utf-8"),
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - URL is operator config, not user input.
+            payload = json.loads(response.read().decode("utf-8"))
+        values = payload.get("data", [{}])[0].get("embedding") if isinstance(payload, dict) else None
+        if not isinstance(values, list) or not values:
+            raise RuntimeError("embedding service returned no vector")
+        return [float(value) for value in values]
+
+
+def build_embedding_provider(*, provider: str, base_url: str, api_key: str, model: str, dimensions: int):
+    if provider.casefold() in {"openai", "openai-compatible", "compatible"} and base_url and api_key and model:
+        return OpenAICompatibleEmbeddingProvider(base_url=base_url, api_key=api_key, model=model, dimensions=dimensions)
+    return HashEmbeddingProvider(dimensions=dimensions)

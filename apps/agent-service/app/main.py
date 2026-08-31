@@ -24,9 +24,14 @@ from .infrastructure.runtime_configuration import (
     apply_aliyun_environment,
     apply_iflytek_environment,
     apply_mofa_environment,
+    apply_docling_environment,
+    apply_embedding_environment,
+    apply_futureagi_environment,
+    apply_llm_environment,
 )
 from .mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from .mcp.limits import ToolResultLimiter
+from .llm.client import OpenAICompatibleLlm
 from .observability.service import ObservabilityService, build_default_observability
 from .rag.service import RagService, build_default_rag_service
 from .realtime.limits import RealtimeLimits
@@ -45,6 +50,7 @@ class ServiceContainer:
     rag: RagService
     observability: ObservabilityService
     graph: AgentGraphRuntime
+    llm: OpenAICompatibleLlm
     chat_service: ChatApplicationService
     configuration_service: ConfigurationApplicationService
     evaluation: EvaluationService
@@ -64,6 +70,10 @@ def build_container(
     apply_aliyun_environment(persisted.aliyun)
     apply_mofa_environment(persisted.mofa)
     apply_iflytek_environment(persisted.iflytek)
+    apply_llm_environment(persisted.llm)
+    apply_embedding_environment(persisted.embedding)
+    apply_docling_environment(persisted.docling)
+    apply_futureagi_environment(persisted.futureagi)
     settings.provider_enabled["aliyun"] = persisted.aliyun.enabled
     settings.provider_enabled["mofa"] = persisted.mofa.enabled
     settings.provider_enabled["iflytek"] = persisted.iflytek.enabled
@@ -98,6 +108,11 @@ def build_container(
         parse_concurrency=settings.rag_parse_concurrency,
         docling_max_concurrency=settings.docling_max_concurrency,
         store_path=settings.rag_store_path,
+        embedding_provider=persisted.embedding.provider,
+        embedding_base_url=persisted.embedding.base_url,
+        embedding_api_key=persisted.embedding.api_key,
+        embedding_model=persisted.embedding.model,
+        embedding_dimensions=persisted.embedding.dimensions,
     )
     result_limiter = ToolResultLimiter(
         max_bytes=settings.mcp_max_result_bytes,
@@ -116,6 +131,14 @@ def build_container(
         remote_budget_seconds=settings.mcp_fast_path_timeout_seconds,
         result_limiter=result_limiter,
     )
+    llm = OpenAICompatibleLlm(
+        enabled=persisted.llm.enabled,
+        base_url=persisted.llm.base_url,
+        api_key=persisted.llm.api_key,
+        model=persisted.llm.model,
+        temperature=persisted.llm.temperature,
+        max_tokens=persisted.llm.max_tokens,
+    )
     graph = AgentGraphRuntime(
         tool_client=tool_client,
         providers=providers,
@@ -124,6 +147,7 @@ def build_container(
         observer=observability,
         provider_cancel_grace_seconds=settings.provider_cancel_grace_seconds,
         max_parallel_tools=settings.mcp_max_parallel_tools,
+        llm_client=llm,
     )
     evaluation = EvaluationService(
         max_runs=settings.evaluation_buffer_size,
@@ -147,6 +171,7 @@ def build_container(
         cleanup=cleanup,
         repository=repository,
         initial_configuration=persisted,
+        llm=llm,
     )
     return ServiceContainer(
         settings=settings,
@@ -158,6 +183,7 @@ def build_container(
         rag=rag,
         observability=observability,
         graph=graph,
+        llm=llm,
         chat_service=chat_service,
         configuration_service=configuration_service,
         evaluation=evaluation,
@@ -182,7 +208,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.12", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.14", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,
