@@ -85,7 +85,7 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
           {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
         {mobileOpen && <button className="console-nav-backdrop" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" />}
-        <main className="console-main">{children}</main>
+        <main className={`console-main ${activePage === 'home' ? 'console-main--home' : ''}`}>{children}</main>
       </div>
     </div>
   )

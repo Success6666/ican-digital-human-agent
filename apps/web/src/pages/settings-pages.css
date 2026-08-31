@@ -78,6 +78,7 @@ button.configuration-summary-card:not(:disabled):hover {
   padding: 18px;
   background: rgb(20 28 45 / 30%);
   backdrop-filter: blur(2px);
+  animation: dialog-backdrop-in .18s ease both;
 }
 .configuration-dialog {
   width: min(460px, 100%);
@@ -89,6 +90,17 @@ button.configuration-summary-card:not(:disabled):hover {
   border-radius: 8px;
   background: var(--surface);
   box-shadow: 0 22px 70px rgb(24 38 72 / 20%);
+  animation: dialog-panel-in .22s cubic-bezier(.22, .61, .36, 1) both;
+}
+
+@keyframes dialog-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-panel-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .configuration-dialog-header,
 .configuration-dialog-footer {

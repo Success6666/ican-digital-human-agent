@@ -1,8 +1,10 @@
 .home-page {
   height: 100%;
   min-height: 0;
-  margin: -24px -28px -34px;
+  margin: 0;
 }
+
+.console-main--home .home-page { height: 100%; margin: 0; }
 
 .home-reference-stage {
   position: relative;
@@ -35,12 +37,15 @@
 
 .avatar-runtime-host {
   position: absolute;
+  z-index: 1;
   inset: 0;
   height: 100% !important;
+  pointer-events: none;
 }
 
 .avatar-runtime-host canvas {
   display: block;
+  pointer-events: none;
 }
 
 .avatar-runtime-host .avatar-sdk-widget-container img {
@@ -52,7 +57,9 @@
 
 .avatar-runtime-shell {
   position: absolute;
+  z-index: 1;
   inset: 0;
+  pointer-events: none;
 }
 
 .avatar-runtime-overlay {
@@ -67,7 +74,10 @@
   color: #7892bc;
   background: rgba(237, 244, 255, .78);
   backdrop-filter: blur(3px);
+  pointer-events: none;
 }
+
+.avatar-runtime-overlay .avatar-stage-cta { pointer-events: auto; }
 
 .avatar-runtime-overlay strong {
   color: #5878ab;
@@ -160,7 +170,7 @@
   right: auto;
   bottom: clamp(56px, 12vh, 118px);
   left: 50%;
-  z-index: 3;
+  z-index: 20;
   width: min(680px, calc(100% - 48px));
   min-height: 58px;
   display: flex;
@@ -173,6 +183,7 @@
   box-shadow: 0 5px 10px rgba(72, 105, 164, .1);
   backdrop-filter: blur(10px);
   transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 .home-conversation-bar textarea {
@@ -229,7 +240,7 @@
   position: absolute;
   top: 20px;
   right: 20px;
-  z-index: 4;
+  z-index: 20;
   width: 40px;
   height: 40px;
   color: #5b79ad;
@@ -246,6 +257,7 @@
   inset: 0;
   border: 0;
   background: rgba(26, 45, 78, .2);
+  animation: conversation-backdrop-in .2s ease both;
 }
 
 .conversation-drawer {
@@ -261,6 +273,17 @@
   border-left: 1px solid var(--line);
   background: var(--surface);
   box-shadow: -8px 0 18px rgba(55, 82, 128, .12);
+  animation: conversation-drawer-in .24s cubic-bezier(.22, .61, .36, 1) both;
+}
+
+@keyframes conversation-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes conversation-drawer-in {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .conversation-drawer-head {
@@ -295,7 +318,7 @@
 @media (max-width: 820px) {
   .home-page,
   .home-reference-stage { height: 100%; min-height: 0; }
-  .home-page { margin: -18px -14px -24px; }
+  .home-page { margin: 0; }
   .home-conversation-bar { bottom: 42px; left: 50%; width: calc(100% - 28px); min-height: 56px; gap: 8px; padding: 0 10px; border-radius: 15px; }
   .home-conversation-bar textarea { font-size: 12px; }
   .home-voice-button { width: 40px; height: 40px; }
@@ -306,6 +329,10 @@
 
 @media (min-width: 821px) and (max-width: 1250px) {
   .home-page { margin-inline: -20px; }
+}
+
+@media (min-width: 821px) {
+  .console-main--home .home-page { margin: 0; }
 }
 
 @media (max-width: 480px) {

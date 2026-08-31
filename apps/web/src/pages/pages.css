@@ -17,7 +17,7 @@
 .console-topbar-actions { gap: 8px; margin-left: auto; }
 .console-mobile-menu { display: none; }
 .runtime-state { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 11px; }
-.console-body { --console-nav-width: 208px; position: relative; display: grid; grid-template-columns: var(--console-nav-width) minmax(0, 1fr); height: calc(100dvh - 64px); min-height: 0; }
+.console-body { --console-nav-width: 208px; position: relative; display: grid; grid-template-columns: var(--console-nav-width) minmax(0, 1fr); height: calc(100dvh - 64px); min-height: 0; transition: grid-template-columns .26s cubic-bezier(.22, .61, .36, 1); }
 .console-shell--collapsed .console-body { --console-nav-width: 72px; }
 .console-nav {
   position: relative;
@@ -29,6 +29,7 @@
   padding: 22px 14px 16px;
   border-right: 1px solid var(--line);
   background: var(--surface);
+  transition: padding .26s cubic-bezier(.22, .61, .36, 1), background-color .18s ease;
 }
 .console-collapse-rail { position: absolute; z-index: 4; top: 50%; left: calc(var(--console-nav-width) - 12px); width: 24px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink-muted); background: var(--surface); box-shadow: 0 2px 8px rgba(55, 82, 128, .1); transform: translateY(-50%); }
 .console-collapse-rail:hover { color: var(--brand); border-color: color-mix(in oklch, var(--brand) 32%, var(--line)); }
@@ -47,7 +48,7 @@
   color: var(--ink-muted);
   background: transparent;
   text-align: left;
-  transition: color .18s ease, background-color .18s ease, border-color .18s ease;
+  transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .26s cubic-bezier(.22, .61, .36, 1);
 }
 .console-nav-item:hover { color: var(--ink); background: var(--surface-muted); }
 .console-nav-item--active { color: var(--brand-strong); border-color: color-mix(in oklch, var(--brand) 12%, var(--line)); background: var(--brand-soft); }
@@ -68,6 +69,13 @@
 .console-notification { position: relative; }
 .console-notification i { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; border: 1px solid var(--surface); border-radius: 50%; background: var(--brand); }
 .console-main { min-width: 0; max-width: 1480px; width: 100%; height: 100%; padding: 24px 28px 34px; overflow-x: hidden; overflow-y: auto; }
+.console-main--home { padding: 0; overflow: hidden; }
+.console-main > .page-stack { animation: page-enter .24s cubic-bezier(.22, .61, .36, 1) both; }
+.console-main--home > .page-stack { height: 100%; margin: 0; }
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .console-nav-backdrop { display: none; }
 
 /* Page frame */
