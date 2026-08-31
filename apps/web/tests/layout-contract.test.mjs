@@ -14,7 +14,8 @@ test('console keeps navigation fixed while main content owns scrolling', () => {
 })
 
 test('desktop navigation uses the compact width contract', () => {
-  assert.match(css, /\.console-body\s*\{[^}]*grid-template-columns:\s*208px\s+minmax\(0,\s*1fr\)/)
-  assert.match(css, /@media\s*\(max-width:\s*1020px\)[\s\S]*grid-template-columns:\s*192px\s+minmax\(0,\s*1fr\)/)
+  assert.match(css, /\.console-body\s*\{[^}]*--console-nav-width:\s*208px[^}]*grid-template-columns:\s+var\(--console-nav-width\)\s+minmax\(0,\s*1fr\)/)
+  assert.match(css, /@media\s*\(max-width:\s*1020px\)[\s\S]*--console-nav-width:\s*192px/)
   assert.match(css, /\.console-brand\s*\{[^}]*min-width:\s*198px/)
+  assert.match(css, /\.console-collapse-rail\s*\{[^}]*left:\s*calc\(var\(--console-nav-width\)\s*-\s*12px\)/)
 })

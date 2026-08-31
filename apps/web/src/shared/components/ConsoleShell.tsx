@@ -1,4 +1,4 @@
-import { Bell, Maximize2, Menu, MoreVertical, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
+import { Bell, ChevronLeft, ChevronRight, Maximize2, Menu, MoreVertical, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { User } from '../api/types'
 import { navigationForRole, type PageKey } from '../navigation'
@@ -67,11 +67,6 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
         <aside className="console-nav" aria-label="主导航">
           <button className="icon-button console-nav-close" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" title="关闭导航"><X size={17} /></button>
           <nav className="console-nav-list">
-            <div className="console-nav-toolbar">
-              <button className="icon-button console-collapse-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
-                {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-              </button>
-            </div>
             {visibleNavigation.map(({ key, label, shortLabel, icon: Icon }) => (
               <button key={key} className={`console-nav-item ${activePage === key ? 'console-nav-item--active' : ''}`} type="button" onClick={() => navigate(key)} title={collapsed ? label : undefined} aria-current={activePage === key ? 'page' : undefined}>
                 <Icon size={17} /><span className="console-nav-label">{collapsed ? shortLabel : label}</span>
@@ -86,6 +81,9 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
             </div>
           </div>
         </aside>
+        <button className="console-collapse-rail" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
+          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
         {mobileOpen && <button className="console-nav-backdrop" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" />}
         <main className="console-main">{children}</main>
       </div>

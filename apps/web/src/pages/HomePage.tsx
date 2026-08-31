@@ -55,7 +55,7 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}
         />
-        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
+        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
           <History size={18} />
         </button>

@@ -148,6 +148,10 @@ def build_graph(
         if plan is None:
             decision = _decision(state) or IntentDecision(name="unknown")
             plan = router.route(decision, message=state["message"])
+        # Keep disclosure visible, but skip avoidable network probes for short
+        # greetings and acknowledgements.
+        if _is_fast_path_message(state.get("message", ""), _decision(state)):
+            return {"tool_calls": [], "tool_plan": plan.model_dump(mode="json")}
         async def call_one(name: str) -> ToolCallRecord:
             if await _stopped(sessions, state):
                 return ToolCallRecord(name=name, error="run interrupted")
@@ -204,6 +208,9 @@ def build_graph(
         decision = _decision(state)
         if decision is not None and decision.is_control:
             return {"reply": "好的，我先停下来。"}
+        fast_reply = _fast_path_reply(state.get("message", ""), decision)
+        if fast_reply:
+            return {"reply": fast_reply}
         if llm_client is not None and getattr(llm_client, "enabled", False):
             try:
                 return {"reply": await llm_client.complete(message=state["message"], context=context_texts)}
@@ -294,3 +301,21 @@ def build_graph(
     graph.add_edge("respond", "provider")
     graph.add_edge("provider", END)
     return graph.compile()
+
+
+def _is_fast_path_message(message: str, decision: IntentDecision | None) -> bool:
+    text = "".join(str(message).strip().lower().split())
+    if not text or len(text) > 12:
+        return False
+    if decision is not None and decision.name not in {"chat", "unknown"}:
+        return False
+    return text in {"你好", "您好", "嗨", "在吗", "谢谢", "辛苦了"}
+
+
+def _fast_path_reply(message: str, decision: IntentDecision | None) -> str | None:
+    if not _is_fast_path_message(message, decision):
+        return None
+    text = "".join(str(message).strip().lower().split())
+    if text in {"谢谢", "辛苦了"}:
+        return "不客气，我在这里。"
+    return "你好，我在这里。请告诉我你想处理什么。"

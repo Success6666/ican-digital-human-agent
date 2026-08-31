@@ -30,6 +30,7 @@ Thumbs.db
 
 # Runtime artifacts
 *.log
+/data/
 apps/agent-service/data/
 tmp-docs/*.json
 tmp-docs/*.png

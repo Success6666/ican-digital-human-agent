@@ -1,11 +1,12 @@
 {
   "name": "digital-human-agent-web",
   "private": true,
-  "version": "0.1.18",
+  "version": "0.1.20",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:chat": "node --test tests/chat-link-contract.test.mjs",
     "test:realtime": "node --test tests/realtime-audio.test.mjs",
     "test:layout": "node --test tests/layout-contract.test.mjs",
     "preview": "vite preview"

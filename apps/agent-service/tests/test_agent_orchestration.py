@@ -18,6 +18,7 @@ from app.evaluation.models import EvaluationDimension
 from app.agent.performance import PerformancePlanner
 from app.agent.security import assess_prompt_injection, safe_refusal
 from app.agent.tool_catalog import ProgressiveToolRouter
+from app.graph.builder import _fast_path_reply, _is_fast_path_message
 from app.avatar.adapters.mock import MockProvider
 from app.avatar.registry import ProviderRegistry
 from app.application.session_service import SessionApplicationService
@@ -39,6 +40,13 @@ async def test_rule_intent_and_progressive_tool_route() -> None:
     assert "system_status" in plan.selected_tools
     assert "memory_search" not in plan.selected_tools
     assert plan.disclosure_level == "expanded"
+
+
+def test_short_greeting_uses_fast_path() -> None:
+    decision = IntentDecision(name=IntentName.UNKNOWN)
+    assert _is_fast_path_message("你好", decision) is True
+    assert _fast_path_reply("你好", decision) == "你好，我在这里。请告诉我你想处理什么。"
+    assert _is_fast_path_message("今天天气怎么样", decision) is False
 
 
 @pytest.mark.asyncio
