@@ -71,7 +71,8 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
       if (!finalText) return
       setDraft('')
       if (!session) {
-        if (!isCreating) onCreateSession(finalText)
+        if (isCreating) setDraft(finalText)
+        else onCreateSession(finalText)
       } else {
         onSend(finalText)
       }
