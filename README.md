@@ -73,7 +73,7 @@ npm run dev
 | GET | `/api/evaluation/runs` | 查看当前用户的评测运行 |
 | GET | `/api/observability/traces/{traceId}` | 脱敏 Trace 回放 |
 
-评测服务默认只保存有限条内存记录，价格通过 `EVAL_INPUT_PRICE_PER_1K`、`EVAL_OUTPUT_PRICE_PER_1K` 和 `EVAL_CURRENCY` 配置。后续可把存储替换为数据库或队列而不改变 HTTP 契约。
+评测服务默认只保存有限条内存记录，价格通过 `EVAL_INPUT_PRICE_PER_1K`、`EVAL_OUTPUT_PRICE_PER_1K` 和 `EVAL_CURRENCY` 配置。RAG 文档与向量默认持久化到 `RAG_STORE_PATH` 指向的 SQLite 文件，后续可替换为数据库或专业向量库而不改变 HTTP 契约。
 
 实时链路会分别记录服务端首事件、服务端首个可见事件、Agent、数字人和取消延迟，并在 Trace 回放与评测汇总中提供平均值及 p50/p95。首个可见事件以服务端写出首个可见 SSE 帧前的时间戳为准，不冒充浏览器实际绘制时间。FutureAGI 导出采用有界异步队列；`OBSERVABILITY_MAX_PENDING_TASKS` 和 `OBSERVABILITY_PENDING_FLUSH_TIMEOUT_SECONDS` 用于控制积压和关闭等待，队列满时保留本地记录并计入丢弃计数。
 

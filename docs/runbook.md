@@ -56,6 +56,8 @@ docker compose up --build
 TracerProvider，不修改进程全局 Provider；缺少任一凭证、依赖不可用或导出失败时，
 健康状态显示“本地缓冲”，事件继续保存在有界内存中。
 
+RAG 文档与向量默认写入 Agent 容器的 `/app/data/rag.sqlite3`，该路径由 `agent-runtime-config` 数据卷持久化。迁移或备份时需要同时保留该数据卷。
+
 ## 真实 Provider 开启顺序
 
 1. 在服务端注入密钥并确认日志脱敏。

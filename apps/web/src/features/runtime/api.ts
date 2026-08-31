@@ -3,6 +3,7 @@ import { api } from '../../shared/api/client'
 export interface RagHealthWire {
   status?: string
   documents?: number
+  storage?: string
   docling_available?: boolean | null
   doclingAvailable?: boolean | null
   [key: string]: unknown

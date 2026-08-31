@@ -20,7 +20,7 @@ from .limits import (
     DEFAULT_MAX_METADATA_ITEMS,
     MetadataLimits,
 )
-from .memory_store import InMemoryVectorStore
+from .sqlite_store import SqliteVectorStore
 from .models import (
     DocumentChunk,
     IngestRequest,
@@ -217,6 +217,7 @@ def build_default_rag_service(
     max_metadata_depth: int | None = None,
     parse_concurrency: int | None = None,
     docling_max_concurrency: int | None = None,
+    store_path: str | None = None,
 ) -> RagService:
     max_chars = _positive_int(os.getenv("RAG_CHUNK_MAX_CHARS"), 1200)
     overlap = _nonnegative_int(os.getenv("RAG_CHUNK_OVERLAP_CHARS"), 120)
@@ -247,10 +248,14 @@ def build_default_rag_service(
     docling_config = DoclingRuntimeConfig.from_env()
     if docling_max_concurrency is not None:
         docling_config = replace(docling_config, max_concurrency=docling_max_concurrency)
+    vector_store = SqliteVectorStore(
+        store_path or os.getenv("RAG_STORE_PATH", "data/rag.sqlite3"),
+        max_chunks=max_chunks,
+    )
     return RagService(
         parser=DoclingParser(strict_binary=strict_binary, config=docling_config),
         chunker=CharacterChunker(max_chars=max_chars, overlap_chars=overlap),
-        store=InMemoryVectorStore(max_chunks=max_chunks),
+        store=vector_store,
         observer=observer,
         max_document_bytes=document_limit,
         max_metadata_bytes=metadata_bytes_limit,

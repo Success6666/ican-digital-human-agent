@@ -64,6 +64,7 @@ class ConfigurationApplicationService:
             },
             "rag": {
                 "parser": "Docling",
+                "storage": "SQLite 持久化向量索引",
                 "enabled": bool(getattr(parser, "enabled", True)),
                 "artifactsConfigured": bool(getattr(parser, "artifacts_path", None)),
                 "ocrBackend": getattr(parser, "ocr_backend", "auto"),

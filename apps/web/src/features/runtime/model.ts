@@ -10,6 +10,7 @@ export interface RuntimeServiceState {
   documents?: number
   backend?: string
   configured?: boolean
+  storage?: string
 }
 
 export interface RuntimeState {
@@ -52,6 +53,7 @@ function normalizeRag(payload: runtimeApi.RagHealthWire | null): RuntimeServiceS
     label: 'RAG',
     detail: doclingAvailable === false ? '文本解析回退' : 'Docling 就绪',
     documents: typeof payload.documents === 'number' ? payload.documents : undefined,
+    storage: typeof payload.storage === 'string' ? payload.storage : undefined,
   }
 }
 

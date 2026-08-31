@@ -2,6 +2,7 @@ export interface RagHealth {
   status?: string
   documents?: number
   chunks?: number
+  storage?: string
   collections?: RagCollectionStatistics[]
   docling_available?: boolean | null
   doclingAvailable?: boolean | null

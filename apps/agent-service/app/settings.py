@@ -93,6 +93,7 @@ class Settings(BaseModel):
     rag_max_metadata_items: int = Field(default=DEFAULT_MAX_METADATA_ITEMS, alias="RAG_MAX_METADATA_ITEMS")
     rag_max_metadata_depth: int = Field(default=DEFAULT_MAX_METADATA_DEPTH, alias="RAG_MAX_METADATA_DEPTH")
     rag_parse_concurrency: int = Field(default=1, alias="RAG_PARSE_CONCURRENCY", ge=1, le=8)
+    rag_store_path: str = Field(default="data/rag.sqlite3", alias="RAG_STORE_PATH", min_length=1, max_length=512)
     docling_max_concurrency: int = Field(default=1, alias="DOCLING_MAX_CONCURRENCY", ge=1, le=8)
     evaluation_buffer_size: int = Field(default=2000, alias="EVALUATION_BUFFER_SIZE")
     eval_input_price_per_1k: float = Field(default=0.003, alias="EVAL_INPUT_PRICE_PER_1K")

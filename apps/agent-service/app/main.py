@@ -97,6 +97,7 @@ def build_container(
         max_metadata_depth=settings.rag_max_metadata_depth,
         parse_concurrency=settings.rag_parse_concurrency,
         docling_max_concurrency=settings.docling_max_concurrency,
+        store_path=settings.rag_store_path,
     )
     result_limiter = ToolResultLimiter(
         max_bytes=settings.mcp_max_result_bytes,
@@ -181,7 +182,7 @@ def create_app(
             await app.state.container.cleanup.stop()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.9", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.11", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

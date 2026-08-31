@@ -32,7 +32,7 @@
 - `observability`：trace/span 端口、FutureAGI 适配器、本地降级记录器。
 - `evaluation`：项目自建数据集、确定性评分器、运行记录和汇总指标。
 - `realtime`：认证 WebSocket 连接、控制/PCM16 帧协议、运行代际、改口中断、背压和心跳租约。
-- `infrastructure`：配置、内存存储、后台清理任务。
+- `infrastructure`：运行配置、会话存储和后台清理任务；RAG 使用 SQLite 持久化向量索引。
 
 ## 可扩展点
 
@@ -40,7 +40,7 @@
 2. 替换模型：只替换 Graph 的 responder 节点，状态和事件契约保持不变。
 3. 替换向量库：实现 `VectorStore`，不改 Docling 解析和检索用例。
 4. 替换观测后端：实现 `TelemetrySink`，FutureAGI 不可用时自动回退本地 JSON。
-5. 持久化：将内存会话/索引替换为 Redis/Postgres，保留现有端口。
+5. 持久化：会话仍可替换为 Redis/Postgres；RAG 已通过 `VectorStore` 端口落到 SQLite，后续可替换为专业向量数据库。
 6. 评测裁判：保留 `EvaluationRunRequest` 和 `MetricScore`，可接入离线模型裁判、人工标注或批处理队列。
 
 ## 性能与生命周期

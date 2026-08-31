@@ -9,6 +9,7 @@ from .chunker import CharacterChunker
 from .docling_parser import DocumentParseError, DoclingParser, DoclingRuntimeConfig
 from .embeddings import HashEmbeddingProvider
 from .memory_store import InMemoryVectorStore
+from .sqlite_store import SqliteVectorStore
 from .limits import MetadataLimitError, MetadataLimits
 from .models import (
     DocumentChunk,
@@ -38,5 +39,6 @@ __all__ = [
     "SearchHit",
     "SearchRequest",
     "SearchResult",
+    "SqliteVectorStore",
     "build_default_rag_service",
 ]

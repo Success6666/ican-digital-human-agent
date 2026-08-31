@@ -7,6 +7,7 @@ export interface ConfigurationService {
   mode?: string
   provider?: string
   parser?: string
+  storage?: string
   enabled?: boolean
   localModels?: string[]
   artifactsConfigured?: boolean
