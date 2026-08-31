@@ -58,14 +58,13 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
         <div className="console-brand">
           <button className="icon-button console-mobile-menu" type="button" onClick={() => setMobileOpen(true)} aria-label="打开导航" title="打开导航"><Menu size={18} /></button>
           <div className="brand-mark" aria-hidden="true"><span /></div>
-          <div className="console-brand-copy"><strong>ICAN 数字人</strong><span>Agent 控制台</span></div>
+          <div className="console-brand-copy"><strong>Digital Human</strong><span>Agent 控制台</span></div>
         </div>
         <div className="console-context"><CurrentPageIcon size={15} /><span>{pageLabel(activePage)}</span></div>
         <div className="console-topbar-actions">
           <div className="runtime-state"><span className={`live-dot${runtimeStatus === 'offline' ? ' live-dot--offline' : ''}`} />{runtimeLabel}</div>
           <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="全屏显示" title="全屏显示"><Maximize2 size={16} /></button>
           {user?.role === 'admin' && <button className="icon-button console-notification" type="button" onClick={() => navigate('audit')} aria-label="查看通知与审计" title="查看通知与审计"><Bell size={16} /><i aria-hidden="true" /></button>}
-          <div className="user-chip"><span>{initial}</span><strong>{displayName}</strong></div>
           <button className="icon-button" type="button" onClick={() => void onLogout()} aria-label="退出登录" title="退出登录"><LogOut size={16} /></button>
         </div>
       </header>
@@ -73,7 +72,6 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
         <aside className="console-nav" aria-label="主导航">
           <div className="console-nav-brand">
             <div className="brand-mark" aria-hidden="true"><span /></div>
-            <div className="console-brand-copy"><strong>Digital Human</strong><span>Agent Console</span></div>
             <button className="icon-button console-collapse-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
               {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
             </button>

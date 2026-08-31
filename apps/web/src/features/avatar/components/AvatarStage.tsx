@@ -49,7 +49,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
       {session && shouldConnect ? (
         <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} />
-      ) : session && preview ? (
+      ) : preview ? (
         <AvatarPreviewSurface preview={preview} />
       ) : (
         <div className="avatar-waiting" role="status">

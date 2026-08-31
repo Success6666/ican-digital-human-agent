@@ -21,6 +21,7 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && !message.pending && message.content.trim())
   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!avatar.session) {
@@ -30,6 +31,18 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
     const timer = window.setTimeout(() => void realtime.connect(), 0)
     return () => window.clearTimeout(timer)
   }, [avatar.session?.sessionId, realtime.connect, realtime.disconnect])
+
+  useEffect(() => {
+    if (!avatar.session || !queuedMessage) return
+    const message = queuedMessage
+    setQueuedMessage(null)
+    void chat.sendMessage(message)
+  }, [avatar.session?.sessionId, chat.sendMessage, queuedMessage])
+
+  function startConversation(message?: string) {
+    if (message) setQueuedMessage(message)
+    void avatar.create().catch(() => setQueuedMessage(null))
+  }
 
   return (
     <div className="page-stack home-page">
@@ -42,7 +55,7 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}
         />
-        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} onSend={(message) => void chat.sendMessage(message)} />
+        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
           <History size={18} />
         </button>

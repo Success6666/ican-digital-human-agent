@@ -8,9 +8,10 @@ interface HomeConversationBarProps {
   realtime: RealtimeController
   isSending: boolean
   onSend: (message: string) => void
+  onCreateSession: (initialMessage?: string) => void
 }
 
-export function HomeConversationBar({ session, realtime, isSending, onSend }: HomeConversationBarProps) {
+export function HomeConversationBar({ session, realtime, isSending, onSend, onCreateSession }: HomeConversationBarProps) {
   const [draft, setDraft] = useState('')
   const recording = realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'
   const ready = Boolean(session) && realtime.state.connection === 'connected'
@@ -18,8 +19,10 @@ export function HomeConversationBar({ session, realtime, isSending, onSend }: Ho
   function submit(event: FormEvent) {
     event.preventDefault()
     const message = draft.trim()
-    if (!message || !session) return
-    onSend(message)
+    if (!message) return
+    if (!session) onCreateSession(message)
+    else if (ready) onSend(message)
+    else return
     setDraft('')
   }
 
@@ -59,7 +62,7 @@ export function HomeConversationBar({ session, realtime, isSending, onSend }: Ho
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        disabled={!ready}
+        disabled={Boolean(session) && !ready}
         maxLength={4000}
         rows={1}
         aria-label="输入消息"
@@ -67,7 +70,7 @@ export function HomeConversationBar({ session, realtime, isSending, onSend }: Ho
       <button
         className="home-send-button"
         type="submit"
-        disabled={!ready || !draft.trim()}
+        disabled={!draft.trim() || (Boolean(session) && !ready)}
         aria-label={isSending ? '发送新消息并切换当前回应' : '发送消息'}
         title={isSending ? '发送新消息并切换当前回应' : '发送消息'}
       >
