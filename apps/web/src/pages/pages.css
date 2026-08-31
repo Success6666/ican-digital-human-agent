@@ -9,19 +9,18 @@
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklch, var(--surface) 92%, var(--canvas));
 }
-.console-brand, .console-topbar-actions, .console-context, .console-nav-head, .console-system-line { display: flex; align-items: center; }
+.console-brand, .console-topbar-actions { display: flex; align-items: center; }
 .console-brand { gap: 10px; min-width: 198px; }
 .console-brand-copy { display: flex; flex-direction: column; gap: 2px; }
 .console-brand-copy strong { color: var(--ink); font-size: 13px; }
 .console-brand-copy span { color: var(--ink-faint); font-size: 10px; }
-.console-context { gap: 7px; color: var(--ink-muted); font-size: 12px; }
-.console-context svg { color: var(--brand); }
 .console-topbar-actions { gap: 8px; margin-left: auto; }
 .console-mobile-menu { display: none; }
 .runtime-state { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 11px; }
 .console-body { display: grid; grid-template-columns: 208px minmax(0, 1fr); height: calc(100dvh - 64px); min-height: 0; }
 .console-shell--collapsed .console-body { grid-template-columns: 72px minmax(0, 1fr); }
 .console-nav {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -31,10 +30,9 @@
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
-.console-nav-head { justify-content: space-between; gap: 8px; padding: 0 8px 18px; color: var(--ink-faint); font-size: 10px; font-weight: 700; }
-.console-nav-head-actions { display: flex; align-items: center; gap: 4px; }
+.console-nav-toolbar { position: absolute; z-index: 2; top: 50%; right: 8px; display: flex; align-items: center; transform: translateY(-50%); }
 .console-collapse-button { color: var(--ink-muted); }
-.console-nav-close { display: none; }
+.console-nav-close { position: absolute; z-index: 3; top: 12px; right: 10px; display: none; }
 .console-nav-list { display: grid; gap: 4px; }
 .console-nav-item {
   position: relative;
@@ -58,12 +56,9 @@
 .console-nav-label { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .console-nav-footer { display: grid; gap: 8px; margin-top: auto; padding: 14px 8px 0; border-top: 1px solid var(--line); }
 .console-shell--collapsed .console-nav-footer { padding-inline: 0; }
-.console-shell--collapsed .console-nav-footer .status-pill { display: none; }
 .console-shell--collapsed .console-nav-account { justify-content: center; }
 .console-shell--collapsed .console-nav-account-copy { display: none; }
 .console-shell--collapsed .console-nav-account { gap: 4px; }
-.console-system-line { gap: 6px; color: var(--ink-muted); font-size: 10px; }
-.console-system-line span { flex: 1; }
 .console-nav-account { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .console-nav-avatar { width: 30px; height: 30px; display: grid; place-items: center; flex: none; border-radius: 50%; color: var(--brand-ink); background: var(--brand); font-size: 11px; font-weight: 800; }
 .console-nav-account-copy { min-width: 0; display: grid; flex: 1; gap: 2px; }
@@ -189,13 +184,12 @@
   .console-topbar { height: 58px; padding-inline: 12px; }
   .console-mobile-menu { display: inline-grid; }
   .console-brand { min-width: 0; }
-  .console-brand-copy span, .console-context { display: none; }
+  .console-brand-copy span { display: none; }
   .console-topbar-actions { gap: 5px; }
   .console-topbar-actions .runtime-state { display: none; }
   .console-body, .console-shell--collapsed .console-body { display: block; height: calc(100dvh - 58px); min-height: 0; }
   .console-nav { position: fixed; z-index: var(--z-nav); inset: 58px auto 0 0; width: min(292px, calc(100vw - 38px)); padding: 15px 13px; transform: translateX(-105%); transition: transform .2s ease; }
   .console-shell--nav-open .console-nav { transform: translateX(0); }
-  .console-nav-head { padding-inline: 4px; }
   .console-collapse-button { display: none; }
   .console-nav-close { display: inline-grid; }
   .console-nav-backdrop { position: fixed; z-index: calc(var(--z-nav) - 1); inset: 58px 0 0; display: block; border: 0; background: rgba(34, 53, 90, .28); }

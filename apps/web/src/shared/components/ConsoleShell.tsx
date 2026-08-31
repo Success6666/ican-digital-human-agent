@@ -1,8 +1,7 @@
-import { Bell, LogOut, Maximize2, Menu, MoreVertical, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
+import { Bell, Maximize2, Menu, MoreVertical, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { User } from '../api/types'
-import { navigationForRole, pageLabel, type PageKey, systemNavigationIcon } from '../navigation'
-import { StatusPill } from './StatusPill'
+import { navigationForRole, type PageKey } from '../navigation'
 import { useRuntimeStatus } from '../../features/runtime/model'
 
 interface ConsoleShellProps {
@@ -20,8 +19,6 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
   const [mobileOpen, setMobileOpen] = useState(false)
   const runtime = useRuntimeStatus()
   const visibleNavigation = navigationForRole(user?.role)
-  const CurrentPageIcon = visibleNavigation.find((item) => item.key === activePage)?.icon ?? visibleNavigation[0].icon
-  const SystemIcon = systemNavigationIcon
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
@@ -60,7 +57,6 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
           <div className="brand-mark" aria-hidden="true"><span /></div>
           <div className="console-brand-copy"><strong>Digital Human</strong><span>Agent 控制台</span></div>
         </div>
-        <div className="console-context"><CurrentPageIcon size={15} /><span>{pageLabel(activePage)}</span></div>
         <div className="console-topbar-actions">
           <div className="runtime-state"><span className={`live-dot${runtimeStatus === 'offline' ? ' live-dot--offline' : ''}`} />{runtimeLabel}</div>
           <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="全屏显示" title="全屏显示"><Maximize2 size={16} /></button>
@@ -69,16 +65,13 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
       </header>
       <div className="console-body">
         <aside className="console-nav" aria-label="主导航">
-          <div className="console-nav-head">
-            <span>{collapsed ? '导航' : '工作区'}</span>
-            <div className="console-nav-head-actions">
+          <button className="icon-button console-nav-close" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" title="关闭导航"><X size={17} /></button>
+          <nav className="console-nav-list">
+            <div className="console-nav-toolbar">
               <button className="icon-button console-collapse-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
                 {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
               </button>
-              <button className="icon-button console-nav-close" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" title="关闭导航"><X size={17} /></button>
             </div>
-          </div>
-          <nav className="console-nav-list">
             {visibleNavigation.map(({ key, label, shortLabel, icon: Icon }) => (
               <button key={key} className={`console-nav-item ${activePage === key ? 'console-nav-item--active' : ''}`} type="button" onClick={() => navigate(key)} title={collapsed ? label : undefined} aria-current={activePage === key ? 'page' : undefined}>
                 <Icon size={17} /><span className="console-nav-label">{collapsed ? shortLabel : label}</span>
@@ -86,7 +79,6 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
             ))}
           </nav>
           <div className="console-nav-footer">
-            <div className="console-system-line"><SystemIcon size={15} /><span>运行服务</span><StatusPill status={runtimeStatus} label={runtimeLabel} /></div>
             <div className="console-nav-account">
               <span className="console-nav-avatar">{initial}</span>
               <span className="console-nav-account-copy"><strong>{displayName}</strong><small>{user?.role || '超级管理员'}</small></span>

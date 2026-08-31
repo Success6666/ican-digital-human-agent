@@ -7,7 +7,7 @@ here, while :class:`RagService` keeps the application-facing workflow stable.
 
 from .chunker import CharacterChunker
 from .docling_parser import DocumentParseError, DoclingParser, DoclingRuntimeConfig
-from .embeddings import HashEmbeddingProvider
+from .embeddings import HashEmbeddingProvider, LocalSentenceTransformerEmbeddingProvider
 from .memory_store import InMemoryVectorStore
 from .sqlite_store import SqliteVectorStore
 from .limits import MetadataLimitError, MetadataLimits
@@ -29,6 +29,7 @@ __all__ = [
     "DoclingParser",
     "DoclingRuntimeConfig",
     "HashEmbeddingProvider",
+    "LocalSentenceTransformerEmbeddingProvider",
     "InMemoryVectorStore",
     "IngestRequest",
     "IngestResult",

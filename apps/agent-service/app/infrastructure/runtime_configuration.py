@@ -161,26 +161,26 @@ class LlmRuntimeConfiguration(BaseModel):
 
 
 class EmbeddingRuntimeConfiguration(BaseModel):
-    """Embedding settings; hash-local remains the safe default."""
+    """Embedding settings with a local Chinese model as the default."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    provider: str = Field(default="hash-local", max_length=64)
+    provider: str = Field(default="local", max_length=64)
     base_url: str = Field(default="", max_length=512)
     api_key: str = Field(default="", max_length=512)
-    model: str = Field(default="hash-256", max_length=128)
-    dimensions: int = Field(default=256, ge=16, le=4096)
+    model: str = Field(default="BAAI/bge-small-zh-v1.5", max_length=128)
+    dimensions: int = Field(default=512, ge=16, le=4096)
 
     @classmethod
     def from_env(cls) -> "EmbeddingRuntimeConfiguration":
         return cls(
             enabled=_truthy(os.getenv("EMBEDDING_ENABLED", "true")),
-            provider=os.getenv("EMBEDDING_PROVIDER", "hash-local").strip(),
+            provider=os.getenv("EMBEDDING_PROVIDER", "local").strip(),
             base_url=os.getenv("EMBEDDING_BASE_URL", "").strip(),
             api_key=os.getenv("EMBEDDING_API_KEY", "").strip(),
-            model=os.getenv("EMBEDDING_MODEL", "hash-256").strip(),
-            dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "256")),
+            model=os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5").strip(),
+            dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "512")),
         )
 
 
@@ -251,6 +251,7 @@ def apply_llm_environment(configuration: LlmRuntimeConfiguration) -> None:
 def apply_embedding_environment(configuration: EmbeddingRuntimeConfiguration) -> None:
     _apply_environment(
         {
+            "EMBEDDING_ENABLED": "true" if configuration.enabled else "false",
             "EMBEDDING_PROVIDER": configuration.provider,
             "EMBEDDING_BASE_URL": configuration.base_url,
             "EMBEDDING_API_KEY": configuration.api_key,

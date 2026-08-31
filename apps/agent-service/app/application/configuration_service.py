@@ -300,7 +300,10 @@ def _llm_view(configuration: LlmRuntimeConfiguration) -> dict[str, Any]:
 
 def _embedding_view(configuration: EmbeddingRuntimeConfiguration) -> dict[str, Any]:
     remote = configuration.provider.casefold() in {"openai", "openai-compatible", "compatible"} and bool(configuration.base_url and configuration.api_key and configuration.model)
-    return {"enabled": configuration.enabled, "provider": configuration.provider, "configured": bool(configuration.enabled and (remote or configuration.provider == "hash-local")), "baseUrl": configuration.base_url, "apiKey": "已配置" if configuration.api_key else "未配置", "model": configuration.model, "dimensions": configuration.dimensions, "detail": "OpenAI 兼容 Embedding" if remote else "本地特征哈希向量"}
+    local = configuration.provider.casefold() in {"local", "sentence-transformers", "sentence_transformers", "bge"}
+    configured = bool(configuration.enabled and ((remote and configuration.api_key) or (local and configuration.model) or configuration.provider == "hash-local"))
+    detail = "OpenAI 兼容 Embedding" if remote else "本地中文模型 · BGE" if local else "本地特征哈希向量"
+    return {"enabled": configuration.enabled, "provider": configuration.provider, "configured": configured, "baseUrl": configuration.base_url, "apiKey": "已配置" if configuration.api_key else "未配置", "model": configuration.model, "dimensions": configuration.dimensions, "detail": detail}
 
 
 def _futureagi_view(configuration: FutureAGIRuntimeConfiguration) -> dict[str, Any]:

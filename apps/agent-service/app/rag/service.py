@@ -255,11 +255,11 @@ def build_default_rag_service(
     if docling_max_concurrency is not None:
         docling_config = replace(docling_config, max_concurrency=docling_max_concurrency)
     embedder = build_embedding_provider(
-        provider=embedding_provider or os.getenv("EMBEDDING_PROVIDER", "hash-local"),
+        provider=embedding_provider or os.getenv("EMBEDDING_PROVIDER", "local"),
         base_url=embedding_base_url or os.getenv("EMBEDDING_BASE_URL", ""),
         api_key=embedding_api_key or os.getenv("EMBEDDING_API_KEY", ""),
-        model=embedding_model or os.getenv("EMBEDDING_MODEL", "hash-256"),
-        dimensions=embedding_dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "256")),
+        model=embedding_model or os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"),
+        dimensions=embedding_dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "512")),
     )
     vector_store = SqliteVectorStore(
         store_path or os.getenv("RAG_STORE_PATH", "data/rag.sqlite3"),
