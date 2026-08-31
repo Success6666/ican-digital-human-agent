@@ -1,7 +1,7 @@
 import { Bell, LogOut, Maximize2, Menu, MoreVertical, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { User } from '../api/types'
-import { navigationForRole, navigationItems, pageLabel, type PageKey, systemNavigationIcon } from '../navigation'
+import { navigationForRole, pageLabel, type PageKey, systemNavigationIcon } from '../navigation'
 import { StatusPill } from './StatusPill'
 import { useRuntimeStatus } from '../../features/runtime/model'
 
@@ -65,20 +65,18 @@ export function ConsoleShell({ user, activePage, onNavigate, onLogout, children 
           <div className="runtime-state"><span className={`live-dot${runtimeStatus === 'offline' ? ' live-dot--offline' : ''}`} />{runtimeLabel}</div>
           <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="全屏显示" title="全屏显示"><Maximize2 size={16} /></button>
           {user?.role === 'admin' && <button className="icon-button console-notification" type="button" onClick={() => navigate('audit')} aria-label="查看通知与审计" title="查看通知与审计"><Bell size={16} /><i aria-hidden="true" /></button>}
-          <button className="icon-button" type="button" onClick={() => void onLogout()} aria-label="退出登录" title="退出登录"><LogOut size={16} /></button>
         </div>
       </header>
       <div className="console-body">
         <aside className="console-nav" aria-label="主导航">
-          <div className="console-nav-brand">
-            <div className="brand-mark" aria-hidden="true"><span /></div>
-            <button className="icon-button console-collapse-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
-              {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-            </button>
-          </div>
           <div className="console-nav-head">
             <span>{collapsed ? '导航' : '工作区'}</span>
-            <button className="icon-button console-nav-close" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" title="关闭导航"><X size={17} /></button>
+            <div className="console-nav-head-actions">
+              <button className="icon-button console-collapse-button" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? '展开导航' : '收起导航'} title={collapsed ? '展开导航' : '收起导航'}>
+                {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+              </button>
+              <button className="icon-button console-nav-close" type="button" onClick={() => setMobileOpen(false)} aria-label="关闭导航" title="关闭导航"><X size={17} /></button>
+            </div>
           </div>
           <nav className="console-nav-list">
             {visibleNavigation.map(({ key, label, shortLabel, icon: Icon }) => (

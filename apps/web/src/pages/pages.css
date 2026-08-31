@@ -31,12 +31,8 @@
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
-.console-nav-brand { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 8px 20px; }
-.console-nav-brand .console-brand-copy { min-width: 0; flex: 1; }
-.console-nav-brand .console-brand-copy strong { font-size: 13px; }
-.console-nav-brand .console-brand-copy span { font-size: 9px; }
-.console-nav-brand .console-collapse-button { flex: none; }
 .console-nav-head { justify-content: space-between; gap: 8px; padding: 0 8px 18px; color: var(--ink-faint); font-size: 10px; font-weight: 700; }
+.console-nav-head-actions { display: flex; align-items: center; gap: 4px; }
 .console-collapse-button { color: var(--ink-muted); }
 .console-nav-close { display: none; }
 .console-nav-list { display: grid; gap: 4px; }
@@ -63,10 +59,9 @@
 .console-nav-footer { display: grid; gap: 8px; margin-top: auto; padding: 14px 8px 0; border-top: 1px solid var(--line); }
 .console-shell--collapsed .console-nav-footer { padding-inline: 0; }
 .console-shell--collapsed .console-nav-footer .status-pill { display: none; }
-.console-shell--collapsed .console-nav-brand { justify-content: center; padding-inline: 0; }
-.console-shell--collapsed .console-nav-brand .console-brand-copy { display: none; }
 .console-shell--collapsed .console-nav-account { justify-content: center; }
-.console-shell--collapsed .console-nav-account-copy, .console-shell--collapsed .console-nav-account .icon-button { display: none; }
+.console-shell--collapsed .console-nav-account-copy { display: none; }
+.console-shell--collapsed .console-nav-account { gap: 4px; }
 .console-system-line { gap: 6px; color: var(--ink-muted); font-size: 10px; }
 .console-system-line span { flex: 1; }
 .console-nav-account { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -231,7 +226,6 @@
 }
 @media (max-width: 480px) {
   .console-brand-copy strong { font-size: 12px; }
-  .user-chip strong { max-width: 66px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .console-main { padding-inline: 10px; }
   .metric-grid--three, .evaluation-summary-row { grid-template-columns: 1fr; }
   .metric-grid--four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
