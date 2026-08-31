@@ -1,20 +1,21 @@
 import { FileText, FolderOpen, Layers3, Plus, Search, TrendingUp } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import type { RagCollectionStatistics, RagHealth } from '../types'
 
 interface RagOverviewProps {
   health: RagHealth | null
+  activeTab: 'collections' | 'documents' | 'search'
+  onTabChange: (tab: 'collections' | 'documents' | 'search') => void
   onIngest: () => void
   onFocusSearch: () => void
 }
 
-export function RagOverview({ health, onIngest, onFocusSearch }: RagOverviewProps) {
-  const [activeTab, setActiveTab] = useState<'collections' | 'documents' | 'search'>('collections')
+export function RagOverview({ health, activeTab, onTabChange, onIngest, onFocusSearch }: RagOverviewProps) {
   const documents = health?.documents
   const collections = health?.collections ?? []
   const parserReady = health?.docling_available ?? health?.doclingAvailable
   const selectTab = (tab: 'collections' | 'documents' | 'search') => {
-    setActiveTab(tab)
+    onTabChange(tab)
     if (tab === 'documents') onIngest()
     if (tab === 'search') onFocusSearch()
   }

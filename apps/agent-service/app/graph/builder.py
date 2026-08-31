@@ -8,13 +8,14 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
-from ..agent.models import FillerPhase, IntentDecision
+from ..agent.models import FillerPhase, IntentDecision, PerformanceCue
 from ..agent.performance import PerformancePlanner
 from ..agent.response import build_agent_response
 from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan, safe_refusal
 from ..agent.tool_catalog import ProgressiveToolRouter, ToolRouter
 from ..avatar.registry import ProviderRegistry
 from ..avatar.presentation import PresentationLayer, ProviderRuntime
+from ..messaging import ReliableMessageBus
 from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
 from ..llm.client import LlmClient
@@ -45,6 +46,7 @@ def build_graph(
     provider_cancel_grace_seconds: float = 0.25,
     max_parallel_tools: int = 4,
     llm_client: LlmClient | None = None,
+    message_bus: ReliableMessageBus | None = None,
 ):
     """Return a compiled graph with all external decisions injected.
 
@@ -55,7 +57,7 @@ def build_graph(
     classifier = intent_classifier or CompositeIntentClassifier()
     router = tool_router or ProgressiveToolRouter()
     performer = performance or PerformancePlanner()
-    presentation = PresentationLayer()
+    presentation = PresentationLayer(message_bus)
 
     async def receive(state: AgentGraphState) -> dict[str, Any]:
         attrs = _attrs(state, {"message_length": len(state.get("message", ""))})
@@ -213,7 +215,13 @@ def build_graph(
             return {"reply": fast_reply}
         if llm_client is not None and getattr(llm_client, "enabled", False):
             try:
-                return {"reply": await llm_client.complete(message=state["message"], context=context_texts)}
+                generated = await llm_client.complete(message=state["message"], context=context_texts)
+                if hasattr(generated, "reply"):
+                    return {
+                        "reply": generated.reply,
+                        "presentation": generated.presentation.model_dump(mode="json", by_alias=True),
+                    }
+                return {"reply": str(generated)}
             except Exception as exc:
                 return {"reply": f"已收到：{state['message']}\n\n当前模型暂不可用，已切换安全回退。", "llm_error": _safe_error(exc)}
         segments = [f"已收到：{state['message']}"]
@@ -233,13 +241,17 @@ def build_graph(
         attrs = _attrs(state, {"text_length": len(state.get("reply", ""))})
         with _span(observer, "provider_event", "send_text", attrs, provider=record.session.provider):
             started = time.perf_counter()
-            cue = performer.for_phase(FillerPhase.SPEAKING)
+            try:
+                cue = PerformanceCue.model_validate(state.get("presentation") or {})
+            except Exception:
+                cue = performer.for_phase(FillerPhase.SPEAKING)
             response = build_agent_response(
                 text=state.get("reply", ""),
                 trace_id=state.get("trace_id", ""),
                 session_id=state["session_id"],
                 run_id=state.get("run_id"),
                 performance=cue.model_dump(mode="json", by_alias=True),
+                presentation=cue,
             )
             try:
                 result, cancelled = await run_with_steering(

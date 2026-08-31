@@ -1,5 +1,5 @@
 import { AudioWaveform, LoaderCircle } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { AvatarSession } from '../../../shared/api/types'
 import { AvatarRuntimeSurface } from '../runtime/AvatarRuntimeSurface'
 import { AvatarPreviewSurface } from '../runtime/AvatarPreviewSurface'
@@ -8,21 +8,18 @@ import { readAvatarPreview, subscribeAvatarPreview, type AvatarPreview } from '.
 interface AvatarStageProps {
   session: AvatarSession | null
   isCreating: boolean
-  speech?: { id: string; text: string }
+  speech?: { id: string; text: string; presentation?: import('../../../shared/api/types').AvatarPerformanceCue }
   interruptKey?: string
   activate?: boolean
   onCreate: () => void
+  onDisconnect: () => void
 }
 
-export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, onCreate }: AvatarStageProps) {
+export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, onCreate, onDisconnect }: AvatarStageProps) {
   const [preview, setPreview] = useState<AvatarPreview | null>(() => readAvatarPreview())
   const [runtimeActive, setRuntimeActive] = useState(() => !readAvatarPreview())
-  const idleTimerRef = useRef<number>()
-
   const activateRuntime = useCallback(() => {
     setRuntimeActive(true)
-    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
-    idleTimerRef.current = window.setTimeout(() => setRuntimeActive(false), 30_000)
   }, [])
 
   useEffect(() => {
@@ -32,7 +29,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
       setRuntimeActive(false)
       return
     }
-    if (!nextPreview) activateRuntime()
+    activateRuntime()
     return subscribeAvatarPreview(() => setPreview(readAvatarPreview()))
   }, [activateRuntime, session?.sessionId])
 
@@ -40,24 +37,24 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
     if (activate || speech?.id) activateRuntime()
   }, [activate, activateRuntime, speech?.id])
 
-  useEffect(() => () => {
-    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
-  }, [])
-
   const shouldConnect = Boolean(session && runtimeActive)
   return (
     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
       {session && shouldConnect ? (
         <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} />
       ) : preview ? (
-        <AvatarPreviewSurface preview={preview} />
+        <>
+          <AvatarPreviewSurface preview={preview} />
+          {!session && <button className="avatar-stage-connect-button" type="button" onClick={onCreate} disabled={isCreating}>{isCreating ? '正在连接…' : '连接数字人'}</button>}
+        </>
       ) : (
         <div className="avatar-waiting" role="status">
           {isCreating ? <LoaderCircle size={22} className="avatar-waiting-spinner" /> : <AudioWaveform size={22} />}
           <strong>{isCreating ? '正在创建数字人会话' : '等待数字人连接'}</strong>
-          {!isCreating && <button className="avatar-stage-cta" type="button" onClick={onCreate}><AudioWaveform size={14} />建立会话</button>}
+          {!isCreating && <button className="avatar-stage-cta" type="button" onClick={onCreate}><AudioWaveform size={14} />连接数字人</button>}
         </div>
       )}
+      {session && <button className="avatar-stage-disconnect-button" type="button" onClick={onDisconnect} disabled={isCreating}>断开连接</button>}
     </section>
   )
 }

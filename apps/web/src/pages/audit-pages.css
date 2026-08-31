@@ -11,6 +11,20 @@
 .audit-trace-grid .trace-list-panel {
   min-height: 410px;
 }
+.trace-flow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  overflow-x: auto;
+  margin: 13px 0 15px;
+  padding: 10px 2px 3px;
+}
+.trace-flow-step { display: flex; align-items: center; min-width: 88px; }
+.trace-flow-node { width: 25px; height: 25px; flex: none; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--ink-muted); background: var(--surface-muted); }
+.trace-flow-node--ok { color: var(--success); border-color: color-mix(in oklch, var(--success) 42%, var(--line)); background: var(--success-soft); }
+.trace-flow-node--error { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 42%, var(--line)); background: var(--danger-soft); }
+.trace-flow-label { max-width: 74px; margin-left: 5px; overflow: hidden; color: var(--ink-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.trace-flow-link { width: 22px; height: 1px; flex: none; margin: 0 6px; background: var(--line-strong); }
 .audit-list {
   display: grid;
 }

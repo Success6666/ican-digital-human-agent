@@ -68,6 +68,7 @@ class AgentResponse(BaseModel):
     text: str = Field(default="", max_length=20_000)
     emotion: str = Field(default="neutral", min_length=1, max_length=64)
     gesture: str | None = Field(default=None, max_length=64)
+    presentation: dict[str, Any] = Field(default_factory=dict)
     performance: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = Field(default=None, alias="traceId")
     session_id: str | None = Field(default=None, alias="sessionId")

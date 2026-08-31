@@ -32,6 +32,7 @@ from .infrastructure.runtime_configuration import (
 from .mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from .mcp.limits import ToolResultLimiter
 from .llm.client import OpenAICompatibleLlm
+from .messaging import ReliableMessageBus
 from .observability.service import ObservabilityService, build_default_observability
 from .rag.service import RagService, build_default_rag_service
 from .realtime.limits import RealtimeLimits
@@ -56,6 +57,7 @@ class ServiceContainer:
     evaluation: EvaluationService
     cleanup: CleanupWorker
     realtime_limits: RealtimeLimits
+    message_bus: ReliableMessageBus
 
 
 def build_container(
@@ -139,6 +141,13 @@ def build_container(
         temperature=persisted.llm.temperature,
         max_tokens=persisted.llm.max_tokens,
     )
+    message_bus = ReliableMessageBus(
+        url=settings.rabbitmq_url,
+        exchange=settings.rabbitmq_exchange,
+        queue=settings.rabbitmq_queue,
+        outbox_path="data/presentation-outbox.jsonl",
+        timeout_seconds=settings.rabbitmq_publish_timeout_seconds,
+    )
     graph = AgentGraphRuntime(
         tool_client=tool_client,
         providers=providers,
@@ -148,6 +157,7 @@ def build_container(
         provider_cancel_grace_seconds=settings.provider_cancel_grace_seconds,
         max_parallel_tools=settings.mcp_max_parallel_tools,
         llm_client=llm,
+        message_bus=message_bus,
     )
     evaluation = EvaluationService(
         max_runs=settings.evaluation_buffer_size,
@@ -189,6 +199,7 @@ def build_container(
         evaluation=evaluation,
         cleanup=cleanup,
         realtime_limits=realtime_limits,
+        message_bus=message_bus,
     )
 
 
@@ -206,9 +217,10 @@ def create_app(
             yield
         finally:
             await app.state.container.cleanup.stop()
+            await app.state.container.message_bus.close()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.22", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.24", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

@@ -6,6 +6,7 @@ from typing import Protocol
 
 from ..domain.models import AgentResponse, ProviderResult
 from ..domain.ports import AvatarProvider
+from ..messaging import ReliableMessageBus
 from .runtime_calls import send_text
 
 
@@ -25,7 +26,12 @@ class PresentationLayer:
     future Fay or vendor SDK replacement independent from LangGraph nodes.
     """
 
+    def __init__(self, publisher: ReliableMessageBus | None = None) -> None:
+        self.publisher = publisher
+
     async def present(self, runtime: AvatarProvider, response: AgentResponse) -> ProviderResult:
+        if self.publisher is not None:
+            await self.publisher.publish(topic="presentation", payload=response.model_dump(mode="json", by_alias=True))
         result = await send_text(runtime, response)
         result.metadata = {
             **result.metadata,

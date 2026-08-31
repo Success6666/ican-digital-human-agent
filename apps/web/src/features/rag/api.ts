@@ -6,6 +6,12 @@ export async function getRagHealth(): Promise<RagHealth> {
 }
 
 export async function ingestText(input: IngestInput): Promise<IngestResult> {
+  if (input.file) {
+    const form = new FormData()
+    form.append('file', input.file)
+    form.append('collection', input.collection)
+    return api.post<IngestResult>('/rag/ingest/file', form)
+  }
   return api.post<IngestResult>('/rag/ingest', {
     source_name: input.sourceName,
     collection: input.collection,

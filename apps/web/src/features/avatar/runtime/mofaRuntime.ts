@@ -1,4 +1,5 @@
 import type { AvatarClientParams } from '../../../shared/api/types'
+import type { AvatarPerformanceCue } from '../../../shared/api/types'
 import type { AvatarRuntimeStatus, BrowserAvatarRuntime } from './browserRuntime'
 import { loadExternalScript } from './scriptLoader'
 
@@ -102,14 +103,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     markReady()
   }
 
-  async speak(text: string): Promise<void> {
+  async speak(text: string, presentation?: AvatarPerformanceCue): Promise<void> {
     const clean = text.trim()
     if (!clean || !this.avatar) return
     this.status?.({ phase: 'speaking', message: '数字人正在表达' })
     // Xingyun's browser SDK accepts plain text for its TTS queue. SSML is not
     // consistently supported across SDK versions and can leave the canvas in
     // an idle/static state without surfacing a useful error.
-    await this.avatar.speak(clean, true, true, {})
+    await this.avatar.speak(clean, true, true, presentation ? { presentation } : {})
     this.status?.({ phase: 'ready', message: '数字人已连接' })
   }
 

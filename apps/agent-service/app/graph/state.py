@@ -29,6 +29,7 @@ class AgentGraphState(TypedDict, total=False):
     provider_error: str
     llm_error: str
     reply: str
+    presentation: dict[str, Any]
     error: str
     interrupted: bool
     security_blocked: bool

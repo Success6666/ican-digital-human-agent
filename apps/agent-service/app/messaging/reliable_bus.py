@@ -1,0 +1,58 @@
+"""Reliable presentation-message publication with RabbitMQ and local outbox fallback."""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+import json
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+
+class ReliableMessageBus:
+    def __init__(self, *, url: str = "", exchange: str = "ican.agent", queue: str = "digital-human.presentation", outbox_path: str = "data/presentation-outbox.jsonl", timeout_seconds: float = 0.35) -> None:
+        self.url = url
+        self.exchange_name = exchange
+        self.queue_name = queue
+        self.outbox_path = Path(outbox_path)
+        self.timeout_seconds = timeout_seconds
+        self._connection: Any | None = None
+        self._lock = asyncio.Lock()
+
+    async def publish(self, *, topic: str, payload: dict[str, Any]) -> str:
+        envelope = {"messageId": uuid4().hex, "topic": topic, "createdAt": datetime.now(UTC).isoformat(), "payload": payload}
+        if self.url:
+            try:
+                await asyncio.wait_for(self._publish_rabbit(envelope), timeout=self.timeout_seconds)
+                return envelope["messageId"]
+            except Exception:
+                pass
+        await asyncio.to_thread(self._append_outbox, envelope)
+        return envelope["messageId"]
+
+    async def _publish_rabbit(self, envelope: dict[str, Any]) -> None:
+        try:
+            import aio_pika
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("aio-pika is not installed") from exc
+        async with self._lock:
+            if self._connection is None or self._connection.is_closed:
+                self._connection = await aio_pika.connect_robust(self.url)
+            channel = await self._connection.channel(publisher_confirms=True)
+            exchange = await channel.declare_exchange(self.exchange_name, aio_pika.ExchangeType.DIRECT, durable=True)
+            queue = await channel.declare_queue(self.queue_name, durable=True)
+            await queue.bind(exchange, routing_key=envelope["topic"])
+            await exchange.publish(aio_pika.Message(body=json.dumps(envelope, ensure_ascii=False).encode("utf-8"), delivery_mode=aio_pika.DeliveryMode.PERSISTENT), routing_key=envelope["topic"])
+            await channel.close()
+
+    def _append_outbox(self, envelope: dict[str, Any]) -> None:
+        self.outbox_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.outbox_path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(envelope, ensure_ascii=False) + "\n")
+
+    async def close(self) -> None:
+        connection = self._connection
+        self._connection = None
+        if connection is not None and not connection.is_closed:
+            await connection.close()

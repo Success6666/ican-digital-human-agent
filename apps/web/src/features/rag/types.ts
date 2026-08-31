@@ -18,6 +18,7 @@ export interface IngestInput {
   sourceName: string
   collection: string
   content: string
+  file?: File
 }
 
 export interface IngestResult {

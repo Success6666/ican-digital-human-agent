@@ -1,13 +1,13 @@
 import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { AvatarSession } from '../../../shared/api/types'
+import type { AvatarPerformanceCue, AvatarSession } from '../../../shared/api/types'
 import type { AvatarRuntimeStatus, BrowserAvatarRuntime } from './browserRuntime'
 import { MofaBrowserRuntime } from './mofaRuntime'
 import { saveAvatarPreview } from './previewCache'
 
 interface AvatarRuntimeSurfaceProps {
   session: AvatarSession
-  speech?: { id: string; text: string }
+  speech?: { id: string; text: string; presentation?: AvatarPerformanceCue }
   interruptKey?: string
 }
 
@@ -53,7 +53,7 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRu
   useEffect(() => {
     if (status.phase !== 'ready' || !speech || spokenRef.current === speech.id) return
     spokenRef.current = speech.id
-    void runtimeRef.current?.speak(speech.text).catch(() => {
+    void runtimeRef.current?.speak(speech.text, speech.presentation).catch(() => {
       setStatus({ phase: 'error', message: '数字人播报失败，请重新连接' })
     })
   }, [speech?.id, status.phase])

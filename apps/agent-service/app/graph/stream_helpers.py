@@ -97,9 +97,8 @@ def response_events(
             "text": chunk,
         }
         if index == 0:
-            data["performance"] = runtime._performance.for_phase(FillerPhase.SPEAKING).model_dump(
-                mode="json", by_alias=True
-            )
+            data["performance"] = payload.get("presentation") or runtime._performance.for_phase(FillerPhase.SPEAKING).model_dump(mode="json", by_alias=True)
+            data["presentation"] = data["performance"]
         yield {"event": "delta", "data": data}
 
 

@@ -5,7 +5,32 @@ export function loadExternalScript(url: string, ready: () => boolean): Promise<v
   const existing = pendingScripts.get(url)
   if (existing) return existing
 
-  const promise = new Promise<void>((resolve, reject) => {
+  const promise = retryLoad(url, ready)
+    .catch((cause) => {
+      pendingScripts.delete(url)
+      throw cause
+    })
+
+  pendingScripts.set(url, promise)
+  return promise
+}
+
+async function retryLoad(url: string, ready: () => boolean): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await loadOnce(url, ready)
+      return
+    } catch (cause) {
+      lastError = cause
+      if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 220 * (attempt + 1)))
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('外部运行时加载失败')
+}
+
+function loadOnce(url: string, ready: () => boolean): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     const script = document.createElement('script')
     const timeout = window.setTimeout(() => {
       script.remove()
@@ -25,11 +50,5 @@ export function loadExternalScript(url: string, ready: () => boolean): Promise<v
       reject(new Error('外部运行时加载失败'))
     }
     document.head.appendChild(script)
-  }).catch((cause) => {
-    pendingScripts.delete(url)
-    throw cause
   })
-
-  pendingScripts.set(url, promise)
-  return promise
 }

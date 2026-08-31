@@ -58,13 +58,20 @@ export async function streamSse(
     headers.set('satoken', token)
     headers.set('Authorization', `Bearer ${token}`)
   }
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  })
+  const serializedBody = JSON.stringify(body)
+  let response: Response | undefined
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = await fetch(`${API_BASE}${path}`, { method: 'POST', credentials: 'include', headers, body: serializedBody, signal })
+      break
+    } catch (cause) {
+      lastError = cause
+      if (signal?.aborted || attempt === 2) throw cause
+      await new Promise((resolve) => window.setTimeout(resolve, 160 * (attempt + 1)))
+    }
+  }
+  if (!response) throw lastError instanceof Error ? lastError : new Error('流式请求失败')
   if (!response.ok) {
     if (response.status === 401 && token) window.dispatchEvent(new CustomEvent('auth:expired'))
     const text = await response.text().catch(() => '')

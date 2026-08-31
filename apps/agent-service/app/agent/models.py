@@ -123,6 +123,7 @@ class PerformanceCue(BaseModel):
     duration_ms: int = Field(default=700, alias="durationMs", ge=0, le=120_000)
     gaze: Literal["camera", "user", "away", "none"] = "camera"
     gesture: str | None = Field(default=None, max_length=64)
+    action: str | None = Field(default=None, max_length=64)
     lip_sync: bool = Field(default=False, alias="lipSync")
     interruptible: bool = True
 

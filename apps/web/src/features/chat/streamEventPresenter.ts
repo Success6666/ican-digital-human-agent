@@ -43,10 +43,12 @@ export function presentStreamEvent(
   if (markBusinessEvent(kind)) state.executionStarted = true
 
   if (kind === 'start') {
+    context.updateAssistant(context.assistantId, { presentation: event.performance })
     context.addTimeline({ type: 'start', title: 'Agent 开始处理', detail: performanceText(event) ?? '运行链路已启动', seq: event.seq })
     return
   }
   if (kind === 'filler') {
+    context.updateAssistant(context.assistantId, { presentation: event.performance })
     const filler = eventText(event)
     const statusText = filler ? sanitizeDisplayText(filler, 180) : performanceText(event)
     if (statusText && !state.accumulated) context.updateAssistant(context.assistantId, { statusText })
@@ -89,7 +91,7 @@ export function presentStreamEvent(
     const chunk = eventText(event)
     if (!chunk) return
     state.accumulated += chunk
-    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, { content: state.accumulated, statusText: undefined, traceId: state.traceId })
+    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, { content: state.accumulated, statusText: undefined, traceId: state.traceId, presentation: event.presentation ?? event.performance })
     if (state.deltaCount === 0 || state.deltaCount % 16 === 0) {
       context.addTimeline({ type: 'delta', title: '正在生成响应', detail: `已接收 ${state.accumulated.length} 字符`, seq: event.seq })
     }
@@ -100,7 +102,7 @@ export function presentStreamEvent(
     state.sawTerminal = true
     const finalReply = eventText(event) || state.accumulated
     state.accumulated = finalReply
-    context.updateAssistant(context.assistantId, { content: finalReply, pending: false, statusText: undefined, traceId: state.traceId })
+    context.updateAssistant(context.assistantId, { content: finalReply, pending: false, statusText: undefined, traceId: state.traceId, presentation: event.presentation ?? event.performance })
     context.addTimeline({ type: 'done', title: '响应完成', detail: event.interrupted === true ? '本次响应已打断' : performanceText(event) ?? '运行链路已完成', seq: event.seq })
     return
   }

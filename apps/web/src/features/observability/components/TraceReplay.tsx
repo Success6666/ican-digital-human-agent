@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { TraceGroup } from '../types'
 import { eventLabel, eventStatus, eventTypeLabel, formatDuration, safeAttributes, safeErrorMessage, statusLabel } from '../presentation'
 import { formatTime } from '../../../shared/lib/format'
+import { TraceFlow } from './TraceFlow'
 
 interface TraceReplayProps {
   group?: TraceGroup
@@ -44,6 +45,7 @@ export function TraceReplay({ group }: TraceReplayProps) {
         <span className={`replay-status replay-status--${group.status}`}>{statusLabel(group.status)}</span>
       </div>
       <div className="replay-progress"><span style={{ width: `${progress}%` }} /></div>
+      <TraceFlow group={group} />
       <div className="replay-step-head"><span>事件 {step + 1} / {group.events.length}</span><span>{formatTime(current.timestamp ?? '')}</span></div>
       <div className="replay-latency-grid" aria-label="实时延迟摘要">
         <div><span>首事件</span><strong>{formatDuration(group.firstEventLatencyMs)}</strong></div>

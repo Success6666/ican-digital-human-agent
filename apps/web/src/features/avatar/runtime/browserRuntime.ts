@@ -1,4 +1,5 @@
 import type { AvatarClientParams } from '../../../shared/api/types'
+import type { AvatarPerformanceCue } from '../../../shared/api/types'
 
 export interface AvatarRuntimeStatus {
   phase: 'loading' | 'ready' | 'speaking' | 'error'
@@ -8,7 +9,7 @@ export interface AvatarRuntimeStatus {
 
 export interface BrowserAvatarRuntime {
   connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void>
-  speak(text: string): Promise<void>
+  speak(text: string, presentation?: AvatarPerformanceCue): Promise<void>
   interrupt(): Promise<void>
   dispose(): Promise<void>
 }

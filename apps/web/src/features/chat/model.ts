@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AvatarSession, ChatStreamEvent } from '../../shared/api/types'
+import type { AvatarPerformanceCue, AvatarSession, ChatStreamEvent } from '../../shared/api/types'
 import { formatTime, sanitizeDisplayText } from '../../shared/lib/format'
 import * as chatApi from './api'
 import { StreamEventGate } from './streamOrdering'
@@ -17,6 +17,7 @@ export interface ChatMessage {
   /** 流式首响阶段的临时提示，不会混入最终回复。 */
   statusText?: string
   traceId?: string
+  presentation?: AvatarPerformanceCue
 }
 
 export interface TimelineItem {
@@ -224,7 +225,7 @@ export function useChat(session: AvatarSession | null) {
         const response = await chatApi.sendChat({ sessionId, message }, controller.signal)
         if (!isCurrentTurn()) return
         if (response.runId) activeRunIdRef.current = response.runId
-        updateAssistant(assistantId, { content: response.reply, pending: false, statusText: undefined, traceId: response.traceId })
+        updateAssistant(assistantId, { content: response.reply, pending: false, statusText: undefined, traceId: response.traceId, presentation: response.agentResponse?.presentation ?? response.agentResponse?.performance })
         for (const tool of response.toolCalls ?? []) {
           const normalizedTool = normalizeToolCall(tool)
           if (!normalizedTool) continue

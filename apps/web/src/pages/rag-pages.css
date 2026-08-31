@@ -161,6 +161,8 @@
   font-size: 9px;
   font-weight: 700;
 }
+.rag-tab-panel { animation: rag-panel-in .2s ease both; }
+@keyframes rag-panel-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .collection-empty {
   min-height: 132px;
   display: grid;

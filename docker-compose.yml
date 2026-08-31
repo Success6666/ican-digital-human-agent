@@ -51,6 +51,9 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-dev-internal-token}
       MCP_SERVER_URL: ${MCP_SERVER_URL:-http://mcp-server:9000/mcp}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://ican:ican@rabbitmq:5672/}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-ican.agent}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-digital-human.presentation}
       MCP_REQUEST_TIMEOUT_SECONDS: ${MCP_REQUEST_TIMEOUT_SECONDS:-8}
       MCP_ALLOW_LOCAL_FALLBACK: ${MCP_ALLOW_LOCAL_FALLBACK:-true}
       MCP_FAST_PATH_TIMEOUT_SECONDS: ${MCP_FAST_PATH_TIMEOUT_SECONDS:-0.25}
@@ -144,6 +147,8 @@ services:
     depends_on:
       mcp-server:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - internal
     healthcheck:
@@ -170,9 +175,29 @@ services:
       retries: 12
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-ican}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-ican}
+    expose:
+      - "5672"
+      - "15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
 networks:
   internal:
     driver: bridge
 
 volumes:
   agent-runtime-config:
+  rabbitmq-data:

@@ -112,6 +112,7 @@ export interface AgentResponse {
   text: string
   emotion?: string
   gesture?: string
+  presentation?: AvatarPerformanceCue
   performance?: AvatarPerformanceCue
   traceId?: string
   sessionId?: string
@@ -127,6 +128,7 @@ export interface AvatarPerformanceCue {
   durationMs?: number
   gaze?: string
   gesture?: string
+  action?: string
   lipSync?: boolean
   [key: string]: unknown
 }
@@ -152,6 +154,7 @@ export interface ChatStreamEvent {
   confidence?: number
   source?: string
   performance?: AvatarPerformanceCue
+  presentation?: AvatarPerformanceCue
   interrupted?: boolean
   hitCount?: number
   degraded?: boolean

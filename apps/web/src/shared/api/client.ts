@@ -53,11 +53,25 @@ async function parseBody(response: Response): Promise<unknown> {
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: buildHeaders(init.headers),
-  })
+  const method = String(init.method ?? 'GET').toUpperCase()
+  const retryable = ['GET', 'HEAD', 'OPTIONS', 'DELETE'].includes(method)
+  let response: Response | undefined
+  let lastError: unknown
+  for (let attempt = 0; attempt < (retryable ? 3 : 1); attempt += 1) {
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        credentials: 'include',
+        headers: init.body instanceof FormData ? (() => { const headers = buildHeaders(init.headers); headers.delete('Content-Type'); return headers })() : buildHeaders(init.headers),
+      })
+      break
+    } catch (cause) {
+      lastError = cause
+      if (init.signal?.aborted || attempt >= 2) throw cause
+      await new Promise((resolve) => window.setTimeout(resolve, 180 * (attempt + 1)))
+    }
+  }
+  if (!response) throw lastError instanceof Error ? lastError : new Error('网络请求失败')
   const data = await parseBody(response)
   if (!response.ok) {
     if (response.status === 401 && getToken()) window.dispatchEvent(new CustomEvent('auth:expired'))
@@ -74,7 +88,7 @@ export const api = {
   post: <T>(path: string, body?: unknown, init?: RequestInit) => request<T>(path, {
     ...init,
     method: 'POST',
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
   }),
   patch: <T>(path: string, body?: unknown, init?: RequestInit) => request<T>(path, {
     ...init,
