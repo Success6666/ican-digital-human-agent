@@ -119,3 +119,42 @@ def test_mofa_configuration_is_editable_and_persisted(tmp_path, monkeypatch) -> 
     restarted = build_container(_settings(configuration_path))
     assert restarted.settings.provider_enabled["mofa"] is True
     assert restarted.providers.get("mofa").enabled is True
+
+
+def test_vendor_configuration_is_editable_and_masked(tmp_path) -> None:
+    configuration_path = str(tmp_path / "runtime.json")
+    container = build_container(_settings(configuration_path))
+
+    with TestClient(create_app(container=container)) as client:
+        response = client.patch(
+            "/internal/configuration",
+            headers=_headers(),
+            json={
+                "aliyun": {
+                    "enabled": True,
+                    "accessKeyId": "aliyun-access-key",
+                    "accessKeySecret": "aliyun-secret-value",
+                    "appId": "aliyun-app",
+                },
+                "iflytek": {
+                    "enabled": True,
+                    "appId": "iflytek-app",
+                    "apiKey": "iflytek-key",
+                    "apiSecret": "iflytek-secret-value",
+                },
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["aliyun"]["enabled"] is True
+        assert body["aliyun"]["configured"] is True
+        assert body["aliyun"]["accessKeySecret"] == "已配置"
+        assert body["iflytek"]["enabled"] is True
+        assert body["iflytek"]["configured"] is True
+        assert body["iflytek"]["apiSecret"] == "已配置"
+        assert "aliyun-secret-value" not in response.text
+        assert "iflytek-secret-value" not in response.text
+
+    restarted = build_container(_settings(configuration_path))
+    assert restarted.settings.provider_enabled["aliyun"] is True
+    assert restarted.settings.provider_enabled["iflytek"] is True

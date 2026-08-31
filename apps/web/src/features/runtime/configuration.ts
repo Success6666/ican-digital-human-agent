@@ -36,6 +36,25 @@ export interface RuntimeConfiguration {
     cryptoUrl?: string
     detail?: string
   }
+  aliyun?: {
+    enabled?: boolean
+    configured?: boolean
+    baseUrl?: string
+    appId?: string
+    instanceId?: string
+    accessKeyId?: string
+    accessKeySecret?: string
+    detail?: string
+  }
+  iflytek?: {
+    enabled?: boolean
+    configured?: boolean
+    gatewayUrl?: string
+    appId?: string
+    apiKey?: string
+    apiSecret?: string
+    detail?: string
+  }
   [key: string]: unknown
 }
 
@@ -50,6 +69,21 @@ export interface RuntimeConfigurationPatch {
     gatewayUrl?: string
     sdkUrl?: string
     cryptoUrl?: string
+  }
+  aliyun?: {
+    enabled?: boolean
+    baseUrl?: string
+    appId?: string
+    instanceId?: string
+    accessKeyId?: string
+    accessKeySecret?: string
+  }
+  iflytek?: {
+    enabled?: boolean
+    gatewayUrl?: string
+    appId?: string
+    apiKey?: string
+    apiSecret?: string
   }
 }
 

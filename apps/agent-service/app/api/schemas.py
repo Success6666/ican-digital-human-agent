@@ -97,19 +97,46 @@ class MofaConfigurationPatch(BaseModel):
     crypto_url: str | None = Field(default=None, alias="cryptoUrl", max_length=512)
 
 
+class AliyunConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    base_url: str | None = Field(default=None, alias="baseUrl", max_length=512)
+    app_id: str | None = Field(default=None, alias="appId", max_length=128)
+    instance_id: str | None = Field(default=None, alias="instanceId", max_length=128)
+    access_key_id: str | None = Field(default=None, alias="accessKeyId", max_length=256)
+    access_key_secret: str | None = Field(default=None, alias="accessKeySecret", max_length=256)
+
+
+class IflytekConfigurationPatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    enabled: bool | None = None
+    gateway_url: str | None = Field(default=None, alias="gatewayUrl", max_length=512)
+    app_id: str | None = Field(default=None, alias="appId", max_length=128)
+    api_key: str | None = Field(default=None, alias="apiKey", max_length=256)
+    api_secret: str | None = Field(default=None, alias="apiSecret", max_length=256)
+
+
 class ConfigurationPatch(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     default_provider: str | None = Field(default=None, alias="defaultProvider", min_length=1, max_length=64)
     session: SessionConfigurationPatch | None = None
     mofa: MofaConfigurationPatch | None = None
+    aliyun: AliyunConfigurationPatch | None = None
+    iflytek: IflytekConfigurationPatch | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "ConfigurationPatch":
-        if self.default_provider is None and self.session is None and self.mofa is None:
+        if self.default_provider is None and self.session is None and self.mofa is None and self.aliyun is None and self.iflytek is None:
             raise ValueError("至少需要提交一项配置")
         if self.session is not None and self.session.ttl_seconds is None and self.session.cleanup_interval_seconds is None:
             raise ValueError("会话配置不能为空")
         if self.mofa is not None and all(value is None for value in self.mofa.model_dump().values()):
             raise ValueError("星云配置不能为空")
+        if self.aliyun is not None and all(value is None for value in self.aliyun.model_dump().values()):
+            raise ValueError("阿里云配置不能为空")
+        if self.iflytek is not None and all(value is None for value in self.iflytek.model_dump().values()):
+            raise ValueError("讯飞配置不能为空")
         return self
