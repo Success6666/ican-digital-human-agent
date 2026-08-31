@@ -1,6 +1,6 @@
 [project]
 name = "digital-human-agent-service"
-version = "0.1.12"
+version = "0.1.13"
 description = "FastAPI and LangGraph runtime for the digital human agent"
 requires-python = ">=3.11"
 dependencies = [
