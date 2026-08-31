@@ -111,6 +111,9 @@
   height: 100%;
   max-width: none;
   transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  animation: avatar-preview-idle 4.8s ease-in-out infinite;
+  will-change: transform;
 }
 
 .avatar-preview-foreground {
@@ -124,6 +127,15 @@
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes avatar-preview-idle {
+  0%, 100% { transform: translateX(-50%) translateY(0) scaleY(1); }
+  50% { transform: translateX(-50%) translateY(-4px) scaleY(1.004); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-preview-surface img { animation: none; }
+}
 
 .avatar-stage-cta {
   min-height: 32px;

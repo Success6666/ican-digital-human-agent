@@ -16,7 +16,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
     settings = settings or get_settings()
     server = MCPServer(
         name=settings.service_name,
-        version="0.1.16",
+        version="0.1.17",
         instructions="Deterministic chain-probe tools for the digital human agent.",
         debug=False,
     )
@@ -24,7 +24,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
 
     @server.custom_route("/health", methods=["GET"], include_in_schema=False)
     async def health(_: Request) -> JSONResponse:
-        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.16"})
+        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.17"})
 
     @server.custom_route("/ready", methods=["GET"], include_in_schema=False)
     async def ready(_: Request) -> JSONResponse:
