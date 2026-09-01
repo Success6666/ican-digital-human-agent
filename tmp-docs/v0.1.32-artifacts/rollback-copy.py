@@ -22,16 +22,6 @@ class _UtteranceRevision:
     finalized: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class RevisionTicket:
-    """Optimistic revision reservation that can be rolled back safely."""
-
-    utterance_id: str
-    revision: int
-    previous_revision: int | None
-    previous_finalized: bool = False
-
-
 @dataclass(slots=True)
 class ConnectionState:
     """Mutable state shared by the receive loop and run tasks."""
@@ -101,59 +91,6 @@ class ConnectionState:
                 )
             while len(self._revisions) > 1024:
                 self._revisions.pop(next(iter(self._revisions)))
-            self.touch()
-            return True
-
-    async def reserve_revision(
-        self,
-        utterance_id: str,
-        revision: int,
-        *,
-        is_final: bool = False,
-        allow_open_update: bool = False,
-    ) -> RevisionTicket | None:
-        """Reserve a revision and retain enough state for an atomic rollback."""
-
-        async with self._lock:
-            current = self._revisions.get(utterance_id)
-            if current is not None and revision < current.revision:
-                return None
-            if current is not None and revision == current.revision:
-                if current.finalized or (not is_final and not allow_open_update):
-                    return None
-                previous_revision = current.revision
-                previous_finalized = current.finalized
-            else:
-                previous_revision = current.revision if current is not None else None
-                previous_finalized = current.finalized if current is not None else False
-            self._revisions[utterance_id] = _UtteranceRevision(
-                revision=revision,
-                finalized=is_final,
-            )
-            while len(self._revisions) > 1024:
-                self._revisions.pop(next(iter(self._revisions)))
-            self.touch()
-            return RevisionTicket(
-                utterance_id=utterance_id,
-                revision=revision,
-                previous_revision=previous_revision,
-                previous_finalized=previous_finalized,
-            )
-
-    async def rollback_revision(self, ticket: RevisionTicket) -> bool:
-        """Restore a failed reservation without clobbering a newer revision."""
-
-        async with self._lock:
-            current = self._revisions.get(ticket.utterance_id)
-            if current is None or current.revision != ticket.revision:
-                return False
-            if ticket.previous_revision is None:
-                self._revisions.pop(ticket.utterance_id, None)
-            else:
-                self._revisions[ticket.utterance_id] = _UtteranceRevision(
-                    revision=ticket.previous_revision,
-                    finalized=ticket.previous_finalized,
-                )
             self.touch()
             return True
 
@@ -307,6 +244,5 @@ __all__ = [
     "BoundedOutboundQueue",
     "ConnectionState",
     "RealtimeBackpressureError",
-    "RevisionTicket",
     "RunBinding",
 ]

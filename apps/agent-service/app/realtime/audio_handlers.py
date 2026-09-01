@@ -18,17 +18,24 @@ class RealtimeAudioHandlersMixin:
         require_audio_start(message)
         revision = message.revision or 1
         utterance_id = message.utterance_id or f"utt-{uuid4().hex}"
-        if not await self.state.accept_revision(utterance_id, revision):
+        ticket = await self.state.reserve_revision(utterance_id, revision)
+        if ticket is None:
             await self._emit(
                 "ack", request_id=message.request_id, action="audio_start", accepted=False,
                 reason="stale_revision", utterance_id=utterance_id, revision=revision,
             )
             return
-        await self._clear_audio(reason="audio_restarted")
-        old = await self._stop_active()
-        if old is not None:
-            await self._publish_interrupted(old, reason="audio_started")
-        stats = await self.ingress.start(utterance_id, revision)
+        committed = False
+        try:
+            await self._clear_audio(reason="audio_restarted")
+            old = await self._stop_active()
+            if old is not None:
+                await self._publish_interrupted(old, reason="audio_started")
+            stats = await self.ingress.start(utterance_id, revision)
+            committed = True
+        finally:
+            if not committed:
+                await self.state.rollback_revision(ticket)
         await self.state.start_audio(utterance_id, revision)
         await self._emit(
             "ack", request_id=message.request_id, action="audio_start", accepted=True,

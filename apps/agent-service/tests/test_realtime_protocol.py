@@ -8,7 +8,10 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.main import build_container, create_app
 from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.realtime.audio_handlers import RealtimeAudioHandlersMixin
+from app.realtime.handlers import RealtimeHandlersMixin
 from app.realtime.state import ConnectionState
+from app.realtime.protocol import RealtimeMessage
 from app.settings import Settings
 
 
@@ -203,3 +206,93 @@ async def test_revision_accepts_interim_then_final_once() -> None:
     assert await state.accept_revision("utt-1", 1, is_final=True) is False
     assert await state.accept_revision("utt-1", 0, is_final=True) is False
     assert await state.accept_revision("utt-1", 2, is_final=True) is True
+
+
+@pytest.mark.asyncio
+async def test_revision_rollback_restores_retryable_state() -> None:
+    state = ConnectionState()
+    ticket = await state.reserve_revision("utt-1", 1, is_final=True)
+    assert ticket is not None
+    assert await state.rollback_revision(ticket) is True
+    assert await state.reserve_revision("utt-1", 1, is_final=True) is not None
+
+
+@pytest.mark.asyncio
+async def test_old_revision_rollback_cannot_remove_newer_revision() -> None:
+    state = ConnectionState()
+    ticket = await state.reserve_revision("utt-1", 1, is_final=True)
+    assert ticket is not None
+    assert await state.reserve_revision("utt-1", 2, is_final=True) is not None
+    assert await state.rollback_revision(ticket) is False
+    assert await state.accept_revision("utt-1", 1, is_final=True) is False
+
+
+class _FailOnceIngress:
+    async def start(self, utterance_id: str, revision: int):
+        if not hasattr(self, "failed"):
+            self.failed = True
+            raise RuntimeError("ingress unavailable")
+        return type("Stats", (), {"utterance_id": utterance_id, "revision": revision, "status": "buffering"})()
+
+
+class _AudioHarness(RealtimeAudioHandlersMixin):
+    def __init__(self) -> None:
+        self.state = ConnectionState()
+        self.ingress = _FailOnceIngress()
+        self.limits = type("Limits", (), {"max_audio_buffer_bytes": 1024})()
+        self.events: list[dict[str, object]] = []
+
+    async def _clear_audio(self, *, reason: str | None = None) -> None:
+        del reason
+
+    async def _stop_active(self):
+        return None
+
+    async def _publish_interrupted(self, binding, *, reason: str):
+        del binding, reason
+
+    async def _emit(self, event_type: str, **fields):
+        self.events.append({"type": event_type, **fields})
+
+    async def _audio_queue(self, stats):
+        self.events.append({"type": "audio_queue", "revision": stats.revision})
+
+
+@pytest.mark.asyncio
+async def test_audio_start_failure_rolls_back_revision_for_retry() -> None:
+    harness = _AudioHarness()
+    message = RealtimeMessage(type="audio_start", utteranceId="utt-audio", revision=1)
+    with pytest.raises(RuntimeError):
+        await harness._audio_start(message)
+    await harness._audio_start(message)
+    assert harness.events[-2]["accepted"] is True
+
+
+class _TextCapacityHarness(RealtimeHandlersMixin):
+    def __init__(self) -> None:
+        self.state = ConnectionState(user_id="u1", user_name="Tester", session_id="s1", hello_received=True)
+        self.limits = type("Limits", (), {"max_pending_runs": 1})()
+        self.run_tasks = {"existing": object()}
+        self.container = type("Container", (), {})()
+        self.events: list[dict[str, object]] = []
+
+    async def _clear_audio(self, *, reason: str | None = None) -> None:
+        del reason
+
+    async def _stop_active(self, run_id: str | None = None):
+        del run_id
+        return None
+
+    async def _emit(self, event_type: str, **fields):
+        self.events.append({"type": event_type, **fields})
+
+    async def _send_error(self, code: str, message: str, **fields):
+        self.events.append({"type": "error", "code": code, "message": message, **fields})
+
+
+@pytest.mark.asyncio
+async def test_text_capacity_failure_rolls_back_revision() -> None:
+    harness = _TextCapacityHarness()
+    await harness._text(RealtimeMessage(type="text", utteranceId="utt-capacity", revision=1, text="hello"))
+    assert harness.events[-1]["code"] == "run_capacity"
+    assert await harness.state.reserve_revision("utt-capacity", 1, is_final=True) is not None

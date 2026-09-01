@@ -1,0 +1,48 @@
+v0.1.32 验收记录
+日期：2026-09-02
+分支：main
+变更字段：RevisionTicket、reserve_revision、rollback_revision、文本/音频启动事务、版本号 0.1.32
+MODIFIED_FILE：tmp-docs/v0.1.32-artifacts/MODIFIED_FILE.py
+DIFF_FILE：tmp-docs/v0.1.32-artifacts/DIFF_FILE.diff
+VERIFICATION：tmp-docs/v0.1.32-artifacts/VERIFICATION.txt
+ROLLBACK：tmp-docs/v0.1.32-artifacts/ROLLBACK.sh
+原始 SHA256：BAF7D5B5A4E849D6A2FC3641E0C51E1C11406002155CD5B3F3BE521387387EA0
+修改 SHA256：E5FCD1237271351E4A6A486AF393DF9E334955E94B3D77394EA96F5E9B5F833D
+
+BASELINE
+- 命令：git show HEAD:apps/agent-service/app/realtime/state.py | Out-File -Encoding utf8 tmp-docs/v0.1.32-artifacts/state.original.py；Get-FileHash ... -Algorithm SHA256
+- 输入：v0.1.31 已提交的 ConnectionState 实现。
+- 结果：原始副本 SHA256 为 BAF7D5B5A4E849D6A2FC3641E0C51E1C11406002155CD5B3F3BE521387387EA0；退出状态 0。
+- 基线行为：启动前接受 revision 后，容量或入口启动失败没有事务化恢复接口。
+
+MODIFIED
+- 命令：python -m pytest -q tests/test_realtime_protocol.py tests/test_realtime_ws.py
+- 输入：实时协议、WebSocket、revision 回滚和音频启动失败测试。
+- 结果：14 passed，0 failed；退出状态 0。
+- 命令：python -m pytest -q
+- 输入：Agent 全量测试。
+- 结果：181 passed、1 skipped、1 warning；退出状态 0。
+- 命令：python -m pytest -q（apps/mcp-server）
+- 输入：MCP 全量测试。
+- 结果：6 passed，0 failed；退出状态 0。
+- 命令：npm run test:chat; npm run test:realtime; npm run test:avatar; npm run build
+- 输入：Web 契约测试与生产构建。
+- 结果：聊天 3 passed、实时 5 passed、数字人 3 passed；Vite 生产构建成功；退出状态 0。
+- 命令：./mvnw.cmd -q clean test
+- 输入：认证网关全量测试。
+- 结果：30 tests，0 failures；退出状态 0。
+- 命令：docker compose up -d --build; docker compose ps
+- 输入：v0.1.32 工作树。
+- 结果：agent-service、auth-service、mcp-server、rabbitmq、web 五个服务 healthy；退出状态 0。
+- 命令：Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8088/api/health
+- 输入：认证网关健康接口。
+- 结果：status=ok、service=auth-service；退出状态 0。
+- 命令：git diff --check
+- 输入：当前差异。
+- 结果：无空白错误；退出状态 0。
+
+ROLLBACK
+- 命令：wsl bash -lc ".../tmp-docs/v0.1.32-artifacts/ROLLBACK.sh .../tmp-docs/v0.1.32-artifacts/rollback-copy.py"
+- 输入：MODIFIED_FILE.py 的独立副本。
+- 结果：rollback-restored=/mnt/e/ican数字人/tmp-docs/v0.1.32-artifacts/rollback-copy.py；cmp 一致；退出状态 0。
+- 恢复状态：rollback-copy.py SHA256 与原始副本均为 BAF7D5B5A4E849D6A2FC3641E0C51E1C11406002155CD5B3F3BE521387387EA0；仓库源码保持 v0.1.32 修改。

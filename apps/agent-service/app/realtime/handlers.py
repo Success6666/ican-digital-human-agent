@@ -26,12 +26,23 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
         require_text(message)
         utterance_id = message.utterance_id or f"utt-{uuid4().hex}"
         revision = message.revision or 1
-        if not await self.state.accept_revision(
-            utterance_id,
-            revision,
-            is_final=message.is_final,
-            allow_open_update=True,
-        ):
+        if not message.is_final:
+            accepted = await self.state.accept_revision(
+                utterance_id,
+                revision,
+                is_final=False,
+                allow_open_update=True,
+            )
+            ticket = None
+        else:
+            ticket = await self.state.reserve_revision(
+                utterance_id,
+                revision,
+                is_final=True,
+                allow_open_update=True,
+            )
+            accepted = ticket is not None
+        if not accepted:
             await self._emit(
                 "ack", request_id=message.request_id, action="text", accepted=False,
                 reason="stale_revision", utterance_id=utterance_id, revision=revision,
@@ -47,20 +58,26 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
                 final=False, utterance_id=utterance_id, revision=revision,
             )
             return
-        await self._clear_audio(reason="text_started")
-        old = await self._stop_active()
-        if old is not None:
-            await self._publish_interrupted(old, reason="superseded")
-        await asyncio.sleep(0)
-        if len(self.run_tasks) >= self.limits.max_pending_runs:
-            await self._send_error("run_capacity", "实时运行数量已达到上限")
-            return
-        run_id = await self.container.session_service.begin_run(
-            user_id=self.state.user_id or "", session_id=self.state.session_id or "",
-        )
-        if not run_id:
-            await self._send_error("session_unavailable", "会话当前不可用")
-            return
+        committed = False
+        try:
+            await self._clear_audio(reason="text_started")
+            old = await self._stop_active()
+            if old is not None:
+                await self._publish_interrupted(old, reason="superseded")
+            await asyncio.sleep(0)
+            if len(self.run_tasks) >= self.limits.max_pending_runs:
+                await self._send_error("run_capacity", "实时运行数量已达到上限")
+                return
+            run_id = await self.container.session_service.begin_run(
+                user_id=self.state.user_id or "", session_id=self.state.session_id or "",
+            )
+            if not run_id:
+                await self._send_error("session_unavailable", "会话当前不可用")
+                return
+            committed = True
+        finally:
+            if not committed:
+                await self.state.rollback_revision(ticket)
         binding = RunBinding(run_id=str(run_id), utterance_id=utterance_id, revision=revision)
         await self.state.begin_run(binding)
         # Register the task before the first await after ``begin_run``.  A
