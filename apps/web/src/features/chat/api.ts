@@ -15,6 +15,7 @@ export async function sendChat(request: ChatRequest, signal?: AbortSignal): Prom
     firstEventLatencyMs: response.firstEventLatencyMs,
     firstVisibleLatencyMs: response.firstVisibleLatencyMs,
     cancellationLatencyMs: response.cancellationLatencyMs,
+    cacheHit: response.cacheHit,
   }
 }
 

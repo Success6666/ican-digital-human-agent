@@ -106,6 +106,7 @@ export interface ChatResponse {
   firstEventLatencyMs?: number
   firstVisibleLatencyMs?: number
   cancellationLatencyMs?: number
+  cacheHit?: boolean
 }
 
 export interface AgentResponse {

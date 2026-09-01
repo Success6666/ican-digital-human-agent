@@ -1,0 +1,33 @@
+Digital Human Agent v0.1.35 verification
+Date: 2026-09-01
+Changed branch/field: evaluation raw archive, categorized dataset, real evaluation API/UI, version 0.1.35
+
+Artifacts
+- MODIFIED_FILE: E:\ican数字人\tmp-docs\v0.1.35-artifacts\MODIFIED_FILE
+- DIFF_FILE: E:\ican数字人\tmp-docs\v0.1.35-artifacts\DIFF_FILE
+- ROLLBACK.sh: E:\ican数字人\tmp-docs\v0.1.35-artifacts\ROLLBACK.sh
+- task book: E:\ican数字人\tmp-docs\digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md
+
+BASELINE
+- Command: git show fcab538:apps/agent-service/app/evaluation/service.py > tmp-docs/v0.1.35-artifacts/baseline/evaluation_service.py
+- Result: baseline service source captured from v0.1.34 commit fcab538.
+- Historical full-test result: 186 passed, 2 skipped, 1 warning.
+
+MODIFIED
+- Command: $env:PYTHONPATH='apps/agent-service'; python -m pytest -q apps/agent-service/tests
+- Result: 189 passed, 2 skipped, 1 warning in 48.16s; exit 0.
+- Command: npm run build; npm run test:chat; npm run test:realtime; npm run test:avatar (cwd apps/web)
+- Result: Vite build succeeded (1662 modules, JS 327.70 kB, CSS 66.25 kB); 3 + 5 + 3 tests passed; exit 0.
+- Command: .\mvnw.cmd -q test (cwd apps/auth-service)
+- Result: MAVEN_EXIT=0; Spring Boot test completed successfully.
+- Command: docker compose up -d --build
+- Result: all four application images built and containers recreated; exit 0.
+- Command: docker compose ps
+- Result: agent-service, auth-service, mcp-server, rabbitmq, redis and web all healthy; web published on 127.0.0.1:8088.
+- Command: python -c "from app.evaluation.dataset import build_default_dataset; d=build_default_dataset(); print(d.case_count, len({c.category for c in d.cases}))"
+- Result: 64 samples, 19 categories.
+- Raw archive smoke: POST /internal/evaluation/runs -> GET /internal/evaluation/runs/{id}/raw -> restart EvaluationService with same archive -> raw request restored; other owner returns 404.
+
+ROLLBACK
+- Command: wsl bash /mnt/e/ican数字人/tmp-docs/v0.1.35-artifacts/ROLLBACK.sh /mnt/e/ican数字人/tmp-docs/v0.1.35-artifacts/rollback-copy/evaluation_service.py
+- Result: restored=.../rollback-copy/evaluation_service.py; rollback copy matches baseline; working-tree MODIFIED_FILE remains changed.

@@ -129,6 +129,7 @@ class Settings(BaseModel):
     rag_store_path: str = Field(default="data/rag.sqlite3", alias="RAG_STORE_PATH", min_length=1, max_length=512)
     docling_max_concurrency: int = Field(default=1, alias="DOCLING_MAX_CONCURRENCY", ge=1, le=8)
     evaluation_buffer_size: int = Field(default=2000, alias="EVALUATION_BUFFER_SIZE")
+    evaluation_raw_archive_path: str = Field(default="data/evaluation-runs.raw.jsonl", alias="EVALUATION_RAW_ARCHIVE_PATH", min_length=1, max_length=512)
     eval_input_price_per_1k: float = Field(default=0.003, alias="EVAL_INPUT_PRICE_PER_1K")
     eval_output_price_per_1k: float = Field(default=0.009, alias="EVAL_OUTPUT_PRICE_PER_1K")
     eval_currency: str = Field(default="CNY", alias="EVAL_CURRENCY")

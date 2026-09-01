@@ -28,6 +28,21 @@ def test_project_dataset_covers_required_dimensions() -> None:
     assert any("实时改口" in case.tags for case in dataset.cases)
     assert any("微表情" in case.tags for case in dataset.cases)
     assert any("语音播报" in case.tags for case in dataset.cases)
+    assert dataset.case_count >= 60
+    assert len({case.category for case in dataset.cases}) >= 12
+
+
+def test_evaluation_raw_archive_survives_service_restart(tmp_path) -> None:
+    archive = tmp_path / "runs.raw.jsonl"
+    first = EvaluationService(raw_archive_path=str(archive), max_runs=4)
+    run = first.record(
+        EvaluationRunRequest(dataset_id="ican-agent-core", case_id="chat-acknowledge-001", input_text="原始输入", output_text="原始输出"),
+        owner_id="u-raw",
+    )
+    assert first.raw_run(run.id, owner_id="u-raw")["request"]["input_text"] == "原始输入"
+    second = EvaluationService(raw_archive_path=str(archive), max_runs=4)
+    assert second.get_run(run.id, owner_id="u-raw") is not None
+    assert second.raw_run(run.id, owner_id="other") is None
 
 
 def test_deterministic_metrics_cover_tokens_cost_tools_grounding_and_injection() -> None:
@@ -240,6 +255,12 @@ def test_evaluation_http_api_is_authenticated_and_owner_scoped() -> None:
         assert "owner_id" not in payload
         assert payload["total_tokens"] > 0
         assert payload["duration_ms"] == 40
+
+        raw = client.get(f"/internal/evaluation/runs/{payload['id']}/raw", headers=headers)
+        assert raw.status_code == 200
+        assert raw.json()["request"]["input_text"] == "查询 MCP 状态"
+        assert "owner_id" not in raw.json()
+        assert client.get(f"/internal/evaluation/runs/{payload['id']}/raw", headers=_headers("u-other", "OtherUser")).status_code == 404
 
         overview = client.get("/internal/evaluation/overview", headers=headers)
         assert overview.status_code == 200

@@ -5,13 +5,10 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timezone
 import hashlib
-import json
 import math
 import os
-from pathlib import Path
 import threading
 from typing import Iterable
-import logging
 
 from .dataset import build_default_dataset
 from .metrics import _SENSITIVE_LEAK_RE, _SECRET_RE, score_run
@@ -24,8 +21,6 @@ from .models import (
     EvaluationRunRequest,
     MetricScore,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class EvaluationService:
@@ -42,35 +37,13 @@ class EvaluationService:
         input_price_per_1k: float | None = None,
         output_price_per_1k: float | None = None,
         currency: str | None = None,
-        raw_archive_path: str | None = None,
     ) -> None:
         self._datasets = {item.id: item for item in (datasets or [build_default_dataset()])}
         self._runs: deque[EvaluationRun] = deque(maxlen=max(1, max_runs))
         self._lock = threading.RLock()
-        self._archive_lock = threading.Lock()
-        self.raw_archive_path = Path(raw_archive_path) if raw_archive_path else None
         self.input_price_per_1k = _positive_float(input_price_per_1k, "EVAL_INPUT_PRICE_PER_1K", 0.003)
         self.output_price_per_1k = _positive_float(output_price_per_1k, "EVAL_OUTPUT_PRICE_PER_1K", 0.009)
         self.currency = currency or os.getenv("EVAL_CURRENCY", "CNY")
-        self._load_archive()
-
-    def _load_archive(self) -> None:
-        """Recover the bounded aggregate index; the append-only archive remains complete."""
-        path = self.raw_archive_path
-        if path is None or not path.is_file():
-            return
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            logger.warning("evaluation raw archive read failed: %s", self.raw_archive_path)
-            return
-        for line in lines[-self._runs.maxlen :]:
-            try:
-                payload = json.loads(line)
-                run = EvaluationRun.model_validate(payload.get("run", payload))
-            except Exception:
-                continue
-            self._runs.append(run)
 
     def datasets(self) -> list[EvaluationDataset]:
         with self._lock:
@@ -115,49 +88,7 @@ class EvaluationService:
         )
         with self._lock:
             self._runs.append(run)
-        self._append_raw(request=request, owner_id=owner_id, run=run)
         return run
-
-    def _append_raw(self, *, request: EvaluationRunRequest, owner_id: str, run: EvaluationRun) -> None:
-        if self.raw_archive_path is None:
-            return
-        payload = {
-            "archived_at": datetime.now(timezone.utc).isoformat(),
-            "owner_id": _owner_key(owner_id),
-            "request": request.model_dump(mode="json"),
-            "run": run.model_dump(mode="json"),
-        }
-        try:
-            self.raw_archive_path.parent.mkdir(parents=True, exist_ok=True)
-            line = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
-            with self._archive_lock, self.raw_archive_path.open("a", encoding="utf-8") as stream:
-                stream.write(line)
-                stream.flush()
-                os.fsync(stream.fileno())
-        except OSError:
-            # The bounded in-memory result is still available; callers receive
-            # the run result while the failure is observable through the log.
-            logger.warning("evaluation raw archive write failed: %s", self.raw_archive_path)
-            return
-
-    def raw_run(self, run_id: str, *, owner_id: str) -> dict[str, object] | None:
-        if self.raw_archive_path is None:
-            return None
-        owner_key = _owner_key(owner_id)
-        try:
-            with self.raw_archive_path.open("rb") as stream:
-                for raw_line in _reverse_lines(stream):
-                    line = raw_line.decode("utf-8", errors="replace")
-                    try:
-                        payload = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    run = payload.get("run", {})
-                    if run.get("id") == run_id and payload.get("owner_id") == owner_key:
-                        return payload
-        except OSError:
-            return None
-        return None
 
     def runs(self, *, owner_id: str, limit: int = 50) -> list[EvaluationRun]:
         safe_limit = max(1, min(limit, 200))
@@ -237,25 +168,6 @@ class EvaluationService:
         with self._lock:
             items = [item for item in reversed(self._runs) if item.owner_id == owner_key]
             return [item.model_copy(deep=True) for item in items]
-
-
-def _reverse_lines(stream, block_size: int = 64 * 1024):
-    """Yield JSONL lines newest-first without loading the archive into RAM."""
-    stream.seek(0, os.SEEK_END)
-    position = stream.tell()
-    buffer = b""
-    while position > 0:
-        read_size = min(block_size, position)
-        position -= read_size
-        stream.seek(position)
-        buffer = stream.read(read_size) + buffer
-        lines = buffer.split(b"\n")
-        buffer = lines.pop(0)
-        for line in reversed(lines):
-            if line:
-                yield line
-    if buffer:
-        yield buffer
 
 
 def _find_case(dataset: EvaluationDataset | None, case_id: str | None) -> EvaluationCase | None:

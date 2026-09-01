@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.34）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.35）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
@@ -59,7 +59,7 @@ npm run dev
 - Docling 文档解析、切分、向量检索端口和用户命名空间隔离。
 - Provider 能力会区分单轮中断、会话中断和本地隔离，避免把服务端抑制旧结果误认为远端播报已停止。
 - FutureAGI 适配器；未配置时使用有界本地 JSON 缓冲。
-- 评测中心：项目自建 25 条链路场景基线集，记录 token、价格、任务成功率、工具调用准确率、结果正确性/一致性、事实有据性、提示词注入防护，以及 Agent/数字人分段延迟和 p50/p95。
+- 评测中心：项目自建 60+ 条链路场景基线集，按安全、质量、RAG、工具治理、实时音频、可靠性、性能、租户隔离、个性化、缓存、用户体验、可观测性和成本分类，记录 token、价格、任务成功率、工具调用准确率、结果正确性/一致性、事实有据性、提示词注入防护，以及 Agent/数字人分段延迟和 p50/p95。
 - 审计与 Trace 回放：只展示当前用户可见、已脱敏的人类可读信息。
 - 后台运行配置：管理员可通过紧凑弹窗调整默认数字人和会话策略，变更会原子持久化并同步到新会话。
 
@@ -71,9 +71,10 @@ npm run dev
 | GET | `/api/evaluation/datasets` | 项目自建数据集和样本元信息 |
 | POST | `/api/evaluation/runs` | 提交一条离线或实时评测样本 |
 | GET | `/api/evaluation/runs` | 查看当前用户的评测运行 |
+| GET | `/api/evaluation/runs/{runId}/raw` | 查看当前用户某轮评测的完整原始归档 |
 | GET | `/api/observability/traces/{traceId}` | 脱敏 Trace 回放 |
 
-评测服务默认只保存有限条内存记录，价格通过 `EVAL_INPUT_PRICE_PER_1K`、`EVAL_OUTPUT_PRICE_PER_1K` 和 `EVAL_CURRENCY` 配置。RAG 文档与向量默认持久化到 `RAG_STORE_PATH` 指向的 SQLite 文件，后续可替换为数据库或专业向量库而不改变 HTTP 契约。
+评测服务以内存索引提供快速汇总，同时将每轮完整请求、输出、评分和元数据追加写入 `EVALUATION_RAW_ARCHIVE_PATH`；服务重启后会恢复索引，原始归档持续保留。价格通过 `EVAL_INPUT_PRICE_PER_1K`、`EVAL_OUTPUT_PRICE_PER_1K` 和 `EVAL_CURRENCY` 配置。
 
 实时链路会分别记录服务端首事件、服务端首个可见事件、Agent、数字人和取消延迟，并在 Trace 回放与评测汇总中提供平均值及 p50/p95。首个可见事件以服务端写出首个可见 SSE 帧前的时间戳为准，不冒充浏览器实际绘制时间。FutureAGI 导出采用有界异步队列；`OBSERVABILITY_MAX_PENDING_TASKS` 和 `OBSERVABILITY_PENDING_FLUSH_TIMEOUT_SECONDS` 用于控制积压和关闭等待，队列满时保留本地记录并计入丢弃计数。
 
@@ -115,5 +116,5 @@ Set-Location ..\web
 npm run build
 ```
 
-本版本 Redis、真实 ASR 与音频输出验收记录见 [`tmp-docs/digital-human-agent-v0.1.34-redis-asr-audio-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.34-redis-asr-audio-task-book-已完成.md)，上一版会话清理记录见 [`tmp-docs/digital-human-agent-v0.1.33-persistent-session-cleanup-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.33-persistent-session-cleanup-task-book-已完成.md)。
+本版本性能、体验与评测数据验收记录见 [`tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md)，上一版 Redis、ASR 与音频输出记录见 [`tmp-docs/digital-human-agent-v0.1.34-redis-asr-audio-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.34-redis-asr-audio-task-book-已完成.md)。
 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。

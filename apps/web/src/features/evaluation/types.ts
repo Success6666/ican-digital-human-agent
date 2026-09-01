@@ -83,6 +83,7 @@ export interface EvaluationDatasetWire {
   status?: string
   updated_at?: string
   updatedAt?: string
+  categories?: Record<string, number>
   [key: string]: unknown
 }
 
@@ -120,6 +121,13 @@ export interface EvaluationRunWire {
   created_at?: string
   createdAt?: string
   [key: string]: unknown
+}
+
+export interface EvaluationRawRunWire {
+  archived_at?: string
+  owner_id?: string
+  request?: Record<string, unknown>
+  run?: EvaluationRunWire
 }
 
 export interface EvaluationOverview {

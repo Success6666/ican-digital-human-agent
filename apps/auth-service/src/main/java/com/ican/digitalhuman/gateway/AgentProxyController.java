@@ -75,6 +75,14 @@ public class AgentProxyController {
         return agentGatewayClient.patch("/internal/profile", body, current.id(), current.username(), current.role());
     }
 
+    @GetMapping("/evaluation/runs/{runId}/raw")
+    public JsonNode rawEvaluationRun(@PathVariable String runId) {
+        UserAccount current = user();
+        return agentGatewayClient.get(
+                "/internal/evaluation/runs/" + encodePath(runId) + "/raw",
+                current.id(), current.username());
+    }
+
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> chatStream(@RequestBody JsonNode body) {
         UserAccount current = user();

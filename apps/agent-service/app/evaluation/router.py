@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from collections import Counter
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -47,6 +48,7 @@ def build_router(service: EvaluationService, *, runner: Any | None = None, prefi
                         }
                         for case in dataset.cases
                     ],
+                    "categories": dict(Counter(case.category for case in dataset.cases)),
                     "created_at": dataset.created_at,
                 }
             )
@@ -87,6 +89,17 @@ def build_router(service: EvaluationService, *, runner: Any | None = None, prefi
         if item is None:
             raise HTTPException(status_code=404, detail="evaluation run not found")
         return _public_run(item)
+
+    @api.get("/runs/{run_id}/raw")
+    async def raw_run(run_id: str, context: InternalContext):
+        if not _valid_id(run_id):
+            raise HTTPException(status_code=422, detail="invalid run id")
+        payload = service.raw_run(run_id, owner_id=context["user_id"])
+        if payload is None:
+            raise HTTPException(status_code=404, detail="evaluation raw run not found")
+        payload = dict(payload)
+        payload.pop("owner_id", None)
+        return payload
 
     return api
 

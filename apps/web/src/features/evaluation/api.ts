@@ -1,5 +1,5 @@
 import { ApiError, api } from '../../shared/api/client'
-import type { EvaluationDatasetWire, EvaluationOverviewWire, EvaluationRunWire } from './types'
+import type { EvaluationDatasetWire, EvaluationOverviewWire, EvaluationRawRunWire, EvaluationRunWire } from './types'
 
 interface ListResponse<T> { items?: T[]; datasets?: T[]; runs?: T[] }
 
@@ -41,4 +41,8 @@ export async function runDataset(datasetId: string, caseIds: string[] = []): Pro
     concurrency: 2,
     timeout_seconds: 30,
   })
+}
+
+export function getRawRun(runId: string): Promise<EvaluationRawRunWire> {
+  return api.get<EvaluationRawRunWire>(`/evaluation/runs/${encodeURIComponent(runId)}/raw`)
 }

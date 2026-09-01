@@ -11,9 +11,9 @@ def build_default_dataset() -> EvaluationDataset:
     dimensions = list(EvaluationDimension)
     return EvaluationDataset(
         id="ican-agent-core",
-        version="2026.09.01",
+        version="2026.09.01.1",
         name="ICAN 数字人 Agent 核心评测集",
-        description="覆盖会话、意图识别、FAISS/Docling RAG、MCP 路由、实时改口、语音播报、表情动作、Provider 降级、Trace、成本、延迟预算和提示词注入防护的项目自建基线。",
+        description="覆盖安全、质量、RAG、工具治理、实时音频、可靠性、性能、租户隔离、个性化、缓存、用户体验、可观测性和成本的项目自建基线。",
         dimensions=dimensions,
         cases=cases,
     )

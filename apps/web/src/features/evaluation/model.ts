@@ -20,12 +20,12 @@ export function useEvaluationData() {
     if (overview.status === 'rejected' || (overview.status === 'fulfilled' && overview.value === null)) unavailable.push('指标接口')
     if (datasets.status === 'rejected' || (datasets.status === 'fulfilled' && datasets.value === null)) unavailable.push('数据集接口')
     if (runs.status === 'rejected' || (runs.status === 'fulfilled' && runs.value === null)) unavailable.push('评测运行接口')
-    setState({
-      overview: overview.status === 'fulfilled' ? normalizeOverview(overview.value) : null,
-      datasets: datasets.status === 'fulfilled' && datasets.value ? datasets.value : [],
-      runs: runs.status === 'fulfilled' && runs.value ? runs.value : [],
+    setState((previous) => ({
+      overview: overview.status === 'fulfilled' ? normalizeOverview(overview.value) : previous.overview,
+      datasets: datasets.status === 'fulfilled' && datasets.value ? datasets.value : previous.datasets,
+      runs: runs.status === 'fulfilled' && runs.value ? runs.value : previous.runs,
       unavailable,
-    })
+    }))
     if (unavailable.length) setError(`部分评测数据暂不可用：${unavailable.join('、')}`)
     setLoading(false)
     setRefreshing(false)

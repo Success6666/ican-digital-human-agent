@@ -272,6 +272,12 @@
 .compact-table td small {
   display: block;
 }
+
+.evaluation-controls { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--ink-muted); font-size: 11px; }
+.evaluation-controls label { color: var(--ink); font-weight: 700; }
+.evaluation-controls select { min-height: 32px; padding: 0 28px 0 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); }
+.evaluation-controls span { margin-left: auto; color: var(--ink-faint); }
+.raw-run-panel pre { max-height: 420px; margin: 0; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-muted); background: var(--surface-muted); font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .table-action-button {
   display: inline-flex;
   align-items: center;

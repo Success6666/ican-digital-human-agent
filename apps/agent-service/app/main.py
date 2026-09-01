@@ -192,6 +192,7 @@ def build_container(
         input_price_per_1k=settings.eval_input_price_per_1k,
         output_price_per_1k=settings.eval_output_price_per_1k,
         currency=settings.eval_currency,
+        raw_archive_path=settings.evaluation_raw_archive_path,
     )
     evaluation_runner = EvaluationDatasetRunner(service=evaluation, graph=graph, sessions=session_service)
     profile_store = AccountPreferenceStore(
@@ -307,7 +308,7 @@ def create_app(
                 await app.state.container.response_cache.close()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.34", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.35", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

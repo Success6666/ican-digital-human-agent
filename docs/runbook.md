@@ -48,7 +48,7 @@ docker compose up --build
 
 ## 评测与回放
 
-登录后打开“评测中心”，可查看当前用户的质量、安全、成本和 Agent/数字人分段延迟。通过 `POST /api/evaluation/runs` 提交离线样本；Trace 回放只显示本用户事件，字段已做脱敏。若尚无运行样本，指标显示“暂无数据”，数据集仍会展示项目基线。
+登录后打开“评测中心”，可查看当前用户的质量、安全、成本和 Agent/数字人分段延迟。数据集按分类筛选，运行列表可查看某轮完整原始归档。通过 `POST /api/evaluation/runs` 提交离线样本；Trace 回放只显示本用户事件，字段已做脱敏。原始评测数据追加写入 `EVALUATION_RAW_ARCHIVE_PATH`，服务重启后仍可查询。
 
 ## FutureAGI 可观测性
 
