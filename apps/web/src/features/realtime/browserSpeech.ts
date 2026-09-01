@@ -34,7 +34,7 @@ export function createBrowserSpeechRecognition(language = 'zh-CN'): BrowserSpeec
   const recognition = new Constructor()
   recognition.lang = language
   recognition.interimResults = true
-  recognition.continuous = false
+  recognition.continuous = true
   return recognition
 }
 

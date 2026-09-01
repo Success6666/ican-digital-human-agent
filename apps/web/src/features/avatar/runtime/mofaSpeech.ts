@@ -39,10 +39,36 @@ const keyActions: Record<string, string> = {
   right_side: 'RightSide02',
 }
 
-const actionIntents: Record<string, string> = {
-  pointscreen: 'Pointscreen',
+const actionIntentNames = [
+  'FistSalute', 'ClapHands', 'Welcome', 'ThankYou', 'Prohibit', 'KeyPoints', 'Stable', 'Comfort',
+  'Downsize', 'Cuttime', 'Extendsize', 'Extendtime', 'Elevate', 'Like', 'Goodbye', 'Hello',
+  'PointingSelf', 'Surprise', 'Pointscreen', 'Wish', 'Heart', 'PointAudience', 'Downward', 'Click',
+  'Encourage', 'Wave', 'Up', 'Down', 'Left', 'Right', 'Forward', 'Backward', 'Center', 'Near', 'Far',
+  'Large', 'Small', 'High', 'Low', 'Partial', 'Whole', 'Edge', 'Apologize', 'Approve', 'Pause',
+  'Expect', 'Think', 'Confused', 'Indifferent', 'Ecstasy', 'Joyful', 'Playful', 'Dissatisfied',
+  'Reject', 'Worry', 'Disappointed', 'Aggrieved', 'Shakehands', 'Highfive', 'Curious', 'Worship',
+  'Shy', 'Scared', 'Tired', 'Surprised', 'Nauseous', 'Ill', 'Dance', 'Scan', 'Sos',
+] as const
+
+const actionIntents: Record<string, string> = Object.fromEntries(
+  actionIntentNames.map((name) => [name.toLowerCase(), name]),
+)
+
+Object.assign(actionIntents, {
+  greet: 'Hello',
+  greeting: 'Hello',
+  wave_hand: 'Wave',
+  wavehand: 'Wave',
+  nod: 'Approve',
+  acknowledge: 'Approve',
   point_screen: 'Pointscreen',
-}
+  point_self: 'PointingSelf',
+  point_audience: 'PointAudience',
+  clap: 'ClapHands',
+  thank_you: 'ThankYou',
+  handshake: 'Shakehands',
+  high_five: 'Highfive',
+})
 
 function actionSsml(value: unknown): string {
   const semantic = normalizeSemantic(value)

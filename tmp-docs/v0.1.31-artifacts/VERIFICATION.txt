@@ -1,0 +1,46 @@
+v0.1.31 验收记录
+日期：2026-09-01
+分支：main
+变更字段：onSpeakStateChange、client_speak_id、speechGeneration、completedRuns、continuous、gesture、action
+MODIFIED_FILE：tmp-docs/v0.1.31-artifacts/MODIFIED_FILE.ts
+DIFF_FILE：tmp-docs/v0.1.31-artifacts/DIFF_FILE.diff
+VERIFICATION：tmp-docs/v0.1.31-artifacts/VERIFICATION.txt
+ROLLBACK：tmp-docs/v0.1.31-artifacts/ROLLBACK.sh
+原始 SHA256：D059BEA46E4FF57E1F1A08F7D4B1F34F83D838E0593F33987240130166739731
+修改 SHA256：4A0FEE5098933E7AF88C4CC65C876C1C9FC29D9E1A204473BA756DEA93C7F1B0
+
+BASELINE
+- 命令：Select-String -SimpleMatch -Path tmp-docs/v0.1.31-artifacts/mofa-runtime.original.ts -Pattern 'await this.avatar.speak(request.ssml, true, true, extra)'
+- 输入：v0.1.30 星云播报运行时副本。
+- 结果：baseline-match-count=1；命中原实现的逐分段直接 speak 调用，未等待 SDK speak_end；浏览器语音配置为 continuous=false。
+- 退出状态：0。
+- 基线行为：新分段可能在上一段音频真实结束前发送 speak_start，语音识别结束后停止监听。
+
+MODIFIED
+- 命令：npm run build
+- 输入：apps/web 生产构建。
+- 结果：TypeScript 与 Vite 构建成功，1662 modules transformed；退出状态 0。
+- 命令：npm run test:chat; npm run test:realtime; npm run test:avatar; node --test tests/realtime-lifecycle.test.mjs
+- 输入：聊天链路、音频生命周期、星云 SSML、终态事件和连续语音测试。
+- 结果：11 passed，0 failed；退出状态 0。
+- 命令：python -m pytest -q tests/test_realtime_protocol.py tests/test_llm_client.py tests/test_presentation_boundary.py tests/test_agent_orchestration.py
+- 输入：Agent 实时协议、LLM 结构化输出、表现层边界和编排测试。
+- 结果：相关用例 28 passed in 3.05s；Agent 全量测试 177 passed、1 skipped、1 warning in 78.54s；退出状态 0。
+- 命令：docker compose up -d --build agent-service web; docker compose ps
+- 输入：当前工作树与 Docker Compose 服务。
+- 结果：agent-service、auth-service、mcp-server、rabbitmq、web 全部 healthy；退出状态 0。
+- 命令：管理员登录后创建 mofa 会话并请求 POST /api/chat。
+- 输入：你好，请用一句话介绍你自己。
+- 结果：返回自然语言 reply；presentation={expression:speaking, gesture:Wave, action:Hello, lipSync:true}；会话关闭成功；退出状态 0。
+- 命令：管理员登录后请求 POST /api/chat/stream。
+- 输入：向我打招呼并简短介绍你自己。
+- 结果：收到 start 至 done 的完整 SSE 序列；HAS_DONE=True；退出状态 0。
+- 命令：GET /api/observability/traces?limit=5。
+- 输入：管理员同源会话。
+- 结果：最近 trace status=ok、event_count=12、cancelled=false、agent_latency_ms=1427.67、digital_human_latency_ms=32.09；退出状态 0。
+
+ROLLBACK
+- 命令：wsl bash -lc "cd /mnt/e/ican数字人 && tmp-docs/v0.1.31-artifacts/ROLLBACK.sh tmp-docs/v0.1.31-artifacts/rollback-copy.ts"
+- 输入：MODIFIED_FILE.ts 的独立副本。
+- 结果：rollback-restored=tmp-docs/v0.1.31-artifacts/rollback-copy.ts，cmp 一致性校验通过；退出状态 0。
+- 恢复状态：验证副本恢复为 v0.1.30 基线；仓库与 MODIFIED_FILE.ts 仍保持 v0.1.31 修改。

@@ -26,3 +26,12 @@ test('maps only documented actions so an unknown cue cannot break speech synthes
   const unknown = buildMofaSpeechRequest('继续播报', { expression: 'speaking', gesture: 'small_nod' })
   assert.equal(unknown.ssml, '<speak>继续播报</speak>')
 })
+
+test('maps agent semantic aliases to the documented action intent catalog', () => {
+  const greeting = buildMofaSpeechRequest('你好', { expression: 'happy', gesture: 'wave_hand', action: 'greet' })
+  assert.match(greeting.ssml, /<type>ka_intent<\/type>/)
+  assert.match(greeting.ssml, /<ka_intent>Hello<\/ka_intent>/)
+
+  const nod = buildMofaSpeechRequest('明白了', { expression: 'acknowledging', gesture: 'nod' })
+  assert.match(nod.ssml, /<ka_intent>Approve<\/ka_intent>/)
+})

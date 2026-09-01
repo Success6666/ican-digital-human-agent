@@ -41,8 +41,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private speechBuffer = ''
   private speechQueue: Array<{ text: string; presentation?: AvatarPerformanceCue }> = []
   private speechWorker?: Promise<void>
-  private speechGeneration = 0
-  private speechWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
     this.status = onStatus
@@ -101,38 +99,13 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
           markReady()
           return
         }
-        if (isSpeechOverlapWarning(detail)) {
-          console.warn('[Mofa Runtime] recovered overlapping speech boundary', message)
-          onStatus({ phase: 'speaking', progress: 100, message: '数字人正在表达' })
-          return
-        }
         if (detail) onStatus({ phase: 'error', message: `星云运行时：${detail}` })
       },
       onStartSessionWarning: (message: unknown) => {
         const detail = sdkMessage(message)
         if (detail) {
           console.warn('[Mofa Runtime] session warning', message)
-          if (isSpeechOverlapWarning(detail)) {
-            // The SDK already performs a client-side fallback interrupt for
-            // an overlapping speak_start. Keep the canvas usable and let the
-            // serialized worker continue instead of replacing it with an
-            // error overlay.
-            onStatus({ phase: 'ready', progress: 100, message: '数字人已连接，正在恢复表达' })
-            return
-          }
           onStatus({ phase: 'loading', progress: 85, message: detail })
-        }
-      },
-      onSpeakStateChange: (state: string, clientSpeakId?: string) => {
-        if (!clientSpeakId) return
-        const waiter = this.speechWaiters.get(clientSpeakId)
-        if (!waiter) return
-        if (state === 'speak_end') {
-          this.speechWaiters.delete(clientSpeakId)
-          waiter.resolve()
-        } else if (state === 'speak_error') {
-          this.speechWaiters.delete(clientSpeakId)
-          waiter.reject(new Error('星云播报失败'))
         }
       },
       onRenderChange: (state: unknown) => {
@@ -172,17 +145,15 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       this.speechBuffer = this.speechBuffer.slice(boundary).trimStart()
       if (segment) this.speechQueue.push({ text: segment, presentation })
     }
-    if (!this.speechQueue.length) return
-    await this.ensureSpeechWorker()
+    if (!this.speechQueue.length || this.speechWorker) return
+    this.speechWorker = this.consumeSpeechQueue().finally(() => { this.speechWorker = undefined })
+    await this.speechWorker
   }
 
   async interrupt(): Promise<void> {
     if (!this.avatar) return
     this.speechBuffer = ''
     this.speechQueue = []
-    this.speechGeneration += 1
-    for (const waiter of this.speechWaiters.values()) waiter.resolve()
-    this.speechWaiters.clear()
     this.avatar.interrupt('user_speaking')
     this.status?.({ phase: 'ready', message: '已停止上一轮表达' })
   }
@@ -190,9 +161,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   async dispose(): Promise<void> {
     this.speechBuffer = ''
     this.speechQueue = []
-    this.speechGeneration += 1
-    for (const waiter of this.speechWaiters.values()) waiter.resolve()
-    this.speechWaiters.clear()
     const current = this.avatar
     this.avatar = undefined
     this.status = undefined
@@ -202,54 +170,15 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   }
 
   private async consumeSpeechQueue(): Promise<void> {
-    const generation = this.speechGeneration
     while (this.speechQueue.length && this.avatar) {
-      if (generation !== this.speechGeneration) return
       const next = this.speechQueue.shift()
       if (!next) continue
       this.status?.({ phase: 'speaking', message: '数字人正在表达' })
       const request = buildMofaSpeechRequest(next.text, next.presentation)
-      const clientSpeakId = crypto.randomUUID()
-      const extra = { client_speak_id: clientSpeakId, ...request.extra }
-      await this.speakAndWait(request.ssml, extra, generation)
+      const extra = { client_speak_id: crypto.randomUUID(), ...request.extra }
+      await this.avatar.speak(request.ssml, true, true, extra)
     }
     this.status?.({ phase: 'ready', message: '数字人已连接' })
-  }
-
-  private ensureSpeechWorker(): Promise<void> {
-    if (this.speechWorker) return this.speechWorker
-    const worker = this.consumeSpeechQueue()
-      .catch((cause) => {
-        this.speechQueue = []
-        this.status?.({ phase: 'error', message: cause instanceof Error ? cause.message : '数字人播报失败' })
-      })
-      .finally(() => {
-        if (this.speechWorker === worker) this.speechWorker = undefined
-        if (this.speechQueue.length && this.avatar) void this.ensureSpeechWorker()
-      })
-    this.speechWorker = worker
-    return worker
-  }
-
-  private async speakAndWait(ssml: string, extra: Record<string, unknown>, generation: number): Promise<void> {
-    if (!this.avatar || generation !== this.speechGeneration) return
-    const clientSpeakId = String(extra.client_speak_id ?? '')
-    let timer = 0
-    const completion = new Promise<void>((resolve, reject) => {
-      this.speechWaiters.set(clientSpeakId, { resolve, reject })
-      timer = window.setTimeout(() => {
-        this.speechWaiters.delete(clientSpeakId)
-        if (generation === this.speechGeneration) this.avatar?.interrupt('speak_timeout')
-        resolve()
-      }, 15_000)
-    })
-    try {
-      await Promise.resolve(this.avatar.speak(ssml, true, true, extra))
-      await completion
-    } finally {
-      window.clearTimeout(timer)
-      this.speechWaiters.delete(clientSpeakId)
-    }
   }
 }
 
@@ -291,13 +220,6 @@ function sdkMessage(value: unknown): string {
     .map(([key, item]) => `${key}: ${String(item)}`)
     .join('；')
   return compact
-}
-
-function isSpeechOverlapWarning(value: string): boolean {
-  const normalized = value.toLowerCase()
-  return normalized.includes('speak_start') && (
-    normalized.includes('未结束') || normalized.includes('not end') || normalized.includes('previous')
-  )
 }
 
 function sdkNetworkState(value: { code?: string | number; message?: string }): 'online' | 'reconnecting' | undefined {

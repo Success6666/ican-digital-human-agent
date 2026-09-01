@@ -62,6 +62,7 @@ export function handleRealtimeEvent(event: RealtimeInboundEvent, context: Realti
     }
   } else if (kind === 'interrupted' || kind === 'run_done' || kind === 'done') {
     if (kind === 'interrupted') context.playback?.interrupt()
+    context.gate.markRunTerminal(accepted.runId)
     context.setRunId(undefined)
     context.dispatch({ type: 'run', runId: undefined })
     context.dispatch({ type: 'phase', phase: 'idle', message: kind === 'interrupted' ? '上一轮已停止' : '实时语音待命' })

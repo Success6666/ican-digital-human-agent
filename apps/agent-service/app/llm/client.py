@@ -180,7 +180,9 @@ def _structured_system_prompt() -> str:
         "presentation 必须包含 expression、intensity、durationMs、gaze、gesture、action、lipSync、interruptible。"
         "expression 只能是 listening、thinking、speaking、acknowledging、relieved、interrupted、neutral；"
         "intensity 为 0 到 1，durationMs 为 0 到 120000，gaze 只能是 camera、user、away、none。"
-        "gesture 和 action 使用简短英文语义名，不支持的动作填 null；lipSync 和 interruptible 必须是 JSON 布尔值。"
+        "gesture 和 action 优先使用 Hello、Wave、Welcome、ThankYou、KeyPoints、Approve、Think、Pause、"
+        "Pointscreen、PointingSelf、PointAudience、Goodbye 等动作语义名，不支持的动作填 null；"
+        "lipSync 和 interruptible 必须是 JSON 布尔值。"
         "先输出 reply，回答直接、自然、简洁。"
     )
 

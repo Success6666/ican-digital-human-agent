@@ -8,6 +8,7 @@ export class RealtimeEventGate {
   private runId?: string
   private utteranceId?: string
   private sequence?: number
+  private readonly completedRuns = new Set<string>()
 
   constructor(maxEventIds = 512) {
     this.maxEventIds = Math.max(16, Math.floor(maxEventIds))
@@ -22,10 +23,21 @@ export class RealtimeEventGate {
     this.revision = revision
     this.runId = undefined
     this.sequence = undefined
+    this.completedRuns.clear()
   }
 
   setRun(runId?: string): void {
-    if (runId) this.runId = runId
+    if (runId && !this.completedRuns.has(runId)) this.runId = runId
+  }
+
+  markRunTerminal(runId?: string): void {
+    if (!runId) return
+    this.completedRuns.add(runId)
+    if (this.completedRuns.size > 128) {
+      const oldest = this.completedRuns.values().next().value as string | undefined
+      if (oldest) this.completedRuns.delete(oldest)
+    }
+    if (this.runId === runId) this.runId = undefined
   }
 
   accept(event: RealtimeInboundEvent): RealtimeInboundEvent | null {
@@ -44,6 +56,7 @@ export class RealtimeEventGate {
     }
     if (event.utteranceId && this.utteranceId && event.utteranceId !== this.utteranceId) return null
     const type = String(event.type ?? '').toLowerCase()
+    if (event.runId && this.completedRuns.has(event.runId) && isRunScoped(type)) return null
     if (event.runId && this.runId && event.runId !== this.runId && isRunScoped(type)) return null
     if (event.eventId && this.eventIds.has(event.eventId)) return null
     if (event.seq !== undefined && this.sequence !== undefined && event.seq <= this.sequence) return null
