@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from app.llm.client import OpenAICompatibleLlm, extract_reply_prefix
+from app.llm.client import OpenAICompatibleLlm, extract_reply_prefix, parse_generation
 
 
 def test_completion_url_accepts_base_or_full_endpoint() -> None:
@@ -18,6 +18,35 @@ def test_completion_url_accepts_base_or_full_endpoint() -> None:
 def test_extract_reply_prefix_handles_partial_json() -> None:
     assert extract_reply_prefix('{"reply":"你好') == ("你好", False)
     assert extract_reply_prefix('{"reply":"你好","presentation":{}}') == ("你好", True)
+
+
+def test_parse_generation_keeps_reply_when_presentation_has_provider_specific_types() -> None:
+    generated = parse_generation(
+        '{"reply":"我是你的数字人助手。","presentation":'
+        '{"expression":"speaking","intensity":0.6,"durationMs":3000,'
+        '"gaze":"camera","gesture":"wave_hand","action":"greet",'
+        '"lipSync":"speaking","interruptible":true}}'
+    )
+    assert generated.reply == "我是你的数字人助手。"
+    assert generated.presentation.lip_sync is True
+    assert generated.presentation.gesture == "wave_hand"
+
+
+def test_parse_generation_supports_fenced_and_prefixed_json() -> None:
+    generated = parse_generation('模型输出如下：\n```json\n{"reply":"已完成"}\n```')
+    assert generated.reply == "已完成"
+
+
+def test_parse_generation_does_not_expose_json_when_tail_is_truncated() -> None:
+    generated = parse_generation('{"reply":"先给你结果","presentation":{')
+    assert generated.reply == "先给你结果"
+
+
+def test_deepseek_payload_disables_thinking_and_requests_json() -> None:
+    llm = OpenAICompatibleLlm(enabled=True, base_url="https://api.deepseek.com/v1", api_key="k", model="deepseek-v4-flash")
+    payload = llm._payload("你好")
+    assert payload["response_format"] == {"type": "json_object"}
+    assert payload["thinking"] == {"type": "disabled"}
 
 
 @pytest.mark.asyncio

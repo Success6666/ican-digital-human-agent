@@ -1,0 +1,835 @@
+diff --git a/.env.example b/.env.example
+index 49dd538..7f7ff0f 100644
+--- a/.env.example
++++ b/.env.example
+@@ -27,6 +27,10 @@ LLM_API_KEY=
+ LLM_MODEL=
+ LLM_TEMPERATURE=0.2
+ LLM_MAX_TOKENS=1024
++# Optional host proxy for LLM traffic from Docker Desktop.
++AGENT_HTTP_PROXY=
++AGENT_HTTPS_PROXY=
++AGENT_NO_PROXY=localhost,127.0.0.1,agent-service,auth-service,mcp-server,rabbitmq,web
+ EMBEDDING_ENABLED=true
+ EMBEDDING_PROVIDER=local
+ EMBEDDING_BASE_URL=
+diff --git a/apps/agent-service/app/__init__.py b/apps/agent-service/app/__init__.py
+index 9ff33dd..95f6a92 100644
+--- a/apps/agent-service/app/__init__.py
++++ b/apps/agent-service/app/__init__.py
+@@ -2,4 +2,4 @@
+ 
+ __all__ = ["__version__"]
+ 
+-__version__ = "0.1.29"
++__version__ = "0.1.30"
+diff --git a/apps/agent-service/app/agent/tool_catalog.py b/apps/agent-service/app/agent/tool_catalog.py
+index 90a2544..53798de 100644
+--- a/apps/agent-service/app/agent/tool_catalog.py
++++ b/apps/agent-service/app/agent/tool_catalog.py
+@@ -53,12 +53,18 @@ class ProgressiveToolRouter:
+         self.catalog = catalog or ToolCatalog()
+ 
+     def route(self, decision: IntentDecision, *, message: str = "") -> ToolRoutePlan:
+-        del message
+         category = self._intent_categories[decision.name]
+         core = [spec for spec in self.catalog.all() if spec.enabled and spec.always_available]
+         specific = self.catalog.by_category(category) if category is not None else []
+         disclosed = _unique_specs([*core, *specific])
+-        selected = [spec.name for spec in disclosed if spec.enabled]
++        normalized_message = message.casefold()
++        selected = [spec.name for spec in core]
++        selected.extend(
++            spec.name
++            for spec in specific
++            if spec.keywords and any(keyword.casefold() in normalized_message for keyword in spec.keywords)
++        )
++        selected = list(dict.fromkeys(selected))
+         if decision.is_control:
+             selected = []
+         level = "expanded" if decision.confidence >= 0.75 else "summary"
+@@ -84,6 +90,7 @@ def _default_specs() -> list[ToolSpec]:
+             category=ToolCategory.CORE,
+             description="检查数字人运行链路是否正常",
+             always_available=True,
++            keywords=["运行状态", "服务状态", "链路状态", "健康检查", "system status"],
+         ),
+         ToolSpec(
+             name="echo",
+diff --git a/apps/agent-service/app/api/routes.py b/apps/agent-service/app/api/routes.py
+index 9180df6..de1351f 100644
+--- a/apps/agent-service/app/api/routes.py
++++ b/apps/agent-service/app/api/routes.py
+@@ -31,7 +31,7 @@ router = APIRouter()
+ @router.get("/health", response_model=HealthResponse, include_in_schema=False)
+ async def health(request: Request) -> HealthResponse:
+     container = get_container(request)
+-    return HealthResponse(service=container.settings.service_name, version="0.1.29")
++    return HealthResponse(service=container.settings.service_name, version="0.1.30")
+ 
+ 
+ @router.get("/internal/providers", response_model=list[ProviderResponse])
+diff --git a/apps/agent-service/app/graph/builder.py b/apps/agent-service/app/graph/builder.py
+index a69340f..cb24631 100644
+--- a/apps/agent-service/app/graph/builder.py
++++ b/apps/agent-service/app/graph/builder.py
+@@ -237,6 +237,8 @@ def build_graph(
+                                         "traceId": state.get("trace_id"),
+                                         "runId": state.get("run_id"),
+                                         "text": delta,
++                                        "performance": performer.for_phase(FillerPhase.SPEAKING).model_dump(mode="json", by_alias=True),
++                                        "presentation": performer.for_phase(FillerPhase.SPEAKING).model_dump(mode="json", by_alias=True),
+                                     },
+                                 })
+                                 emitted_reply = current_reply
+@@ -344,18 +346,27 @@ def build_graph(
+ 
+ 
+ def _is_fast_path_message(message: str, decision: IntentDecision | None) -> bool:
+-    text = "".join(str(message).strip().lower().split())
++    text = _normalize_fast_path_text(message)
+     if not text or len(text) > 12:
+         return False
+     if decision is not None and decision.name not in {"chat", "unknown"}:
+         return False
+-    return text in {"你好", "您好", "嗨", "在吗", "谢谢", "辛苦了"}
++    return text in {"你好", "您好", "嗨", "在吗", "谢谢", "辛苦了", "你是谁", "你能做什么", "你可以做什么", "你会做什么"}
+ 
+ 
+ def _fast_path_reply(message: str, decision: IntentDecision | None) -> str | None:
+     if not _is_fast_path_message(message, decision):
+         return None
+-    text = "".join(str(message).strip().lower().split())
++    text = _normalize_fast_path_text(message)
+     if text in {"谢谢", "辛苦了"}:
+         return "不客气，我在这里。"
++    if text == "你是谁":
++        return "我是你的数字人助手，可以通过语音或文字与你交流，并按需调用知识库和工具。"
++    if text in {"你能做什么", "你可以做什么", "你会做什么"}:
++        return "我可以理解你的问题、检索已授权资料、调用可用工具，并通过数字人播报结果。"
+     return "你好，我在这里。请告诉我你想处理什么。"
++
++
++def _normalize_fast_path_text(message: str) -> str:
++    text = "".join(str(message).strip().casefold().split())
++    return text.translate(str.maketrans("！？。,.?！", "       ")).strip()
+diff --git a/apps/agent-service/app/llm/client.py b/apps/agent-service/app/llm/client.py
+index a075ba4..62926d0 100644
+--- a/apps/agent-service/app/llm/client.py
++++ b/apps/agent-service/app/llm/client.py
+@@ -4,6 +4,7 @@ from __future__ import annotations
+ 
+ import asyncio
+ import json
++import math
+ from collections.abc import AsyncIterator
+ from typing import Any, Protocol
+ 
+@@ -39,6 +40,8 @@ class OpenAICompatibleLlm:
+         self.temperature = temperature
+         self.max_tokens = max_tokens
+         self.timeout_seconds = timeout_seconds
++        self._client: httpx.AsyncClient | None = None
++        self._structured_options_supported = True
+ 
+     def reconfigure(self, *, enabled: bool, base_url: str, api_key: str, model: str, temperature: float, max_tokens: int) -> None:
+         self.enabled = enabled
+@@ -47,6 +50,14 @@ class OpenAICompatibleLlm:
+         self.model = model
+         self.temperature = temperature
+         self.max_tokens = max_tokens
++        self._structured_options_supported = True
++
++    async def aclose(self) -> None:
++        """Release the shared keep-alive client during application shutdown."""
++
++        if self._client is not None:
++            await self._client.aclose()
++            self._client = None
+ 
+     async def complete(self, *, message: str, context: list[str] | None = None) -> LlmGeneration:
+         if not self.enabled or not self.base_url or not self.api_key or not self.model:
+@@ -68,27 +79,35 @@ class OpenAICompatibleLlm:
+         prompt = message
+         if context:
+             prompt = f"参考资料：\n{chr(10).join(context[:3])}\n\n用户问题：{message}"
+-        payload = {
+-                "model": self.model,
+-                "temperature": self.temperature,
+-                "max_tokens": self.max_tokens,
+-                "stream": True,
+-                "messages": [{"role": "system", "content": _structured_system_prompt()}, {"role": "user", "content": prompt}],
+-        }
++        payload = self._payload(prompt)
+         timeout = httpx.Timeout(connect=8.0, read=max(45.0, self.timeout_seconds), write=15.0, pool=8.0)
+         last_error: Exception | None = None
+         delivered = ""
+-        for attempt in range(3):
+-            try:
+-                async with httpx.AsyncClient(timeout=timeout, trust_env=True) as client:
++        payloads = [payload]
++        if self._structured_options_supported and any(key in payload for key in ("thinking", "response_format")):
++            # Some OpenAI-compatible gateways reject one or both optional
++            # fields.  The second payload keeps the generic client usable.
++            fallback = dict(payload)
++            fallback.pop("thinking", None)
++            fallback.pop("response_format", None)
++            payloads.append(fallback)
++        fallback_requested = False
++        for payload_index, request_payload in enumerate(payloads):
++            for attempt in range(3):
++                try:
++                    client = self._get_client(timeout)
+                     async with client.stream(
+                         "POST",
+                         self._completion_url(),
+-                        json=payload,
++                        json=request_payload,
+                         headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "Accept": "text/event-stream"},
+                     ) as response:
+                         if response.status_code >= 400:
+                             detail = (await response.aread()).decode("utf-8", errors="replace")[:500]
++                            if payload_index == 0 and _is_optional_parameter_error(detail):
++                                self._structured_options_supported = False
++                                fallback_requested = True
++                                break
+                             raise RuntimeError(f"llm upstream HTTP {response.status_code}: {detail}")
+                         attempt_text = ""
+                         async for line in response.aiter_lines():
+@@ -117,12 +136,38 @@ class OpenAICompatibleLlm:
+                                     continue
+                                 raise RuntimeError("llm retry stream diverged from the delivered prefix")
+                         return
+-            except (httpx.HTTPError, OSError, RuntimeError) as exc:
+-                last_error = exc
+-                if attempt < 2:
+-                    await asyncio.sleep(0.35 * (2 ** attempt))
++                except (httpx.HTTPError, OSError, RuntimeError) as exc:
++                    last_error = exc
++                    if attempt < 2:
++                        await asyncio.sleep(0.35 * (2 ** attempt))
++            if fallback_requested and payload_index == 0 and len(payloads) > 1:
++                continue
++            break
+         raise RuntimeError(f"llm request failed after retries: {last_error}") from last_error
+ 
++    def _get_client(self, timeout: httpx.Timeout) -> httpx.AsyncClient:
++        if self._client is None:
++            self._client = httpx.AsyncClient(timeout=timeout, trust_env=True)
++        return self._client
++
++    def _payload(self, prompt: str) -> dict[str, Any]:
++        payload: dict[str, Any] = {
++            "model": self.model,
++            "temperature": self.temperature,
++            "max_tokens": self.max_tokens,
++            "stream": True,
++            "messages": [{"role": "system", "content": _structured_system_prompt()}, {"role": "user", "content": prompt}],
++        }
++        if self._structured_options_supported:
++            payload["response_format"] = {"type": "json_object"}
++            if self._is_deepseek():
++                payload["thinking"] = {"type": "disabled"}
++        return payload
++
++    def _is_deepseek(self) -> bool:
++        value = f"{self.base_url} {self.model}".casefold()
++        return "deepseek" in value
++
+     def _completion_url(self) -> str:
+         if self.base_url.endswith("/chat/completions"):
+             return self.base_url
+@@ -135,18 +180,131 @@ def _structured_system_prompt() -> str:
+         "presentation 必须包含 expression、intensity、durationMs、gaze、gesture、action、lipSync、interruptible。"
+         "expression 只能是 listening、thinking、speaking、acknowledging、relieved、interrupted、neutral；"
+         "intensity 为 0 到 1，durationMs 为 0 到 120000，gaze 只能是 camera、user、away、none。"
+-        "gesture 和 action 使用简短英文语义名，不支持的动作填 null。"
++        "gesture 和 action 使用简短英文语义名，不支持的动作填 null；lipSync 和 interruptible 必须是 JSON 布尔值。"
++        "先输出 reply，回答直接、自然、简洁。"
+     )
+ 
+ 
+ def parse_generation(content: str) -> LlmGeneration:
++    text = content.strip()
++    raw = _decode_json_payload(text)
++    if isinstance(raw, dict):
++        reply = _coerce_reply(raw.get("reply"))
++        if reply:
++            return LlmGeneration(reply=reply, presentation=_normalize_presentation(raw.get("presentation")))
++        return LlmGeneration(reply="模型响应格式异常，请重试。")
++    # A provider may truncate the tail after emitting a complete reply field.
++    prefix, _ = extract_reply_prefix(text)
++    if prefix.strip():
++        return LlmGeneration(reply=prefix.strip())
++    # Provider models that ignore response_format remain usable; never expose a
++    # structured envelope as user-facing text.
++    return LlmGeneration(reply="模型响应格式异常，请重试。" if _looks_structured(text) else _plain_text(text))
++
++
++def _decode_json_payload(content: str) -> Any:
++    text = content.strip()
++    if text.startswith("```"):
++        text = text[3:]
++        if text.lstrip().lower().startswith("json"):
++            text = text.lstrip()[4:]
++        text = text.removesuffix("```").strip()
++    try:
++        value = json.loads(text)
++    except json.JSONDecodeError:
++        start = text.find("{")
++        if start < 0:
++            return None
++        try:
++            value, _ = json.JSONDecoder().raw_decode(text[start:])
++        except json.JSONDecodeError:
++            return None
++    if isinstance(value, str):
++        try:
++            return json.loads(value)
++        except json.JSONDecodeError:
++            return value
++    return value
++
++
++def _coerce_reply(value: Any) -> str:
++    if isinstance(value, str):
++        return value.strip()[:20_000]
++    if value is None:
++        return ""
++    return str(value).strip()[:20_000]
++
++
++def _normalize_presentation(value: Any) -> PerformanceCue:
++    data = value if isinstance(value, dict) else {}
++    expression = str(data.get("expression", ExpressionName.SPEAKING)).casefold()
++    allowed_expressions = {item.value for item in ExpressionName}
++    gaze = str(data.get("gaze", "camera")).casefold()
++    allowed_gaze = {"camera", "user", "away", "none"}
++    return PerformanceCue(
++        expression=expression if expression in allowed_expressions else ExpressionName.SPEAKING,
++        intensity=_bounded_float(data.get("intensity", 0.6), default=0.6),
++        durationMs=_bounded_int(data.get("durationMs", 3000), default=3000, upper=120_000),
++        gaze=gaze if gaze in allowed_gaze else "camera",
++        gesture=_optional_text(data.get("gesture")),
++        action=_optional_text(data.get("action")),
++        lipSync=_coerce_bool(data.get("lipSync", True), default=True),
++        interruptible=_coerce_bool(data.get("interruptible", True), default=True),
++    )
++
++
++def _bounded_float(value: Any, *, default: float) -> float:
++    try:
++        number = float(value)
++    except (TypeError, ValueError):
++        return default
++    return max(0.0, min(1.0, number)) if math.isfinite(number) else default
++
++
++def _bounded_int(value: Any, *, default: int, upper: int) -> int:
+     try:
+-        raw = json.loads(content.strip().removeprefix("```json").removesuffix("```").strip())
+-        return LlmGeneration.model_validate(raw)
+-    except Exception:
+-        # Provider models that ignore response_format remain usable; the
+-        # presentation layer supplies a safe speaking cue.
+-        return LlmGeneration(reply=content.strip())
++        number = int(float(value))
++    except (TypeError, ValueError):
++        return default
++    return max(0, min(upper, number))
++
++
++def _optional_text(value: Any) -> str | None:
++    if value is None:
++        return None
++    text = str(value).strip()
++    return text[:64] or None
++
++
++def _coerce_bool(value: Any, *, default: bool) -> bool:
++    if isinstance(value, bool):
++        return value
++    if isinstance(value, (int, float)):
++        return bool(value)
++    if isinstance(value, str):
++        normalized = value.strip().casefold()
++        if normalized in {"true", "1", "yes", "on", "speaking", "speech", "enabled"}:
++            return True
++        if normalized in {"false", "0", "no", "off", "none", "disabled"}:
++            return False
++    return default
++
++
++def _plain_text(content: str) -> str:
++    text = content.strip()
++    if text.startswith("```") and text.endswith("```"):
++        text = text[3:-3].strip()
++    return text[:20_000] or "已收到请求，我正在处理。"
++
++
++def _looks_structured(content: str) -> bool:
++    text = content.lstrip().casefold()
++    return text.startswith(("{", "[", "```json")) or '"reply"' in text or '"presentation"' in text
++
++
++def _is_optional_parameter_error(detail: str) -> bool:
++    lowered = detail.casefold()
++    return any(token in lowered for token in ("response_format", "thinking", "unknown parameter", "extra_body"))
+ 
+ 
+ def extract_reply_prefix(content: str) -> tuple[str, bool]:
+diff --git a/apps/agent-service/app/main.py b/apps/agent-service/app/main.py
+index dda67c3..406dad8 100644
+--- a/apps/agent-service/app/main.py
++++ b/apps/agent-service/app/main.py
+@@ -221,10 +221,11 @@ def create_app(
+             yield
+         finally:
+             await app.state.container.cleanup.stop()
++            await app.state.container.llm.aclose()
+             await app.state.container.message_bus.close()
+             await app.state.container.observability.flush()
+ 
+-    app = FastAPI(title="Digital Human Agent", version="0.1.29", lifespan=lifespan)
++    app = FastAPI(title="Digital Human Agent", version="0.1.30", lifespan=lifespan)
+     app.state.container = service_container
+     app.add_middleware(
+         RequestBodyLimitMiddleware,
+diff --git a/apps/agent-service/pyproject.toml b/apps/agent-service/pyproject.toml
+index 9e11a1d..3e1c9c8 100644
+--- a/apps/agent-service/pyproject.toml
++++ b/apps/agent-service/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "digital-human-agent-service"
+-version = "0.1.29"
++version = "0.1.30"
+ description = "FastAPI and LangGraph runtime for the digital human agent"
+ requires-python = ">=3.11"
+ dependencies = [
+diff --git a/apps/agent-service/tests/test_agent_orchestration.py b/apps/agent-service/tests/test_agent_orchestration.py
+index 74c7f13..ae915fd 100644
+--- a/apps/agent-service/tests/test_agent_orchestration.py
++++ b/apps/agent-service/tests/test_agent_orchestration.py
+@@ -42,6 +42,13 @@ async def test_rule_intent_and_progressive_tool_route() -> None:
+     assert plan.disclosure_level == "expanded"
+ 
+ 
++def test_tool_route_keeps_core_tools_and_fast_path_skips_invocation() -> None:
++    router = ProgressiveToolRouter()
++    chat = IntentDecision(name=IntentName.CHAT, confidence=0.7)
++    assert router.route(chat, message="你是谁").selected_tools == ["system_status"]
++    assert router.route(chat, message="检查运行状态").selected_tools == ["system_status"]
++
++
+ def test_short_greeting_uses_fast_path() -> None:
+     decision = IntentDecision(name=IntentName.UNKNOWN)
+     assert _is_fast_path_message("你好", decision) is True
+@@ -49,6 +56,12 @@ def test_short_greeting_uses_fast_path() -> None:
+     assert _is_fast_path_message("今天天气怎么样", decision) is False
+ 
+ 
++def test_identity_and_capability_questions_use_fast_path() -> None:
++    decision = IntentDecision(name=IntentName.CHAT)
++    assert _fast_path_reply("你是谁？", decision) == "我是你的数字人助手，可以通过语音或文字与你交流，并按需调用知识库和工具。"
++    assert _fast_path_reply("你能做什么", decision) == "我可以理解你的问题、检索已授权资料、调用可用工具，并通过数字人播报结果。"
++
++
+ @pytest.mark.asyncio
+ async def test_composite_classifier_falls_back_after_primary_error() -> None:
+     class BrokenClassifier:
+diff --git a/apps/agent-service/tests/test_llm_client.py b/apps/agent-service/tests/test_llm_client.py
+index 2c0dd16..5577403 100644
+--- a/apps/agent-service/tests/test_llm_client.py
++++ b/apps/agent-service/tests/test_llm_client.py
+@@ -5,7 +5,7 @@ import json
+ import httpx
+ import pytest
+ 
+-from app.llm.client import OpenAICompatibleLlm, extract_reply_prefix
++from app.llm.client import OpenAICompatibleLlm, extract_reply_prefix, parse_generation
+ 
+ 
+ def test_completion_url_accepts_base_or_full_endpoint() -> None:
+@@ -20,6 +20,35 @@ def test_extract_reply_prefix_handles_partial_json() -> None:
+     assert extract_reply_prefix('{"reply":"你好","presentation":{}}') == ("你好", True)
+ 
+ 
++def test_parse_generation_keeps_reply_when_presentation_has_provider_specific_types() -> None:
++    generated = parse_generation(
++        '{"reply":"我是你的数字人助手。","presentation":'
++        '{"expression":"speaking","intensity":0.6,"durationMs":3000,'
++        '"gaze":"camera","gesture":"wave_hand","action":"greet",'
++        '"lipSync":"speaking","interruptible":true}}'
++    )
++    assert generated.reply == "我是你的数字人助手。"
++    assert generated.presentation.lip_sync is True
++    assert generated.presentation.gesture == "wave_hand"
++
++
++def test_parse_generation_supports_fenced_and_prefixed_json() -> None:
++    generated = parse_generation('模型输出如下：\n```json\n{"reply":"已完成"}\n```')
++    assert generated.reply == "已完成"
++
++
++def test_parse_generation_does_not_expose_json_when_tail_is_truncated() -> None:
++    generated = parse_generation('{"reply":"先给你结果","presentation":{')
++    assert generated.reply == "先给你结果"
++
++
++def test_deepseek_payload_disables_thinking_and_requests_json() -> None:
++    llm = OpenAICompatibleLlm(enabled=True, base_url="https://api.deepseek.com/v1", api_key="k", model="deepseek-v4-flash")
++    payload = llm._payload("你好")
++    assert payload["response_format"] == {"type": "json_object"}
++    assert payload["thinking"] == {"type": "disabled"}
++
++
+ @pytest.mark.asyncio
+ async def test_stream_reads_sse_deltas(monkeypatch: pytest.MonkeyPatch) -> None:
+     llm = OpenAICompatibleLlm(enabled=True, base_url="https://example.test/v1", api_key="k", model="m")
+diff --git a/apps/auth-service/pom.xml b/apps/auth-service/pom.xml
+index f96e492..7398f14 100644
+--- a/apps/auth-service/pom.xml
++++ b/apps/auth-service/pom.xml
+@@ -13,7 +13,7 @@
+ 
+     <groupId>com.ican.digitalhuman</groupId>
+     <artifactId>auth-service</artifactId>
+-    <version>0.1.29</version>
++    <version>0.1.30</version>
+     <name>digital-human-auth-service</name>
+     <description>Authentication gateway for the digital human agent</description>
+ 
+diff --git a/apps/mcp-server/app/__init__.py b/apps/mcp-server/app/__init__.py
+index 3561813..32cce60 100644
+--- a/apps/mcp-server/app/__init__.py
++++ b/apps/mcp-server/app/__init__.py
+@@ -1,3 +1,3 @@
+ """MCP tool service."""
+ 
+-__version__ = "0.1.29"
++__version__ = "0.1.30"
+diff --git a/apps/mcp-server/app/server.py b/apps/mcp-server/app/server.py
+index 956b7c0..490e228 100644
+--- a/apps/mcp-server/app/server.py
++++ b/apps/mcp-server/app/server.py
+@@ -16,7 +16,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
+     settings = settings or get_settings()
+     server = MCPServer(
+         name=settings.service_name,
+-        version="0.1.29",
++        version="0.1.30",
+         instructions="Deterministic chain-probe tools for the digital human agent.",
+         debug=False,
+     )
+@@ -24,7 +24,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
+ 
+     @server.custom_route("/health", methods=["GET"], include_in_schema=False)
+     async def health(_: Request) -> JSONResponse:
+-        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.29"})
++        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.30"})
+ 
+     @server.custom_route("/ready", methods=["GET"], include_in_schema=False)
+     async def ready(_: Request) -> JSONResponse:
+diff --git a/apps/mcp-server/pyproject.toml b/apps/mcp-server/pyproject.toml
+index bb56ec0..be14776 100644
+--- a/apps/mcp-server/pyproject.toml
++++ b/apps/mcp-server/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "digital-human-mcp-server"
+-version = "0.1.29"
++version = "0.1.30"
+ description = "Internal MCP 2.x Streamable HTTP probe server"
+ requires-python = ">=3.11"
+ dependencies = [
+diff --git a/apps/web/package-lock.json b/apps/web/package-lock.json
+index b8145d8..1691cf4 100644
+--- a/apps/web/package-lock.json
++++ b/apps/web/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "digital-human-agent-web",
+-  "version": "0.1.29",
++  "version": "0.1.30",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "digital-human-agent-web",
+-      "version": "0.1.29",
++      "version": "0.1.30",
+       "dependencies": {
+         "lucide-react": "^0.468.0",
+         "react": "^18.3.1",
+diff --git a/apps/web/package.json b/apps/web/package.json
+index df08584..2df24b5 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "digital-human-agent-web",
+   "private": true,
+-  "version": "0.1.29",
++  "version": "0.1.30",
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
+diff --git a/apps/web/src/features/avatar/components/AvatarStage.tsx b/apps/web/src/features/avatar/components/AvatarStage.tsx
+index b4d8165..a0afa9f 100644
+--- a/apps/web/src/features/avatar/components/AvatarStage.tsx
++++ b/apps/web/src/features/avatar/components/AvatarStage.tsx
+@@ -8,7 +8,7 @@ import { readAvatarPreview, subscribeAvatarPreview, type AvatarPreview } from '.
+ interface AvatarStageProps {
+   session: AvatarSession | null
+   isCreating: boolean
+-  speech?: { id: string; text: string; presentation?: import('../../../shared/api/types').AvatarPerformanceCue }
++  speech?: { id: string; text: string; presentation?: import('../../../shared/api/types').AvatarPerformanceCue; pending?: boolean }
+   interruptKey?: string
+   activate?: boolean
+   onCreate: () => void
+diff --git a/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx b/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
+index a08ddeb..64c9912 100644
+--- a/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
++++ b/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
+@@ -7,14 +7,15 @@ import { saveAvatarPreview } from './previewCache'
+ 
+ interface AvatarRuntimeSurfaceProps {
+   session: AvatarSession
+-  speech?: { id: string; text: string; presentation?: AvatarPerformanceCue }
++  speech?: { id: string; text: string; presentation?: AvatarPerformanceCue; pending?: boolean }
+   interruptKey?: string
+ }
+ 
+ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRuntimeSurfaceProps) {
+   const hostRef = useRef<HTMLDivElement>(null)
+   const runtimeRef = useRef<BrowserAvatarRuntime>()
+-  const spokenRef = useRef<string>()
++  const spokenMessageRef = useRef<string>()
++  const spokenTextRef = useRef('')
+   const [generation, setGeneration] = useState(0)
+   const [status, setStatus] = useState<AvatarRuntimeStatus>({ phase: 'loading', progress: 0 })
+ 
+@@ -28,7 +29,8 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRu
+     let active = true
+     const runtime = new MofaBrowserRuntime()
+     runtimeRef.current = runtime
+-    spokenRef.current = undefined
++    spokenMessageRef.current = undefined
++    spokenTextRef.current = ''
+     setStatus({ phase: 'loading', progress: 0, message: '正在连接数字人' })
+     void runtime.connect(host, params, (next) => {
+       if (!active) return
+@@ -51,12 +53,22 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRu
+   }, [interruptKey])
+ 
+   useEffect(() => {
+-    if (status.phase !== 'ready' || !speech || spokenRef.current === speech.id) return
+-    spokenRef.current = speech.id
+-    void runtimeRef.current?.speak(speech.text, speech.presentation).catch(() => {
++    if ((status.phase !== 'ready' && status.phase !== 'speaking') || !speech) return
++    const messageId = speech.id.split(':', 1)[0]
++    if (spokenMessageRef.current !== messageId) {
++      spokenMessageRef.current = messageId
++      spokenTextRef.current = ''
++    }
++    if (!speech.text.startsWith(spokenTextRef.current)) {
++      spokenTextRef.current = ''
++    }
++    const delta = speech.text.slice(spokenTextRef.current.length)
++    spokenTextRef.current = speech.text
++    if (!delta.trim() && speech.pending) return
++    void runtimeRef.current?.speak(delta, speech.presentation, { flush: !speech.pending }).catch(() => {
+       setStatus({ phase: 'error', message: '数字人播报失败，请重新连接' })
+     })
+-  }, [speech?.id, status.phase])
++  }, [speech?.id, speech?.pending, speech?.text, status.phase])
+ 
+   return (
+     <div className="avatar-runtime-shell">
+diff --git a/apps/web/src/features/avatar/runtime/browserRuntime.ts b/apps/web/src/features/avatar/runtime/browserRuntime.ts
+index 657990a..fed7d32 100644
+--- a/apps/web/src/features/avatar/runtime/browserRuntime.ts
++++ b/apps/web/src/features/avatar/runtime/browserRuntime.ts
+@@ -9,7 +9,7 @@ export interface AvatarRuntimeStatus {
+ 
+ export interface BrowserAvatarRuntime {
+   connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void>
+-  speak(text: string, presentation?: AvatarPerformanceCue): Promise<void>
++  speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void>
+   interrupt(): Promise<void>
+   dispose(): Promise<void>
+ }
+diff --git a/apps/web/src/features/avatar/runtime/mofaRuntime.ts b/apps/web/src/features/avatar/runtime/mofaRuntime.ts
+index 195b4b2..09eba6c 100644
+--- a/apps/web/src/features/avatar/runtime/mofaRuntime.ts
++++ b/apps/web/src/features/avatar/runtime/mofaRuntime.ts
+@@ -38,6 +38,9 @@ interface MofaRuntimeConfig {
+ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+   private avatar?: XmovAvatarInstance
+   private status?: (status: AvatarRuntimeStatus) => void
++  private speechBuffer = ''
++  private speechQueue: Array<{ text: string; presentation?: AvatarPerformanceCue }> = []
++  private speechWorker?: Promise<void>
+ 
+   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
+     this.status = onStatus
+@@ -129,24 +132,35 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     markReady()
+   }
+ 
+-  async speak(text: string, presentation?: AvatarPerformanceCue): Promise<void> {
++  async speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void> {
+     const clean = text.trim()
+-    if (!clean || !this.avatar) return
+-    this.status?.({ phase: 'speaking', message: '数字人正在表达' })
+-    const request = buildMofaSpeechRequest(clean, presentation)
+-    const ssml = request.ssml
+-    const extra = { client_speak_id: crypto.randomUUID(), ...request.extra }
+-    await this.avatar.speak(ssml, true, true, extra)
+-    this.status?.({ phase: 'ready', message: '数字人已连接' })
++    const flush = Boolean(options?.flush)
++    if (!this.avatar || (!clean && !flush)) return
++    if (clean) this.speechBuffer += clean
++    while (true) {
++      if (!this.speechBuffer.trim()) break
++      const boundary = findSpeechBoundary(this.speechBuffer, flush)
++      if (boundary < 0) break
++      const segment = this.speechBuffer.slice(0, boundary).trim()
++      this.speechBuffer = this.speechBuffer.slice(boundary).trimStart()
++      if (segment) this.speechQueue.push({ text: segment, presentation })
++    }
++    if (!this.speechQueue.length || this.speechWorker) return
++    this.speechWorker = this.consumeSpeechQueue().finally(() => { this.speechWorker = undefined })
++    await this.speechWorker
+   }
+ 
+   async interrupt(): Promise<void> {
+     if (!this.avatar) return
++    this.speechBuffer = ''
++    this.speechQueue = []
+     this.avatar.interrupt('user_speaking')
+     this.status?.({ phase: 'ready', message: '已停止上一轮表达' })
+   }
+ 
+   async dispose(): Promise<void> {
++    this.speechBuffer = ''
++    this.speechQueue = []
+     const current = this.avatar
+     this.avatar = undefined
+     this.status = undefined
+@@ -154,6 +168,26 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     try { await current.stop() } catch { /* SDK teardown remains best effort. */ }
+     try { await current.destroy('component_unmounted') } catch { /* Host removal is the final cleanup boundary. */ }
+   }
++
++  private async consumeSpeechQueue(): Promise<void> {
++    while (this.speechQueue.length && this.avatar) {
++      const next = this.speechQueue.shift()
++      if (!next) continue
++      this.status?.({ phase: 'speaking', message: '数字人正在表达' })
++      const request = buildMofaSpeechRequest(next.text, next.presentation)
++      const extra = { client_speak_id: crypto.randomUUID(), ...request.extra }
++      await this.avatar.speak(request.ssml, true, true, extra)
++    }
++    this.status?.({ phase: 'ready', message: '数字人已连接' })
++  }
++}
++
++function findSpeechBoundary(value: string, flush: boolean): number {
++  const punctuation = /[。！？!?；;\n]/g
++  let match: RegExpExecArray | null
++  while ((match = punctuation.exec(value))) return match.index + 1
++  if (value.trim().length >= 16 || flush) return value.length
++  return -1
+ }
+ 
+ function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {
+diff --git a/apps/web/src/features/chat/streamEventPresenter.ts b/apps/web/src/features/chat/streamEventPresenter.ts
+index a070d38..771c8ea 100644
+--- a/apps/web/src/features/chat/streamEventPresenter.ts
++++ b/apps/web/src/features/chat/streamEventPresenter.ts
+@@ -91,7 +91,10 @@ export function presentStreamEvent(
+     const chunk = eventText(event)
+     if (!chunk) return
+     state.accumulated += chunk
+-    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, { content: state.accumulated, statusText: undefined, traceId: state.traceId, presentation: event.presentation ?? event.performance })
++    const patch: Partial<ChatMessage> = { content: state.accumulated, statusText: undefined, traceId: state.traceId }
++    const presentation = event.presentation ?? event.performance
++    if (presentation) patch.presentation = presentation
++    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, patch)
+     if (state.deltaCount === 0 || state.deltaCount % 16 === 0) {
+       context.addTimeline({ type: 'delta', title: '正在生成响应', detail: `已接收 ${state.accumulated.length} 字符`, seq: event.seq })
+     }
+diff --git a/apps/web/src/pages/HomePage.tsx b/apps/web/src/pages/HomePage.tsx
+index 7e38112..e636dff 100644
+--- a/apps/web/src/pages/HomePage.tsx
++++ b/apps/web/src/pages/HomePage.tsx
+@@ -19,7 +19,7 @@ interface HomePageProps {
+ 
+ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
+   const [drawerOpen, setDrawerOpen] = useState(false)
+-  const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && !message.pending && message.content.trim())
++  const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
+   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
+   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+ 
+@@ -50,7 +50,12 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
+         <AvatarStage
+           session={avatar.session}
+           isCreating={avatar.isCreating}
+-          speech={latestAssistant ? { id: latestAssistant.id, text: latestAssistant.content, presentation: latestAssistant.presentation } : undefined}
++          speech={latestAssistant ? {
++            id: `${latestAssistant.id}:${latestAssistant.content.length}:${latestAssistant.statusText?.length ?? 0}:${latestAssistant.pending ? 'streaming' : 'final'}`,
++            text: latestAssistant.content || latestAssistant.statusText || '',
++            presentation: latestAssistant.presentation,
++            pending: latestAssistant.content ? latestAssistant.pending : false,
++          } : undefined}
+           interruptKey={latestUser?.id}
+           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
+           onCreate={() => void avatar.create()}
+diff --git a/apps/web/tests/chat-link-contract.test.mjs b/apps/web/tests/chat-link-contract.test.mjs
+index 8dc614d..d1bf048 100644
+--- a/apps/web/tests/chat-link-contract.test.mjs
++++ b/apps/web/tests/chat-link-contract.test.mjs
+@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
+ import { fileURLToPath } from 'node:url'
+ 
+ const source = await readFile(fileURLToPath(new URL('../src/features/chat/components/HomeConversationBar.tsx', import.meta.url)), 'utf8')
++const homeSource = await readFile(fileURLToPath(new URL('../src/pages/HomePage.tsx', import.meta.url)), 'utf8')
+ 
+ test('text chat does not wait for the realtime websocket', () => {
+   assert.match(source, /if \(!session\) \{[\s\S]*?onCreateSession\(message\)[\s\S]*?\} else \{[\s\S]*?onSend\(message\)/)
+@@ -16,3 +17,9 @@ test('session creation is guarded while the provider session is being created',
+   assert.match(source, /if \(isCreating\) return/)
+   assert.match(source, /disabled=\{!draft\.trim\(\) \|\| \(!session && isCreating\)\}/)
+ })
++
++test('waiting filler is routed into the avatar speech stream before the first answer delta', () => {
++  assert.equal(homeSource.includes('message.content.trim() || message.statusText?.trim()'), true)
++  assert.equal(homeSource.includes("text: latestAssistant.content || latestAssistant.statusText || ''"), true)
++  assert.equal(homeSource.includes('pending: latestAssistant.content ? latestAssistant.pending : false'), true)
++})
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 60a9cc7..976bbe9 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -70,6 +70,9 @@ services:
+       LLM_MODEL: ${LLM_MODEL:-}
+       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
++      HTTP_PROXY: ${AGENT_HTTP_PROXY:-}
++      HTTPS_PROXY: ${AGENT_HTTPS_PROXY:-}
++      NO_PROXY: ${AGENT_NO_PROXY:-localhost,127.0.0.1,agent-service,auth-service,mcp-server,rabbitmq,web}
+       EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
+       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+@@ -158,6 +161,8 @@ services:
+         condition: service_healthy
+     networks:
+       - internal
++    extra_hosts:
++      - "host.docker.internal:host-gateway"
+     healthcheck:
+       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\""]
+       interval: 10s

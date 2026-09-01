@@ -53,18 +53,12 @@ class ProgressiveToolRouter:
         self.catalog = catalog or ToolCatalog()
 
     def route(self, decision: IntentDecision, *, message: str = "") -> ToolRoutePlan:
+        del message
         category = self._intent_categories[decision.name]
         core = [spec for spec in self.catalog.all() if spec.enabled and spec.always_available]
         specific = self.catalog.by_category(category) if category is not None else []
         disclosed = _unique_specs([*core, *specific])
-        normalized_message = message.casefold()
-        selected = [spec.name for spec in core]
-        selected.extend(
-            spec.name
-            for spec in specific
-            if spec.keywords and any(keyword.casefold() in normalized_message for keyword in spec.keywords)
-        )
-        selected = list(dict.fromkeys(selected))
+        selected = [spec.name for spec in disclosed if spec.enabled]
         if decision.is_control:
             selected = []
         level = "expanded" if decision.confidence >= 0.75 else "summary"
@@ -90,7 +84,6 @@ def _default_specs() -> list[ToolSpec]:
             category=ToolCategory.CORE,
             description="检查数字人运行链路是否正常",
             always_available=True,
-            keywords=["运行状态", "服务状态", "链路状态", "健康检查", "system status"],
         ),
         ToolSpec(
             name="echo",

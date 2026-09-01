@@ -8,7 +8,7 @@ import { readAvatarPreview, subscribeAvatarPreview, type AvatarPreview } from '.
 interface AvatarStageProps {
   session: AvatarSession | null
   isCreating: boolean
-  speech?: { id: string; text: string; presentation?: import('../../../shared/api/types').AvatarPerformanceCue }
+  speech?: { id: string; text: string; presentation?: import('../../../shared/api/types').AvatarPerformanceCue; pending?: boolean }
   interruptKey?: string
   activate?: boolean
   onCreate: () => void

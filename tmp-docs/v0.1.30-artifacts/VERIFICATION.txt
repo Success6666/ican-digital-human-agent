@@ -1,0 +1,40 @@
+v0.1.30 验收记录
+日期：2026-09-01
+分支：main
+关键字段：reply、presentation、thinking、response_format、HTTP_PROXY、HTTPS_PROXY
+MODIFIED_FILE：tmp-docs/v0.1.30-artifacts/llm-client.modified.py
+DIFF_FILE：tmp-docs/v0.1.30-artifacts/v0.1.30.diff
+VERIFICATION：tmp-docs/v0.1.30-artifacts/VERIFICATION.txt
+ROLLBACK：tmp-docs/v0.1.30-artifacts/ROLLBACK.sh
+
+BASELINE
+- 输入：历史 trace 2cb7990cca9e49b2a589d0461a71157c，DeepSeek 结构化响应包含 lipSync="speaking"。
+- 结果：原始 reply/presentation JSON 被展示和播报；Agent 13727.27 ms。
+- 状态：失败。
+
+MODIFIED
+- 命令：python -m pytest apps/agent-service/tests -q
+- 输入：177 个服务端测试用例。
+- 结果：177 passed, 1 skipped, 1 warning；退出状态 0。
+- 命令：npm run build
+- 输入：apps/web。
+- 结果：Vite production build 成功；退出状态 0。
+- 命令：npm run test:chat; npm run test:realtime; npm run test:layout; npm run test:avatar
+- 输入：前端契约和运行时测试。
+- 结果：11 passed；退出状态 0。
+- 命令：python tmp-docs/v0.1.30-artifacts/benchmark_app.py
+- 输入：管理员会话，“你是谁？”与“请用一句话解释什么是RAG”。
+- 结果：启用 Docker 主机代理并完成连接预热后，身份请求 first_delta=23.60 ms、wall=44.78 ms、agent=15.72 ms；RAG 请求 first_delta=1712.55 ms、wall=2386.90 ms、agent=2354.84 ms。
+- 命令：python tmp-docs/v0.1.30-artifacts/benchmark_latency.py <runtime-configuration.json>
+- 输入：thinking_disabled、reasoning_none、json_only、plain 四种请求体。
+- 结果：thinking_disabled 首内容 676.58 ms、总耗时 965.70 ms；reasoning_none 首内容 698.86 ms、总耗时 1047.36 ms；后两种仅产生 reasoning_content。
+- 命令：docker exec -e HTTPS_PROXY=http://host.docker.internal:7890 -e HTTP_PROXY=http://host.docker.internal:7890 ican-digital-human-agent-service-1 python /tmp/benchmark_prompt.py /app/data/runtime-configuration.json
+- 输入：完整结构化系统提示词，max_tokens=128/256/512/1024。
+- 结果：首内容分别为 801.84/668.16/362.27/750.56 ms，完整响应均低于 1.81 秒；退出状态 0。
+- 结论：应用在首事件约 20 ms 内发送 listening/thinking/filler，真实模型首 token 稳定低于 3 秒，收到 token 后立即分段排队播报。
+
+ROLLBACK
+- 命令：C:\Program Files\Git\bin\bash.exe tmp-docs/v0.1.30-artifacts/ROLLBACK.sh tmp-docs/v0.1.30-artifacts/rollback-copy.py
+- 输入：llm-client.modified.py 副本。
+- 结果：先复制修改副本，再恢复 llm-client.original.py，并通过 cmp 一致性校验；退出状态 0。
+- 恢复状态：验证副本恢复为基线内容，仓库中的 MODIFIED_FILE 仍保持修改版本。

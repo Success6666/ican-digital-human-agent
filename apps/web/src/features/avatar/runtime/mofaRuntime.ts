@@ -38,6 +38,9 @@ interface MofaRuntimeConfig {
 export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private avatar?: XmovAvatarInstance
   private status?: (status: AvatarRuntimeStatus) => void
+  private speechBuffer = ''
+  private speechQueue: Array<{ text: string; presentation?: AvatarPerformanceCue }> = []
+  private speechWorker?: Promise<void>
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
     this.status = onStatus
@@ -129,24 +132,35 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     markReady()
   }
 
-  async speak(text: string, presentation?: AvatarPerformanceCue): Promise<void> {
+  async speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void> {
     const clean = text.trim()
-    if (!clean || !this.avatar) return
-    this.status?.({ phase: 'speaking', message: '数字人正在表达' })
-    const request = buildMofaSpeechRequest(clean, presentation)
-    const ssml = request.ssml
-    const extra = { client_speak_id: crypto.randomUUID(), ...request.extra }
-    await this.avatar.speak(ssml, true, true, extra)
-    this.status?.({ phase: 'ready', message: '数字人已连接' })
+    const flush = Boolean(options?.flush)
+    if (!this.avatar || (!clean && !flush)) return
+    if (clean) this.speechBuffer += clean
+    while (true) {
+      if (!this.speechBuffer.trim()) break
+      const boundary = findSpeechBoundary(this.speechBuffer, flush)
+      if (boundary < 0) break
+      const segment = this.speechBuffer.slice(0, boundary).trim()
+      this.speechBuffer = this.speechBuffer.slice(boundary).trimStart()
+      if (segment) this.speechQueue.push({ text: segment, presentation })
+    }
+    if (!this.speechQueue.length || this.speechWorker) return
+    this.speechWorker = this.consumeSpeechQueue().finally(() => { this.speechWorker = undefined })
+    await this.speechWorker
   }
 
   async interrupt(): Promise<void> {
     if (!this.avatar) return
+    this.speechBuffer = ''
+    this.speechQueue = []
     this.avatar.interrupt('user_speaking')
     this.status?.({ phase: 'ready', message: '已停止上一轮表达' })
   }
 
   async dispose(): Promise<void> {
+    this.speechBuffer = ''
+    this.speechQueue = []
     const current = this.avatar
     this.avatar = undefined
     this.status = undefined
@@ -154,6 +168,26 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     try { await current.stop() } catch { /* SDK teardown remains best effort. */ }
     try { await current.destroy('component_unmounted') } catch { /* Host removal is the final cleanup boundary. */ }
   }
+
+  private async consumeSpeechQueue(): Promise<void> {
+    while (this.speechQueue.length && this.avatar) {
+      const next = this.speechQueue.shift()
+      if (!next) continue
+      this.status?.({ phase: 'speaking', message: '数字人正在表达' })
+      const request = buildMofaSpeechRequest(next.text, next.presentation)
+      const extra = { client_speak_id: crypto.randomUUID(), ...request.extra }
+      await this.avatar.speak(request.ssml, true, true, extra)
+    }
+    this.status?.({ phase: 'ready', message: '数字人已连接' })
+  }
+}
+
+function findSpeechBoundary(value: string, flush: boolean): number {
+  const punctuation = /[。！？!?；;\n]/g
+  let match: RegExpExecArray | null
+  while ((match = punctuation.exec(value))) return match.index + 1
+  if (value.trim().length >= 16 || flush) return value.length
+  return -1
 }
 
 function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {

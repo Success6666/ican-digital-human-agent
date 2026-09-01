@@ -91,7 +91,10 @@ export function presentStreamEvent(
     const chunk = eventText(event)
     if (!chunk) return
     state.accumulated += chunk
-    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, { content: state.accumulated, statusText: undefined, traceId: state.traceId, presentation: event.presentation ?? event.performance })
+    const patch: Partial<ChatMessage> = { content: state.accumulated, statusText: undefined, traceId: state.traceId }
+    const presentation = event.presentation ?? event.performance
+    if (presentation) patch.presentation = presentation
+    ;(context.updateAssistantBatched ?? context.updateAssistant)(context.assistantId, patch)
     if (state.deltaCount === 0 || state.deltaCount % 16 === 0) {
       context.addTimeline({ type: 'delta', title: '正在生成响应', detail: `已接收 ${state.accumulated.length} 字符`, seq: event.seq })
     }

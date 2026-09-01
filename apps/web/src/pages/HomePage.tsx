@@ -19,7 +19,7 @@ interface HomePageProps {
 
 export function HomePage({ avatar, chat, realtime }: HomePageProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && !message.pending && message.content.trim())
+  const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
 
@@ -50,7 +50,12 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
         <AvatarStage
           session={avatar.session}
           isCreating={avatar.isCreating}
-          speech={latestAssistant ? { id: latestAssistant.id, text: latestAssistant.content, presentation: latestAssistant.presentation } : undefined}
+          speech={latestAssistant ? {
+            id: `${latestAssistant.id}:${latestAssistant.content.length}:${latestAssistant.statusText?.length ?? 0}:${latestAssistant.pending ? 'streaming' : 'final'}`,
+            text: latestAssistant.content || latestAssistant.statusText || '',
+            presentation: latestAssistant.presentation,
+            pending: latestAssistant.content ? latestAssistant.pending : false,
+          } : undefined}
           interruptKey={latestUser?.id}
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}

@@ -7,14 +7,15 @@ import { saveAvatarPreview } from './previewCache'
 
 interface AvatarRuntimeSurfaceProps {
   session: AvatarSession
-  speech?: { id: string; text: string; presentation?: AvatarPerformanceCue }
+  speech?: { id: string; text: string; presentation?: AvatarPerformanceCue; pending?: boolean }
   interruptKey?: string
 }
 
 export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRuntimeSurfaceProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<BrowserAvatarRuntime>()
-  const spokenRef = useRef<string>()
+  const spokenMessageRef = useRef<string>()
+  const spokenTextRef = useRef('')
   const [generation, setGeneration] = useState(0)
   const [status, setStatus] = useState<AvatarRuntimeStatus>({ phase: 'loading', progress: 0 })
 
@@ -28,7 +29,8 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRu
     let active = true
     const runtime = new MofaBrowserRuntime()
     runtimeRef.current = runtime
-    spokenRef.current = undefined
+    spokenMessageRef.current = undefined
+    spokenTextRef.current = ''
     setStatus({ phase: 'loading', progress: 0, message: '正在连接数字人' })
     void runtime.connect(host, params, (next) => {
       if (!active) return
@@ -51,12 +53,22 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRu
   }, [interruptKey])
 
   useEffect(() => {
-    if (status.phase !== 'ready' || !speech || spokenRef.current === speech.id) return
-    spokenRef.current = speech.id
-    void runtimeRef.current?.speak(speech.text, speech.presentation).catch(() => {
+    if ((status.phase !== 'ready' && status.phase !== 'speaking') || !speech) return
+    const messageId = speech.id.split(':', 1)[0]
+    if (spokenMessageRef.current !== messageId) {
+      spokenMessageRef.current = messageId
+      spokenTextRef.current = ''
+    }
+    if (!speech.text.startsWith(spokenTextRef.current)) {
+      spokenTextRef.current = ''
+    }
+    const delta = speech.text.slice(spokenTextRef.current.length)
+    spokenTextRef.current = speech.text
+    if (!delta.trim() && speech.pending) return
+    void runtimeRef.current?.speak(delta, speech.presentation, { flush: !speech.pending }).catch(() => {
       setStatus({ phase: 'error', message: '数字人播报失败，请重新连接' })
     })
-  }, [speech?.id, status.phase])
+  }, [speech?.id, speech?.pending, speech?.text, status.phase])
 
   return (
     <div className="avatar-runtime-shell">

@@ -70,6 +70,9 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
+      HTTP_PROXY: ${AGENT_HTTP_PROXY:-}
+      HTTPS_PROXY: ${AGENT_HTTPS_PROXY:-}
+      NO_PROXY: ${AGENT_NO_PROXY:-localhost,127.0.0.1,agent-service,auth-service,mcp-server,rabbitmq,web}
       EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
@@ -158,6 +161,8 @@ services:
         condition: service_healthy
     networks:
       - internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\""]
       interval: 10s

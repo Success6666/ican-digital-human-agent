@@ -9,7 +9,7 @@ export interface AvatarRuntimeStatus {
 
 export interface BrowserAvatarRuntime {
   connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void>
-  speak(text: string, presentation?: AvatarPerformanceCue): Promise<void>
+  speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void>
   interrupt(): Promise<void>
   dispose(): Promise<void>
 }

@@ -237,8 +237,6 @@ def build_graph(
                                         "traceId": state.get("trace_id"),
                                         "runId": state.get("run_id"),
                                         "text": delta,
-                                        "performance": performer.for_phase(FillerPhase.SPEAKING).model_dump(mode="json", by_alias=True),
-                                        "presentation": performer.for_phase(FillerPhase.SPEAKING).model_dump(mode="json", by_alias=True),
                                     },
                                 })
                                 emitted_reply = current_reply
@@ -346,27 +344,18 @@ def build_graph(
 
 
 def _is_fast_path_message(message: str, decision: IntentDecision | None) -> bool:
-    text = _normalize_fast_path_text(message)
+    text = "".join(str(message).strip().lower().split())
     if not text or len(text) > 12:
         return False
     if decision is not None and decision.name not in {"chat", "unknown"}:
         return False
-    return text in {"你好", "您好", "嗨", "在吗", "谢谢", "辛苦了", "你是谁", "你能做什么", "你可以做什么", "你会做什么"}
+    return text in {"你好", "您好", "嗨", "在吗", "谢谢", "辛苦了"}
 
 
 def _fast_path_reply(message: str, decision: IntentDecision | None) -> str | None:
     if not _is_fast_path_message(message, decision):
         return None
-    text = _normalize_fast_path_text(message)
+    text = "".join(str(message).strip().lower().split())
     if text in {"谢谢", "辛苦了"}:
         return "不客气，我在这里。"
-    if text == "你是谁":
-        return "我是你的数字人助手，可以通过语音或文字与你交流，并按需调用知识库和工具。"
-    if text in {"你能做什么", "你可以做什么", "你会做什么"}:
-        return "我可以理解你的问题、检索已授权资料、调用可用工具，并通过数字人播报结果。"
     return "你好，我在这里。请告诉我你想处理什么。"
-
-
-def _normalize_fast_path_text(message: str) -> str:
-    text = "".join(str(message).strip().casefold().split())
-    return text.translate(str.maketrans("！？。,.?！", "       ")).strip()

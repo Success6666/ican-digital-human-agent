@@ -42,11 +42,24 @@ async def test_rule_intent_and_progressive_tool_route() -> None:
     assert plan.disclosure_level == "expanded"
 
 
+def test_tool_route_keeps_core_tools_and_fast_path_skips_invocation() -> None:
+    router = ProgressiveToolRouter()
+    chat = IntentDecision(name=IntentName.CHAT, confidence=0.7)
+    assert router.route(chat, message="你是谁").selected_tools == ["system_status"]
+    assert router.route(chat, message="检查运行状态").selected_tools == ["system_status"]
+
+
 def test_short_greeting_uses_fast_path() -> None:
     decision = IntentDecision(name=IntentName.UNKNOWN)
     assert _is_fast_path_message("你好", decision) is True
     assert _fast_path_reply("你好", decision) == "你好，我在这里。请告诉我你想处理什么。"
     assert _is_fast_path_message("今天天气怎么样", decision) is False
+
+
+def test_identity_and_capability_questions_use_fast_path() -> None:
+    decision = IntentDecision(name=IntentName.CHAT)
+    assert _fast_path_reply("你是谁？", decision) == "我是你的数字人助手，可以通过语音或文字与你交流，并按需调用知识库和工具。"
+    assert _fast_path_reply("你能做什么", decision) == "我可以理解你的问题、检索已授权资料、调用可用工具，并通过数字人播报结果。"
 
 
 @pytest.mark.asyncio
