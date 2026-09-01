@@ -1,0 +1,38 @@
+Digital Human Agent v0.1.36 verification
+Date: 2026-09-01
+Changed branch/field: evaluation trend charts, human-readable run detail, responsive layout, version 0.1.36
+
+Artifacts
+- MODIFIED_FILE: E:\ican数字人\tmp-docs\v0.1.36-artifacts\MODIFIED_FILE
+- DIFF_FILE: E:\ican数字人\tmp-docs\v0.1.36-artifacts\DIFF_FILE
+- ROLLBACK.sh: E:\ican数字人\tmp-docs\v0.1.36-artifacts\ROLLBACK.sh
+- task book: E:\ican数字人\tmp-docs\digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md
+
+BASELINE
+- Command: git show f251e73:apps/web/src/pages/EvaluationPage.tsx > tmp-docs/v0.1.36-artifacts/baseline/EvaluationPage.tsx
+- Result: v0.1.35 evaluation page captured as baseline.
+
+MODIFIED
+- Command: npm run build (cwd apps/web)
+- Result: Vite build succeeded, 1661 modules, JS 329.16 kB, CSS 70.64 kB; exit 0.
+- Command: npm run test:chat; npm run test:realtime; npm run test:layout; npm run test:avatar (cwd apps/web)
+- Result: 3 + 5 + 4 + 3 tests passed; exit 0.
+- Command: $env:PYTHONPATH='apps/agent-service'; python -m pytest -q apps/agent-service/tests
+- Result: 190 passed, 2 skipped, 1 warning in 28.13s; exit 0.
+- Command: docker compose config --quiet
+- Result: COMPOSE_CONFIG_EXIT=0.
+- Command: docker compose up -d --build
+- Result: Agent, Auth, MCP and Web images rebuilt; exit 0.
+- Command: docker compose ps
+- Result: Agent, Auth, MCP, Web, Redis and RabbitMQ all healthy; Web published on 127.0.0.1:8088.
+- Command: Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/api/health
+- Result: HTTP 200, auth-service status ok.
+
+UX behavior
+- Trend charts show the latest ten runs by default and expose a full-run toggle.
+- Clicking a data point opens a human-readable run summary; raw fields are behind an advanced details disclosure.
+- Empty, loading and error states remain explicit and no static evaluation fixture was added.
+
+ROLLBACK
+- Command: wsl bash /mnt/e/ican数字人/tmp-docs/v0.1.36-artifacts/ROLLBACK.sh /mnt/e/ican数字人/tmp-docs/v0.1.36-artifacts/rollback-copy/EvaluationPage.tsx
+- Result: restored=.../rollback-copy/EvaluationPage.tsx; rollback copy matches baseline; MODIFIED_FILE remains changed.

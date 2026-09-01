@@ -38,6 +38,12 @@ def test_session_resource_defaults_are_bounded() -> None:
     assert settings.redis_operation_timeout_seconds == 0.25
 
 
+def test_evaluation_archive_is_opt_in_for_direct_settings_and_defaulted_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EVALUATION_RAW_ARCHIVE_PATH", raising=False)
+    assert Settings().evaluation_raw_archive_path is None
+    assert Settings.from_env().evaluation_raw_archive_path == "data/evaluation-runs.raw.jsonl"
+
+
 def test_session_resource_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SESSION_MAX_SESSIONS", "32")
     monkeypatch.setenv("SESSION_CLEANUP_BATCH_SIZE", "7")

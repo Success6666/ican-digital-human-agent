@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.35）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.36）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
@@ -116,5 +116,5 @@ Set-Location ..\web
 npm run build
 ```
 
-本版本性能、体验与评测数据验收记录见 [`tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md)，上一版 Redis、ASR 与音频输出记录见 [`tmp-docs/digital-human-agent-v0.1.34-redis-asr-audio-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.34-redis-asr-audio-task-book-已完成.md)。
+本版本用户体验锐评与评测图表验收记录见 [`tmp-docs/digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md)，上一版性能、评测数据与原始归档记录见 [`tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md)。
 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。

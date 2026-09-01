@@ -1,0 +1,175 @@
+diff --git a/apps/web/src/pages/EvaluationPage.tsx b/apps/web/src/pages/EvaluationPage.tsx
+index fb1388a..fae8ddf 100644
+--- a/apps/web/src/pages/EvaluationPage.tsx
++++ b/apps/web/src/pages/EvaluationPage.tsx
+@@ -1,16 +1,15 @@
+-import { Activity, RefreshCw } from 'lucide-react'
++import { RefreshCw } from 'lucide-react'
+ import { useMemo } from 'react'
+ import { useState } from 'react'
+-import { EvaluationMetrics } from '../features/evaluation/components/EvaluationMetrics'
+ import { EvaluationTables } from '../features/evaluation/components/EvaluationTables'
+-import { QualitySnapshot } from '../features/evaluation/components/QualitySnapshot'
++import { EvaluationTrendCharts } from '../features/evaluation/components/EvaluationTrendCharts'
+ import { useEvaluationData } from '../features/evaluation/model'
+ import { deriveOverview } from '../features/evaluation/presentation'
+ import { useObservabilityEvents } from '../features/observability/model'
+ import { PageHeader } from '../shared/components/PageHeader'
+-import { MetricTile } from '../shared/components/MetricTile'
+ import * as evaluationApi from '../features/evaluation/api'
+ import type { EvaluationRawRunWire, EvaluationRunWire } from '../features/evaluation/types'
++import { duration, integer, money, percent } from '../features/evaluation/presentation'
+
+ export function EvaluationPage() {
+   const telemetry = useObservabilityEvents(300)
+@@ -18,6 +17,7 @@ export function EvaluationPage() {
+   const [category, setCategory] = useState('全部')
+   const [rawRun, setRawRun] = useState<EvaluationRawRunWire | null>(null)
+   const [rawLoading, setRawLoading] = useState(false)
++  const [showAllRuns, setShowAllRuns] = useState(false)
+   const overview = evaluation.overview ?? deriveOverview(evaluation.runs, telemetry.events.length)
+   const errorCount = useMemo(
+     () => telemetry.events.filter((event) => event.status === 'error' || event.error_message).length,
+@@ -28,6 +28,8 @@ export function EvaluationPage() {
+     evaluation.datasets.forEach((dataset) => Object.keys(dataset.categories ?? {}).forEach((name) => names.add(name)))
+     return ['全部', ...Array.from(names).sort()]
+   }, [evaluation.datasets])
++  const sampleCount = evaluation.datasets.reduce((total, item) => total + Number(item.sampleCount ?? item.sample_count ?? 0), 0)
++  const visibleRuns = showAllRuns ? evaluation.runs : evaluation.runs.slice(0, 10)
+   async function inspectRun(run: EvaluationRunWire) {
+     if (!run.id) return
+     setRawLoading(true)
+@@ -36,14 +38,30 @@ export function EvaluationPage() {
+   return (
+     <div className="page-stack">
+       <PageHeader eyebrow="EVALUATION" title="评测中心" description="集中查看质量、安全、成本与分段延迟。" actions={<div className="page-header-actions"><button className="icon-button" type="button" onClick={() => { void telemetry.refresh(); void evaluation.refresh() }} disabled={telemetry.isRefreshing || evaluation.isRefreshing} aria-label="刷新评测数据" title="刷新评测数据"><RefreshCw size={16} className={telemetry.isRefreshing || evaluation.isRefreshing ? 'spin' : undefined} /></button></div>} />
+-      <div className="evaluation-summary-row"><MetricTile label="评测运行" value={overview?.totalRuns ?? '暂无数据'} detail="数据集评测次数" icon={<Activity size={15} />} tone="accent" /><MetricTile label="遥测事件" value={telemetry.events.length || '暂无数据'} detail="运行链路总量" icon={<Activity size={15} />} tone="neutral" /><MetricTile label="异常事件" value={errorCount || '暂无数据'} detail={errorCount ? '需要关注' : '暂未发现异常'} icon={<Activity size={15} />} tone={errorCount ? 'danger' : 'neutral'} /></div>
+-      <EvaluationMetrics overview={overview} />
+-      <QualitySnapshot overview={overview} />
+-      <section className="work-panel evaluation-controls" aria-label="评测筛选"><label htmlFor="evaluation-category">分类</label><select id="evaluation-category" value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option value={item} key={item}>{item}</option>)}</select><span>{evaluation.datasets.reduce((total, item) => total + Number(item.sampleCount ?? item.sample_count ?? 0), 0)} 个样本 · {categories.length - 1} 个分类</span></section>
++      <section className="evaluation-context" aria-label="评测概况"><div><strong>{overview?.totalRuns ?? 0}</strong><span>次评测运行</span></div><div><strong>{sampleCount}</strong><span>个可用样本</span></div><div><strong>{categories.length - 1}</strong><span>个场景分类</span></div><div className={errorCount ? 'evaluation-context-alert' : ''}><strong>{errorCount}</strong><span>个异常事件</span></div></section>
++      <section className="work-panel evaluation-controls" aria-label="评测筛选"><label htmlFor="evaluation-category">场景分类</label><select id="evaluation-category" value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option value={item} key={item}>{item}</option>)}</select><span>筛选数据集与运行记录 · 统计来自真实接口</span></section>
+       {(telemetry.error || evaluation.error) && <div className="page-alert" role="alert">{telemetry.error || evaluation.error}</div>}
+       {evaluation.unavailable.length > 0 && <div className="page-note" role="status">评测数据接口尚未提供，质量指标会显示为暂无数据。</div>}
+-      <EvaluationTables datasets={evaluation.datasets} runs={evaluation.runs} category={category} runningDatasetId={evaluation.runningDatasetId} onRunDataset={evaluation.runDataset} onSelectRun={(run) => void inspectRun(run)} />
+-      {rawRun && <section className="work-panel raw-run-panel" aria-labelledby="raw-run-title"><div className="section-heading"><div><p className="eyebrow">RAW RUN ARCHIVE</p><h2 id="raw-run-title">原始评测数据</h2></div><button className="icon-button" type="button" aria-label="关闭原始数据" title="关闭" onClick={() => setRawRun(null)}>×</button></div>{rawLoading ? <p>正在读取归档…</p> : <pre>{JSON.stringify(rawRun, null, 2).slice(0, 50000)}</pre>}</section>}
++      <EvaluationTrendCharts runs={evaluation.runs} currency={overview?.currency} showingAll={showAllRuns} onToggleAll={() => setShowAllRuns((current) => !current)} onSelectRun={(run) => void inspectRun(run)} />
++      <EvaluationTables datasets={evaluation.datasets} runs={visibleRuns} category={category} runningDatasetId={evaluation.runningDatasetId} onRunDataset={evaluation.runDataset} onSelectRun={(run) => void inspectRun(run)} />
++      {rawRun && <section className="work-panel raw-run-panel" aria-labelledby="raw-run-title"><div className="section-heading"><div><p className="eyebrow">RUN DETAIL</p><h2 id="raw-run-title">这一轮发生了什么</h2></div><button className="icon-button" type="button" aria-label="关闭原始数据" title="关闭" onClick={() => setRawRun(null)}>×</button></div>{rawLoading ? <p>正在读取归档…</p> : <HumanReadableRun rawRun={rawRun} />}</section>}
+     </div>
+   )
+ }
++
++function HumanReadableRun({ rawRun }: { rawRun: EvaluationRawRunWire }) {
++  const request = rawRun.request ?? {}
++  const run = rawRun.run ?? {}
++  const input = textValue(request.input_text ?? request.inputText)
++  const output = textValue(request.output_text ?? request.outputText ?? run.output_preview ?? run.outputPreview)
++  return <div className="human-run-detail"><div className="human-run-summary"><div><span>运行结果</span><strong>{humanStatus(run.status)}</strong></div><div><span>成功率</span><strong>{percent(run.successRate ?? run.success_rate)}</strong></div><div><span>总耗时</span><strong>{duration(run.durationMs ?? run.duration_ms)}</strong></div><div><span>Token 用量</span><strong>{integer(run.totalTokens ?? run.total_tokens)}</strong></div><div><span>本轮成本</span><strong>{money(run.cost, run.currency ?? 'CNY')}</strong></div></div><div className="human-run-columns"><div><h3>用户输入</h3><p>{input || '未记录用户输入'}</p></div><div><h3>数字人回答</h3><p>{output || '未记录回答内容'}</p></div></div><details className="raw-run-advanced"><summary>查看原始字段</summary><pre>{JSON.stringify(rawRun, null, 2).slice(0, 50000)}</pre></details></div>
++}
++
++function textValue(value: unknown): string {
++  return typeof value === 'string' ? value.trim() : value === undefined || value === null ? '' : String(value)
++}
++
++function humanStatus(value?: string): string {
++  const labels: Record<string, string> = { success: '已完成', completed: '已完成', passed: '已通过', failed: '失败', error: '异常', blocked: '已拦截', interrupted: '已中断' }
++  return labels[String(value ?? '').toLowerCase()] ?? '状态暂无'
++}
+diff --git a/apps/web/src/pages/evaluation-pages.css b/apps/web/src/pages/evaluation-pages.css
+index 5023373..31176b6 100644
+--- a/apps/web/src/pages/evaluation-pages.css
++++ b/apps/web/src/pages/evaluation-pages.css
+@@ -278,6 +278,19 @@
+ .evaluation-controls select { min-height: 32px; padding: 0 28px 0 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); }
+ .evaluation-controls span { margin-left: auto; color: var(--ink-faint); }
+ .raw-run-panel pre { max-height: 420px; margin: 0; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-muted); background: var(--surface-muted); font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
++.human-run-detail { display: grid; gap: 14px; }
++.human-run-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); }
++.human-run-summary > div { display: grid; gap: 4px; padding: 11px 12px; border-right: 1px solid var(--line); }
++.human-run-summary > div:last-child { border-right: 0; }
++.human-run-summary span { color: var(--ink-faint); font-size: 10px; }
++.human-run-summary strong { color: var(--ink); font-size: 14px; }
++.human-run-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
++.human-run-columns > div { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
++.human-run-columns h3 { margin: 0 0 7px; color: var(--ink); font-size: 12px; }
++.human-run-columns p { min-height: 54px; margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
++.raw-run-advanced { color: var(--ink-muted); font-size: 11px; }
++.raw-run-advanced summary { cursor: pointer; color: var(--brand-strong); }
++.raw-run-advanced pre { margin-top: 8px; }
+ .table-action-button {
+   display: inline-flex;
+   align-items: center;
+@@ -305,3 +318,72 @@
+   font-size: 9px;
+   white-space: normal;
+ }
++
++.evaluation-context {
++  display: grid;
++  grid-template-columns: repeat(4, minmax(0, 1fr));
++  border: 1px solid var(--line);
++  border-radius: 10px;
++  background: var(--surface);
++}
++.evaluation-context > div {
++  min-width: 0;
++  display: grid;
++  gap: 3px;
++  padding: 12px 15px;
++  border-right: 1px solid var(--line);
++}
++.evaluation-context > div:last-child { border-right: 0; }
++.evaluation-context strong { color: var(--ink); font-size: 20px; line-height: 1; }
++.evaluation-context span { color: var(--ink-faint); font-size: 10px; }
++.evaluation-context-alert strong { color: var(--danger); }
++
++.evaluation-trends { display: grid; gap: 13px; }
++.evaluation-section-heading {
++  display: flex;
++  align-items: end;
++  justify-content: space-between;
++  gap: 20px;
++}
++.evaluation-section-heading h2 { margin: 0; color: var(--ink); font-size: 17px; }
++.evaluation-section-heading p:not(.panel-kicker) { max-width: 62ch; margin: 5px 0 0; color: var(--ink-muted); font-size: 11px; }
++.evaluation-section-heading .secondary-button { flex: none; }
++.evaluation-trend-grid {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: 13px;
++}
++.evaluation-trend-panel { min-width: 0; padding: 15px; }
++.evaluation-trend-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
++.evaluation-trend-title { min-width: 0; display: flex; gap: 9px; align-items: flex-start; }
++.evaluation-trend-icon { width: 29px; height: 29px; display: grid; place-items: center; flex: none; border-radius: 7px; color: var(--brand); background: var(--brand-soft); }
++.evaluation-trend-title h3 { margin: 0; color: var(--ink); font-size: 14px; }
++.evaluation-trend-title p { margin: 4px 0 0; color: var(--ink-faint); font-size: 10px; line-height: 1.45; }
++.trend-window { padding-top: 4px; color: var(--ink-faint); font-size: 10px; white-space: nowrap; }
++.evaluation-chart-wrap { min-width: 0; margin-top: 12px; }
++.evaluation-chart { width: 100%; min-height: 210px; overflow: visible; }
++.chart-gridline { stroke: var(--line); stroke-width: 1; }
++.chart-axis-label { fill: var(--ink-faint); font-size: 10px; }
++.chart-line { vector-effect: non-scaling-stroke; }
++.evaluation-chart circle { cursor: pointer; transition: r .16s ease, stroke-width .16s ease; }
++.evaluation-chart circle:hover, .evaluation-chart circle:focus-visible { r: 7; stroke-width: 4; outline: none; }
++.evaluation-chart-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 13px; margin-top: 2px; color: var(--ink-muted); font-size: 10px; }
++.evaluation-chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
++.evaluation-chart-legend i { width: 8px; height: 8px; display: inline-block; border-radius: 50%; }
++.evaluation-chart-legend .chart-hint { margin-left: auto; color: var(--ink-faint); }
++.evaluation-chart-empty { min-height: 244px; display: grid; place-items: center; align-content: center; gap: 6px; color: var(--ink-faint); text-align: center; }
++.evaluation-chart-empty strong { color: var(--ink-muted); font-size: 12px; }
++.evaluation-chart-empty span { font-size: 10px; }
++
++@media (max-width: 820px) {
++  .evaluation-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .evaluation-context > div:nth-child(2) { border-right: 0; }
++  .evaluation-context > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
++  .evaluation-section-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
++  .evaluation-section-heading .secondary-button { width: 100%; }
++  .evaluation-trend-grid { grid-template-columns: 1fr; }
++  .human-run-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .human-run-summary > div:nth-child(2n) { border-right: 0; }
++  .human-run-summary > div:nth-child(-n + 3) { border-bottom: 1px solid var(--line); }
++  .human-run-columns { grid-template-columns: 1fr; }
++}

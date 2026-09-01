@@ -228,8 +228,12 @@ def test_realtime_latency_statuses_and_zero_price_are_recorded_without_fake_qual
     assert run.scores[EvaluationDimension.CANCELLATION_LATENCY].numerator == 8
 
 
-def test_evaluation_http_api_is_authenticated_and_owner_scoped() -> None:
-    settings = Settings(internal_token="eval-token", mcp_allow_local_fallback=True)
+def test_evaluation_http_api_is_authenticated_and_owner_scoped(tmp_path) -> None:
+    settings = Settings(
+        internal_token="eval-token",
+        mcp_allow_local_fallback=True,
+        evaluation_raw_archive_path=str(tmp_path / "evaluation-runs.raw.jsonl"),
+    )
     client = TestClient(create_app(container=build_container(settings)))
     with client:
         assert client.get("/internal/evaluation/overview").status_code == 401
