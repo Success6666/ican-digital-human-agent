@@ -33,3 +33,12 @@ export async function getRuns(): Promise<EvaluationRunWire[] | null> {
     throw cause
   }
 }
+
+export async function runDataset(datasetId: string, caseIds: string[] = []): Promise<Record<string, unknown>> {
+  return api.post<Record<string, unknown>>(`/evaluation/datasets/${encodeURIComponent(datasetId)}/run`, {
+    case_ids: caseIds,
+    repeat: 1,
+    concurrency: 2,
+    timeout_seconds: 30,
+  })
+}

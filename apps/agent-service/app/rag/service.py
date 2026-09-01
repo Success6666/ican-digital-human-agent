@@ -15,13 +15,13 @@ from .chunker import CharacterChunker
 from .docling_parser import DoclingParser
 from .docling_parser import DoclingRuntimeConfig
 from .embeddings import build_embedding_provider
+from .faiss_store import FaissVectorStore
 from .limits import (
     DEFAULT_MAX_METADATA_BYTES,
     DEFAULT_MAX_METADATA_DEPTH,
     DEFAULT_MAX_METADATA_ITEMS,
     MetadataLimits,
 )
-from .sqlite_store import SqliteVectorStore
 from .models import (
     DocumentChunk,
     IngestRequest,
@@ -219,6 +219,7 @@ def build_default_rag_service(
     parse_concurrency: int | None = None,
     docling_max_concurrency: int | None = None,
     store_path: str | None = None,
+    index_path: str | None = None,
     embedding_provider: str | None = None,
     embedding_base_url: str | None = None,
     embedding_api_key: str | None = None,
@@ -261,8 +262,9 @@ def build_default_rag_service(
         model=embedding_model or os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"),
         dimensions=embedding_dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "512")),
     )
-    vector_store = SqliteVectorStore(
+    vector_store = FaissVectorStore(
         store_path or os.getenv("RAG_STORE_PATH", "data/rag.sqlite3"),
+        index_path=index_path or os.getenv("RAG_INDEX_PATH", "data/faiss"),
         embedder=embedder,
         max_chunks=max_chunks,
     )

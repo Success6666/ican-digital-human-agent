@@ -17,6 +17,7 @@ from .application.provider_service import ProviderApplicationService
 from .application.session_service import SessionApplicationService
 from .avatar.registry import ProviderRegistry, build_default_registry
 from .evaluation.service import EvaluationService
+from .evaluation.runner import EvaluationDatasetRunner
 from .graph.runtime import AgentGraphRuntime
 from .infrastructure.session_store import InMemorySessionStore
 from .infrastructure.runtime_configuration import (
@@ -55,6 +56,7 @@ class ServiceContainer:
     chat_service: ChatApplicationService
     configuration_service: ConfigurationApplicationService
     evaluation: EvaluationService
+    evaluation_runner: EvaluationDatasetRunner
     cleanup: CleanupWorker
     realtime_limits: RealtimeLimits
     message_bus: ReliableMessageBus
@@ -165,6 +167,7 @@ def build_container(
         output_price_per_1k=settings.eval_output_price_per_1k,
         currency=settings.eval_currency,
     )
+    evaluation_runner = EvaluationDatasetRunner(service=evaluation, graph=graph, sessions=session_service)
     chat_service = ChatApplicationService(
         graph=graph,
         sessions=session_service,
@@ -197,6 +200,7 @@ def build_container(
         chat_service=chat_service,
         configuration_service=configuration_service,
         evaluation=evaluation,
+        evaluation_runner=evaluation_runner,
         cleanup=cleanup,
         realtime_limits=realtime_limits,
         message_bus=message_bus,
@@ -220,7 +224,7 @@ def create_app(
             await app.state.container.message_bus.close()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.26", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.27", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,
@@ -241,14 +245,14 @@ def create_app(
 
 def _include_optional_routers(app: FastAPI, container: ServiceContainer) -> None:
     """Mount optional routers with the same service container as core routes."""
-    for module_name, service in (
-        ("app.rag.router", container.rag),
-        ("app.observability.router", container.observability),
-        ("app.evaluation.router", container.evaluation),
+    for module_name, service, extras in (
+        ("app.rag.router", container.rag, {}),
+        ("app.observability.router", container.observability, {}),
+        ("app.evaluation.router", container.evaluation, {"runner": container.evaluation_runner}),
     ):
         try:
             module = __import__(module_name, fromlist=["router"])
-            optional_router = module.build_router(service=service) if hasattr(module, "build_router") else getattr(module, "router", None)
+            optional_router = module.build_router(service=service, **extras) if hasattr(module, "build_router") else getattr(module, "router", None)
             if optional_router is not None:
                 app.include_router(optional_router)
         except ImportError:

@@ -25,6 +25,9 @@ def test_project_dataset_covers_required_dimensions() -> None:
     assert EvaluationDimension.DIGITAL_HUMAN_LATENCY in dataset.dimensions
     assert any(case.injection_attempt for case in dataset.cases)
     assert any(case.expected_evidence for case in dataset.cases)
+    assert any("实时改口" in case.tags for case in dataset.cases)
+    assert any("微表情" in case.tags for case in dataset.cases)
+    assert any("语音播报" in case.tags for case in dataset.cases)
 
 
 def test_deterministic_metrics_cover_tokens_cost_tools_grounding_and_injection() -> None:
@@ -247,3 +250,26 @@ def test_evaluation_http_api_is_authenticated_and_owner_scoped() -> None:
         other = client.get("/internal/evaluation/runs", headers=_headers("u-other", "OtherUser"))
         assert other.status_code == 200
         assert other.json()["runs"] == []
+
+
+def test_dataset_runner_executes_real_agent_graph_and_records_case() -> None:
+    settings = Settings(internal_token="eval-token", mcp_allow_local_fallback=True)
+    client = TestClient(create_app(container=build_container(settings)))
+    with client:
+        response = client.post(
+            "/internal/evaluation/datasets/ican-agent-core/run",
+            headers=_headers("u-runner", "Runner"),
+            json={
+                "case_ids": ["chat-acknowledge-001"],
+                "repeat": 1,
+                "concurrency": 1,
+                "timeout_seconds": 10,
+            },
+        )
+        assert response.status_code == 202
+        payload = response.json()
+        assert payload["case_count"] == 1
+        assert payload["run_count"] == 1
+        assert payload["run_ids"]
+        runs = client.get("/internal/evaluation/runs", headers=_headers("u-runner", "Runner")).json()["runs"]
+        assert runs[0]["case_id"] == "chat-acknowledge-001"

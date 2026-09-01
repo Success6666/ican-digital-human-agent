@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,6 +31,18 @@ public class EvaluationProxyController {
     @GetMapping("/datasets")
     public JsonNode datasets() {
         return agentGatewayClient.get("/internal/evaluation/datasets", user().id(), user().username());
+    }
+
+    @PostMapping("/datasets/{datasetId}/run")
+    public JsonNode runDataset(@PathVariable String datasetId, @RequestBody JsonNode body) {
+        UserAccount current = user();
+        String safeDatasetId = GatewayPath.segment(datasetId);
+        return agentGatewayClient.post(
+                "/internal/evaluation/datasets/" + safeDatasetId + "/run",
+                body,
+                current.id(),
+                current.username()
+        );
     }
 
     @PostMapping("/runs")

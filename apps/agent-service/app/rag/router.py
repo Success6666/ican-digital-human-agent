@@ -78,7 +78,7 @@ def build_router(service: RagService | None = None, *, prefix: str = "/internal/
         parser = getattr(selected.parser, "available", None)
         return {
             "status": "ok",
-            "storage": "SQLite 持久化向量索引" if selected.store.__class__.__name__ == "SqliteVectorStore" else "内存向量索引",
+            "storage": "FAISS 持久化向量索引" if selected.store.__class__.__name__ == "FaissVectorStore" else "兼容向量索引",
             "documents": statistics.documents,
             "chunks": statistics.chunks,
             "collections": [item.model_dump(mode="json") for item in statistics.collections],

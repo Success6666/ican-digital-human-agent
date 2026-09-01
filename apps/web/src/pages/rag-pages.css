@@ -162,6 +162,15 @@
   font-weight: 700;
 }
 .rag-tab-panel { animation: rag-panel-in .2s ease both; }
+.rag-workspace-panel {
+  padding: 16px;
+}
+.rag-workspace-panel > .work-panel {
+  min-height: 420px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 @keyframes rag-panel-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .collection-empty {
   min-height: 132px;

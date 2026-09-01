@@ -102,6 +102,15 @@ class EvaluationRunRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class DatasetRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    case_ids: list[str] = Field(default_factory=list, max_length=50)
+    repeat: int = Field(default=1, ge=1, le=3)
+    concurrency: int = Field(default=2, ge=1, le=4)
+    timeout_seconds: float = Field(default=30, ge=1, le=120)
+
+
 class MetricScore(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

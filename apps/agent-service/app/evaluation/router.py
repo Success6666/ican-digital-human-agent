@@ -7,11 +7,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from ..api.dependencies import InternalContext
-from .models import EvaluationDimension, EvaluationRun, EvaluationRunRequest
+from .models import DatasetRunRequest, EvaluationDimension, EvaluationRun, EvaluationRunRequest
 from .service import EvaluationService
 
 
-def build_router(service: EvaluationService, *, prefix: str = "/internal/evaluation") -> APIRouter:
+def build_router(service: EvaluationService, *, runner: Any | None = None, prefix: str = "/internal/evaluation") -> APIRouter:
     api = APIRouter(prefix=prefix, tags=["evaluation"])
 
     @api.get("/overview")
@@ -51,6 +51,22 @@ def build_router(service: EvaluationService, *, prefix: str = "/internal/evaluat
                 }
             )
         return {"datasets": items}
+
+    @api.post("/datasets/{dataset_id}/run", status_code=202)
+    async def run_dataset(dataset_id: str, payload: DatasetRunRequest, context: InternalContext):
+        if runner is None:
+            raise HTTPException(status_code=503, detail="评测运行器尚未就绪")
+        try:
+            return await runner.run(
+                dataset_id,
+                payload,
+                owner_id=context["user_id"],
+                user_name=context["user_name"],
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="evaluation dataset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @api.post("/runs", status_code=201)
     async def record_run(payload: EvaluationRunRequest, context: InternalContext):

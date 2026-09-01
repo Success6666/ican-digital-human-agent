@@ -10,6 +10,7 @@ export function useEvaluationData() {
   const [isLoading, setLoading] = useState(true)
   const [isRefreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [runningDatasetId, setRunningDatasetId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -32,5 +33,19 @@ export function useEvaluationData() {
 
   useEffect(() => { void refresh() }, [refresh])
 
-  return { ...state, isLoading, isRefreshing, error, refresh }
+  const runDataset = useCallback(async (datasetId: string) => {
+    setRunningDatasetId(datasetId)
+    setError(null)
+    try {
+      await evaluationApi.runDataset(datasetId)
+      await refresh()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '评测运行失败')
+      throw cause
+    } finally {
+      setRunningDatasetId(null)
+    }
+  }, [refresh])
+
+  return { ...state, isLoading, isRefreshing, runningDatasetId, error, refresh, runDataset }
 }

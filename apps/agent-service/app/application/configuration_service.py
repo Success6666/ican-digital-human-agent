@@ -328,6 +328,9 @@ def _reconfigure_embedder(rag: RagService, configuration: EmbeddingRuntimeConfig
         return
     from ..rag.embeddings import build_embedding_provider
     store.embedder = build_embedding_provider(provider=configuration.provider, base_url=configuration.base_url, api_key=configuration.api_key, model=configuration.model, dimensions=configuration.dimensions)
+    invalidate = getattr(store, "invalidate", None)
+    if callable(invalidate):
+        invalidate()
 
 
 def _validate_provider_credentials(configuration: RuntimeConfiguration) -> None:

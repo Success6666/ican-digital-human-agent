@@ -1,32 +1,18 @@
-import { FileText, FolderOpen, Layers3, Plus, Search, TrendingUp } from 'lucide-react'
+import { FileText, FolderOpen, Layers3, Plus, TrendingUp } from 'lucide-react'
 import { type ReactNode } from 'react'
 import type { RagCollectionStatistics, RagHealth } from '../types'
 
 interface RagOverviewProps {
   health: RagHealth | null
-  activeTab: 'collections' | 'documents' | 'search'
-  onTabChange: (tab: 'collections' | 'documents' | 'search') => void
   onIngest: () => void
-  onFocusSearch: () => void
 }
 
-export function RagOverview({ health, activeTab, onTabChange, onIngest, onFocusSearch }: RagOverviewProps) {
+export function RagOverview({ health, onIngest }: RagOverviewProps) {
   const documents = health?.documents
   const collections = health?.collections ?? []
   const parserReady = health?.docling_available ?? health?.doclingAvailable
-  const selectTab = (tab: 'collections' | 'documents' | 'search') => {
-    onTabChange(tab)
-    if (tab === 'documents') onIngest()
-    if (tab === 'search') onFocusSearch()
-  }
   return (
-    <section className="rag-overview" aria-labelledby="rag-overview-title">
-      <div className="rag-tabs" role="tablist" aria-label="RAG 工作区视图">
-        <button className={'rag-tab' + (activeTab === 'collections' ? ' rag-tab--active' : '')} type="button" role="tab" aria-selected={activeTab === 'collections'} onClick={() => selectTab('collections')}><FolderOpen size={14} />知识库管理</button>
-        <button className={'rag-tab' + (activeTab === 'documents' ? ' rag-tab--active' : '')} type="button" role="tab" aria-selected={activeTab === 'documents'} onClick={() => selectTab('documents')}><FileText size={14} />文档管理</button>
-        <button className={'rag-tab' + (activeTab === 'search' ? ' rag-tab--active' : '')} type="button" role="tab" aria-selected={activeTab === 'search'} onClick={() => selectTab('search')}><Search size={14} />检索测试</button>
-        <button className="rag-overview-action" type="button" onClick={onIngest}><Plus size={14} />导入文档</button>
-      </div>
+    <div className="rag-tab-panel" aria-labelledby="rag-overview-title">
       <div className="rag-overview-grid">
         <section className="rag-collections" aria-labelledby="rag-overview-title">
           <div className="panel-heading-row"><div><p className="panel-kicker">COLLECTIONS</p><h2 id="rag-overview-title">知识库管理</h2></div><span className="panel-muted">{documents === undefined ? '等待同步' : String(documents) + ' 个文档'}</span></div>
@@ -60,7 +46,7 @@ export function RagOverview({ health, activeTab, onTabChange, onIngest, onFocusS
           <p className="chart-note"><span className={'health-dot' + (parserReady === false ? ' health-dot--warning' : '')} />{parserReady === false ? '当前使用文本回退解析' : 'Docling 解析状态将随入库任务更新'}</p>
         </section>
       </div>
-    </section>
+    </div>
   )
 }
 

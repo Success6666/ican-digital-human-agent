@@ -25,7 +25,7 @@ export function EvaluationPage() {
       <QualitySnapshot overview={overview} />
       {(telemetry.error || evaluation.error) && <div className="page-alert" role="alert">{telemetry.error || evaluation.error}</div>}
       {evaluation.unavailable.length > 0 && <div className="page-note" role="status">评测数据接口尚未提供，质量指标会显示为暂无数据。</div>}
-      <EvaluationTables datasets={evaluation.datasets} runs={evaluation.runs} />
+      <EvaluationTables datasets={evaluation.datasets} runs={evaluation.runs} runningDatasetId={evaluation.runningDatasetId} onRunDataset={evaluation.runDataset} />
     </div>
   )
 }
