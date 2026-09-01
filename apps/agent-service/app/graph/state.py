@@ -35,3 +35,4 @@ class AgentGraphState(TypedDict, total=False):
     interrupted: bool
     security_blocked: bool
     security_reason: str
+    profile_context: str

@@ -21,6 +21,7 @@ from .schemas import (
     InterruptRequest,
     ProviderResponse,
     SessionResponse,
+    ProfilePatch,
 )
 
 router = APIRouter()
@@ -31,7 +32,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.33")
+    return HealthResponse(service=container.settings.service_name, version="0.1.34")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -135,6 +136,7 @@ async def chat(payload: ChatRequest, context: InternalContext, request: Request)
             user_name=context["user_name"],
             session_id=payload.session_id,
             message=payload.message,
+            tenant_id=context.get("tenant_id", "default"),
         )
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -150,6 +152,7 @@ async def chat_stream(payload: ChatRequest, context: InternalContext, request: R
             user_name=context["user_name"],
             session_id=payload.session_id,
             message=payload.message,
+            tenant_id=context.get("tenant_id", "default"),
         )
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -158,6 +161,22 @@ async def chat_stream(payload: ChatRequest, context: InternalContext, request: R
         iter_sse_frames(events, request, session_id=payload.session_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/internal/profile")
+async def profile(context: InternalContext, request: Request) -> dict[str, Any]:
+    container = get_container(request)
+    return await container.profile_store.get(tenant_id=context.get("tenant_id", "default"), user_id=context["user_id"])
+
+
+@router.patch("/internal/profile")
+async def update_profile(payload: ProfilePatch, context: InternalContext, request: Request) -> dict[str, Any]:
+    container = get_container(request)
+    return await container.profile_store.update(
+        tenant_id=context.get("tenant_id", "default"),
+        user_id=context["user_id"],
+        values=payload.model_dump(exclude_none=True),
     )
 
 
@@ -190,5 +209,6 @@ def _chat_response(result: ChatResult) -> ChatResponse:
         first_visible_latency_ms=result.first_visible_latency_ms,
         cancellation_latency_ms=result.cancellation_latency_ms,
         interrupted=result.interrupted,
+        cacheHit=result.cache_hit,
         agent_response=result.agent_response,
     )

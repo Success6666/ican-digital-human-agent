@@ -38,6 +38,7 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
         *,
         limits: RealtimeLimits = DEFAULT_LIMITS,
         ingress: AudioIngress | None = None,
+        output: Any | None = None,
     ) -> None:
         self.websocket = websocket
         self.container = container
@@ -48,6 +49,8 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
         )
         self.queue = BoundedOutboundQueue(limits.outbound_queue_size)
         self.ingress = ingress or MockPcmIngress(limits=limits)
+        self.audio_output = output or getattr(container, "audio_output", None)
+        self._tts_semaphore = asyncio.Semaphore(2)
         self.stop_event = asyncio.Event()
         self.run_tasks: dict[str, asyncio.Task[Any]] = {}
         self.background_tasks: set[asyncio.Task[Any]] = set()
@@ -138,9 +141,9 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
             capabilities={
                 "textInput": True,
                 "audioInput": True,
-                "audioOutput": False,
-                "asr": "unsupported",
-                "tts": "unsupported",
+                "audioOutput": bool(getattr(self.audio_output, "enabled", False)),
+                "asr": "supported" if self.ingress.__class__.__name__ == "HttpAsrIngress" else "unsupported",
+                "tts": "supported" if bool(getattr(self.audio_output, "enabled", False)) else "unsupported",
                 "interrupt": True,
             },
             audioFormat={
@@ -257,6 +260,16 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
             self._close_code = _close_code(code)
             if self._accepted and (self._close_task is None or self._close_task.done()):
                 self._close_task = asyncio.create_task(self._close_transport())
+
+    async def _queue_binary(self, data: bytes, *, guard_run_id: str | None = None) -> None:
+        if guard_run_id and not await self.state.owns_run(guard_run_id):
+            return
+        try:
+            await self.queue.put(data)
+        except RealtimeBackpressureError:
+            self.stop_event.set()
+            self._close_code = 1013
+            raise
 
     async def _close_transport(self) -> None:
         await asyncio.sleep(0)

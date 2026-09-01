@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReliableMessageBus:
-    def __init__(self, *, url: str = "", exchange: str = "ican.agent", queue: str = "digital-human.presentation.v2", outbox_path: str = "data/presentation-outbox.jsonl", timeout_seconds: float = 2.0) -> None:
+    def __init__(self, *, url: str = "", exchange: str = "ican.agent", queue: str = "digital-human.presentation.v2", outbox_path: str = "data/presentation-outbox.jsonl", timeout_seconds: float = 2.0, max_in_flight: int = 512, prefetch_count: int = 256, retry_limit: int = 3) -> None:
         self.url = url
         self.exchange_name = exchange
         self.queue_name = queue
@@ -23,14 +23,19 @@ class ReliableMessageBus:
         self.dead_letter_queue = f"{queue}.dead"
         self.outbox_path = Path(outbox_path)
         self.timeout_seconds = timeout_seconds
+        self.max_in_flight = max(1, int(max_in_flight))
+        self.prefetch_count = max(1, int(prefetch_count))
+        self.retry_limit = max(0, int(retry_limit))
         self._connection: Any | None = None
         self._lock = asyncio.Lock()
+        self._publish_gate = asyncio.Semaphore(self.max_in_flight)
 
     async def publish(self, *, topic: str, payload: dict[str, Any]) -> str:
         envelope = {"messageId": uuid4().hex, "topic": topic, "createdAt": datetime.now(UTC).isoformat(), "payload": payload}
         if self.url:
             try:
-                await asyncio.wait_for(self._publish_rabbit(envelope), timeout=self.timeout_seconds)
+                async with self._publish_gate:
+                    await asyncio.wait_for(self._publish_rabbit(envelope), timeout=self.timeout_seconds)
                 return envelope["messageId"]
             except Exception as exc:
                 logger.warning("RabbitMQ presentation publish failed; writing message %s to outbox: %s", envelope["messageId"], type(exc).__name__)
@@ -64,6 +69,7 @@ class ReliableMessageBus:
                     "x-max-length": 10_000,
                     "x-overflow": "reject-publish-dlx",
                     "x-queue-type": "quorum",
+                    "x-delivery-limit": self.retry_limit + 1,
                 },
             )
             await queue.bind(exchange, routing_key=envelope["topic"])
@@ -74,6 +80,7 @@ class ReliableMessageBus:
                 message_id=envelope["messageId"],
                 timestamp=datetime.fromisoformat(envelope["createdAt"]),
                 type=envelope["topic"],
+                headers={"x-idempotency-key": envelope["messageId"], "x-prefetch-count": self.prefetch_count},
             )
             await exchange.publish(message, routing_key=envelope["topic"], mandatory=True)
             await channel.close()

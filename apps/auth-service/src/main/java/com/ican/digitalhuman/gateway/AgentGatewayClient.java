@@ -141,6 +141,10 @@ public class AgentGatewayClient {
                 .header("X-Internal-Token", properties.internalToken())
                 .header("X-User-Id", userId)
                 .header("X-User-Name", userName)
+                // The authenticated account is the default tenant boundary.
+                // A future org directory can replace this derivation without
+                // changing the Agent contract.
+                .header("X-Tenant-Id", "tenant-" + userId)
                 .header("X-Request-Id", requestId);
     }
 

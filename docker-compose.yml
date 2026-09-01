@@ -54,6 +54,29 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://ican:ican@rabbitmq:5672/}
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-ican.agent}
       RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-digital-human.presentation.v2}
+      SESSION_STORE_BACKEND: ${SESSION_STORE_BACKEND:-redis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-ican:agent}
+      REDIS_OPERATION_TIMEOUT_SECONDS: ${REDIS_OPERATION_TIMEOUT_SECONDS:-0.25}
+      RESPONSE_CACHE_ENABLED: ${RESPONSE_CACHE_ENABLED:-true}
+      RESPONSE_CACHE_TTL_SECONDS: ${RESPONSE_CACHE_TTL_SECONDS:-300}
+      RESPONSE_CACHE_MAX_BYTES: ${RESPONSE_CACHE_MAX_BYTES:-256000}
+      RESPONSE_CACHE_MAX_ENTRIES: ${RESPONSE_CACHE_MAX_ENTRIES:-100000}
+      RESPONSE_CACHE_SCOPE: ${RESPONSE_CACHE_SCOPE:-tenant}
+      RESPONSE_CACHE_LOCK_SECONDS: ${RESPONSE_CACHE_LOCK_SECONDS:-15}
+      AGENT_MAX_IN_FLIGHT_REQUESTS: ${AGENT_MAX_IN_FLIGHT_REQUESTS:-4096}
+      RABBITMQ_MAX_IN_FLIGHT: ${RABBITMQ_MAX_IN_FLIGHT:-512}
+      RABBITMQ_PREFETCH_COUNT: ${RABBITMQ_PREFETCH_COUNT:-256}
+      RABBITMQ_RETRY_LIMIT: ${RABBITMQ_RETRY_LIMIT:-3}
+      HTTP_ASR_ENDPOINT: ${HTTP_ASR_ENDPOINT:-}
+      HTTP_ASR_API_KEY: ${HTTP_ASR_API_KEY:-}
+      HTTP_ASR_TIMEOUT_SECONDS: ${HTTP_ASR_TIMEOUT_SECONDS:-8}
+      HTTP_ASR_MAX_RESPONSE_BYTES: ${HTTP_ASR_MAX_RESPONSE_BYTES:-1048576}
+      HTTP_TTS_ENDPOINT: ${HTTP_TTS_ENDPOINT:-}
+      HTTP_TTS_API_KEY: ${HTTP_TTS_API_KEY:-}
+      HTTP_TTS_TIMEOUT_SECONDS: ${HTTP_TTS_TIMEOUT_SECONDS:-8}
+      HTTP_TTS_CHUNK_BYTES: ${HTTP_TTS_CHUNK_BYTES:-640}
+      HTTP_TTS_MAX_RESPONSE_BYTES: ${HTTP_TTS_MAX_RESPONSE_BYTES:-4194304}
       MCP_REQUEST_TIMEOUT_SECONDS: ${MCP_REQUEST_TIMEOUT_SECONDS:-8}
       MCP_ALLOW_LOCAL_FALLBACK: ${MCP_ALLOW_LOCAL_FALLBACK:-true}
       MCP_FAST_PATH_TIMEOUT_SECONDS: ${MCP_FAST_PATH_TIMEOUT_SECONDS:-0.25}
@@ -160,6 +183,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - internal
     extra_hosts:
@@ -207,6 +232,22 @@ services:
       retries: 12
     restart: unless-stopped
 
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
 networks:
   internal:
     driver: bridge
@@ -215,3 +256,4 @@ volumes:
   agent-runtime-config:
   agent-model-cache:
   rabbitmq-data:
+  redis-data:

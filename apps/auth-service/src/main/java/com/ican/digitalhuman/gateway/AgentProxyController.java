@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,6 +61,18 @@ public class AgentProxyController {
     public JsonNode chat(@RequestBody JsonNode body) {
         UserAccount current = user();
         return agentGatewayClient.post("/internal/chat", body, current.id(), current.username());
+    }
+
+    @GetMapping("/profile")
+    public JsonNode profile() {
+        UserAccount current = user();
+        return agentGatewayClient.get("/internal/profile", current.id(), current.username());
+    }
+
+    @PatchMapping("/profile")
+    public JsonNode updateProfile(@RequestBody JsonNode body) {
+        UserAccount current = user();
+        return agentGatewayClient.patch("/internal/profile", body, current.id(), current.username(), current.role());
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

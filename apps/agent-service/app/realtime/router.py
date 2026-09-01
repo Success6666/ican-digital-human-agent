@@ -20,6 +20,8 @@ async def realtime(websocket: WebSocket) -> None:
         websocket,
         container,
         limits=getattr(container, "realtime_limits", DEFAULT_LIMITS),
+        ingress=getattr(container, "audio_ingress", None),
+        output=getattr(container, "audio_output", None),
     ).run()
 
 

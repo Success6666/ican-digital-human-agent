@@ -23,7 +23,7 @@ docker compose up --build
 
 首页建立数字人会话后会自动挂载文本实时通道。浏览器使用同源登录 Cookie 访问 `/api/realtime`；麦克风按钮只在当前 Provider 声明语音输入能力且浏览器支持采集时启用。改口或停止表达会先清空本地播放队列，再发送当前运行的中断请求。
 
-当前 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期，ASR/TTS 会明确显示为未配置；不要将该链路当作真实语音识别或厂商视频效果验收。
+默认 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期。配置 `SESSION_STORE_BACKEND=redis` 后会话与 cleanup 队列进入 Redis；配置 `HTTP_ASR_ENDPOINT`、`HTTP_TTS_ENDPOINT` 后启用真实媒体适配，适配器使用复用连接、超时和响应体上限，故障时保留协议连接并报告降级状态。
 
 ### 会话资源参数
 
@@ -36,7 +36,9 @@ docker compose up --build
 - `REALTIME_INTERRUPT_TIMEOUT_SECONDS`：实时中断确认的服务端等待上限，默认 `0.25` 秒。
 - `SESSION_IDLE_TIMEOUT_SECONDS` 必须满足 `SESSION_HEARTBEAT_INTERVAL_SECONDS < REALTIME_IDLE_TIMEOUT_SECONDS <= SESSION_IDLE_TIMEOUT_SECONDS`，否则服务不会启动。
 
-当前版本会话状态仍在进程内。多进程或多副本部署前，应接入共享 `SessionStore` 适配器，并为清理任务增加租约或领导者协调，不能依赖本地计数器实现一致性。过期 Provider 快照会按 `SESSION_CLEANUP_OUTBOX_PATH` 写入有界 JSONL outbox；该文件只包含会话生命周期元数据，不包含用户输入、模型输出或凭证。进程重启后清理 worker 会先恢复 outbox，再继续关闭远端运行时。
+默认会话状态使用进程内 Store；多进程或多副本部署将 `SESSION_STORE_BACKEND` 设置为 `redis`，并配置 `REDIS_URL`、`REDIS_KEY_PREFIX` 和操作超时。过期 Provider 快照在 Redis 中进入有界 cleanup 队列；Redis 暂时不可用时保留本地内存语义并记录降级。答案缓存采用滑动 TTL、大小/条目上限和 single-flight；租户键空间、账号偏好和 RabbitMQ 消息幂等键由 Agent 侧维护。`HTTP_ASR_ENDPOINT` 和 `HTTP_TTS_ENDPOINT` 只接受服务端配置，原始音频与凭证不写入日志或会话状态。
+
+容量基线：`AGENT_MAX_IN_FLIGHT_REQUESTS=4096`、`RABBITMQ_MAX_IN_FLIGHT=512`、`RABBITMQ_PREFETCH_COUNT=256`。使用 `tmp-docs/v0.1.34-concurrency-benchmark.py` 对健康入口执行连接级压测，记录 p50/p95、错误率和 wall time；10,000 是连接级容量目标，LLM 并发仍由供应商配额和 `max_in_flight` 共同约束。
 远端 Provider 清理失败时，当前版本只记录并继续处理其他会话；生产部署需在共享存储版本增加带退避的关闭重试或 outbox，避免进程重启后丢失待清理状态。
 
 ## 健康检查

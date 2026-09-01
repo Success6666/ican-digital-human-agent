@@ -1,0 +1,38 @@
+v0.1.34 verification record
+
+Changed branch/field: Redis sharded session/cache/profile lifecycle, tenant context, RabbitMQ bounded publishing, HTTP ASR/TTS, request in-flight gate.
+MODIFIED_FILE: tmp-docs/v0.1.34-artifacts/modified/chat_service.py
+DIFF_FILE: tmp-docs/v0.1.34-artifacts/DIFF_FILE.diff
+ROLLBACK: tmp-docs/v0.1.34-artifacts/ROLLBACK.sh
+MODIFIED SHA256: F7FDB9BEB6D3FDB43394C1B830A7630DA4E6233F2737B80B2A8A29259078A88E
+BASELINE SHA256: 46FB89308D18C5F79F0D6B550D63DF47A8F15C96D840D5446CF74093680DBEBD
+
+BASELINE command: $env:PYTHONPATH='apps/agent-service'; pytest -q apps/agent-service/tests
+BASELINE result: 186 passed, 2 skipped, 1 warning in 39.05s (v0.1.33 baseline run)
+BASELINE exit: 0
+
+MODIFIED command: $env:PYTHONPATH='apps/agent-service'; pytest -q apps/agent-service/tests
+MODIFIED result: 188 passed, 2 skipped, 2 warnings in 30.84s
+MODIFIED exit: 0
+
+ROLLBACK command: wsl bash /mnt/e/ican数字人/tmp-docs/v0.1.34-artifacts/ROLLBACK.sh /mnt/e/ican数字人/tmp-docs/v0.1.34-artifacts/rollback-copy/chat_service.py
+ROLLBACK result: restored=tmp-docs/v0.1.34-artifacts/rollback-copy/chat_service.py; SHA256 equals baseline copy
+ROLLBACK exit: 0
+
+Compose command: docker compose up -d --build
+Compose result: agent-service, auth-service, mcp-server, web, redis and rabbitmq healthy
+Compose exit: 0
+
+Concurrency command: benchmark script piped into agent-service container with --concurrency 10000
+Concurrency result: requests=10000, ok=10000, errors=0, p50_ms=2374.34, p95_ms=5558.50, wall_ms=112434.78
+Concurrency exit: 0
+
+Redis smoke command: two RedisSessionStore instances against redis://redis:6379/0
+Redis smoke result: run=True, shared_interrupt=True, size=1
+Redis smoke exit: 0
+
+Tenant/cache smoke command: profile and response cache against redis://redis:6379/0
+Tenant/cache smoke result: profile_a={'tone': 'brief'}, profile_b={}, cache_hit=True, cross_tenant_hit=False
+Tenant/cache smoke exit: 0
+
+Restored behavior/status: rollback copy matches baseline; working-tree MODIFIED_FILE remains changed.

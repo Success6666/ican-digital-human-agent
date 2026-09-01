@@ -100,6 +100,7 @@ class ChatResult(BaseModel):
     first_visible_latency_ms: float | None = Field(default=None, ge=0)
     cancellation_latency_ms: float | None = Field(default=None, ge=0)
     interrupted: bool = False
+    cache_hit: bool = Field(default=False, alias="cacheHit")
     agent_response: AgentResponse | None = Field(default=None, alias="agentResponse")
 
 

@@ -149,6 +149,8 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
                     event_type, run_id=binding.run_id, utterance_id=binding.utterance_id,
                     revision=binding.revision, guard_run_id=binding.run_id, **payload,
                 )
+                if event_type == "delta" and payload.get("text"):
+                    self._schedule(self._synthesize_text(str(payload["text"]), binding))
             if await self.state.current(binding):
                 self._remember_run(self.completed_runs, binding.run_id)
                 await self._publish_run_done(
@@ -170,6 +172,30 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
         finally:
             if self.run_tasks.get(binding.run_id) is task:
                 self.run_tasks.pop(binding.run_id, None)
+
+    async def _synthesize_text(self, text: str, binding: RunBinding) -> None:
+        output = getattr(self, "audio_output", None)
+        synthesize = getattr(output, "synthesize", None)
+        if not callable(synthesize) or not getattr(output, "enabled", False):
+            return
+        try:
+            try:
+                await asyncio.wait_for(self._tts_semaphore.acquire(), timeout=0.05)
+            except asyncio.TimeoutError:
+                return
+            try:
+                chunks = synthesize(text, run_id=binding.run_id)
+                async for chunk in chunks:
+                    if not await self.state.current(binding):
+                        return
+                    if isinstance(chunk, bytes) and chunk:
+                        await self._queue_binary(chunk, guard_run_id=binding.run_id)
+            finally:
+                self._tts_semaphore.release()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return
 
     async def _interrupt(self, message: RealtimeMessage) -> None:
         binding = await self.state.binding()

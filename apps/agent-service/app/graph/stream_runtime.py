@@ -39,6 +39,7 @@ async def stream_runtime(
     session_id: str,
     message: str,
     run_id: str | None = None,
+    profile_context: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield user-facing stream events while preserving run interruption checks."""
     trace_id = uuid.uuid4().hex
@@ -142,6 +143,7 @@ async def stream_runtime(
             "tool_plan": plan.model_dump(mode="json"),
             "security_blocked": assessment.attempted,
             "security_reason": assessment.reason_code or "",
+            "profile_context": profile_context or "",
         }
         async with trace_scope(
             runtime._observer,

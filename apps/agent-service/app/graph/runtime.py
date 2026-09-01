@@ -82,6 +82,7 @@ class AgentGraphRuntime:
         session_id: str,
         message: str,
         run_id: str | None = None,
+        profile_context: str | None = None,
     ) -> ChatResult:
         started = time.perf_counter()
         trace_id = uuid.uuid4().hex
@@ -120,6 +121,7 @@ class AgentGraphRuntime:
                         "tool_plan": plan.model_dump(mode="json"),
                         "security_blocked": assessment.attempted,
                         "security_reason": assessment.reason_code or "",
+                        "profile_context": profile_context or "",
                     }
                 )
                 state["agent_latency_ms"] = _agent_latency(
@@ -169,6 +171,7 @@ class AgentGraphRuntime:
         session_id: str,
         message: str,
         run_id: str | None = None,
+        profile_context: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         inner = stream_runtime(
             self,
@@ -177,6 +180,7 @@ class AgentGraphRuntime:
             session_id=session_id,
             message=message,
             run_id=run_id,
+            profile_context=profile_context,
         )
         try:
             async for event in inner:

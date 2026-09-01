@@ -34,6 +34,8 @@ def test_session_resource_defaults_are_bounded() -> None:
     assert settings.realtime_handshake_timeout_seconds == 5.0
     assert settings.realtime_idle_timeout_seconds == 45.0
     assert settings.realtime_interrupt_timeout_seconds == 0.25
+    assert settings.session_store_backend == "memory"
+    assert settings.redis_operation_timeout_seconds == 0.25
 
 
 def test_session_resource_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:

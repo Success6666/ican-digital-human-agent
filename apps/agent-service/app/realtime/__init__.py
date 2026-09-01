@@ -2,6 +2,7 @@
 
 from .audio import AudioFormat, AudioIngressError, MockPcmIngress, TranscriptResult
 from .connection import RealtimeConnection
+from .media import HttpAsrIngress, HttpTtsOutput, NullAudioOutput
 from .limits import DEFAULT_LIMITS, RealtimeLimits
 from .protocol import (
     MessageType,
@@ -23,6 +24,9 @@ __all__ = [
     "MockPcmIngress",
     "RealtimeLimits",
     "RealtimeConnection",
+    "HttpAsrIngress",
+    "HttpTtsOutput",
+    "NullAudioOutput",
     "RealtimeMessage",
     "RealtimeProtocolError",
     "RunBinding",

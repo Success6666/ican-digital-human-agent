@@ -47,6 +47,16 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class ProfilePatch(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    language: str | None = Field(default=None, max_length=64)
+    tone: str | None = Field(default=None, max_length=128)
+    voice: str | None = Field(default=None, max_length=128)
+    verbosity: str | None = Field(default=None, max_length=32)
+    constraints: str | None = Field(default=None, max_length=512)
+
+
 class InterruptRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -68,6 +78,7 @@ class ChatResponse(BaseModel):
     first_visible_latency_ms: float | None = Field(default=None, alias="firstVisibleLatencyMs")
     cancellation_latency_ms: float | None = Field(default=None, alias="cancellationLatencyMs")
     interrupted: bool = False
+    cache_hit: bool = Field(default=False, alias="cacheHit")
     agent_response: AgentResponse | None = Field(default=None, alias="agentResponse")
 
 

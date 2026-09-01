@@ -198,6 +198,9 @@ def build_graph(
             return {"reply": "请求已打断。", "interrupted": True}
         hits = state.get("rag_hits", [])
         context_texts: list[str] = []
+        profile_context = str(state.get("profile_context") or "").strip()
+        if profile_context:
+            context_texts.append(f"用户沟通偏好（仅用于本次回复）：{profile_context[:1200]}")
         if hits:
             references = []
             for item in hits[:3]:

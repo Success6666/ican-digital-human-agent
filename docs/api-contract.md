@@ -1,4 +1,4 @@
-# API 契约（v0.1.33）
+# API 契约（v0.1.34）
 
 ## 浏览器 API
 
@@ -37,9 +37,11 @@
 
 服务端返回 `ready`，其中包含 `connectionId`、心跳周期、当前能力和资源上限。之后可发送 `text`、`interrupt`、`audio_start`、`audio_end`、`ping`、`pong` 和 `close` 控制帧；每个事件带递增 `seq`，运行相关事件同时带 `runId`、`utteranceId` 和 `revision`。新一轮改口使用更大的 `revision`，旧代际事件会在服务端和浏览器两侧丢弃。
 
-语音输入使用二进制 PCM16 little-endian 帧：16 kHz、单声道、20 ms，默认每帧 640 bytes。`audio_start` 只声明格式和代际，`audio_end` 结束当前语音段；如果未配置 ASR，服务端返回 `transcript.status=unsupported` 和 `reason=asr_unconfigured`，不会伪造转写结果。`interrupt` 先确认本地运行令牌，再异步通知 Provider，随后返回 `ack` 与 `interrupted/run_done`，用于前端立即清空播放队列并切换到最新 revision。
+语音输入使用二进制 PCM16 little-endian 帧：16 kHz、单声道、20 ms，默认每帧 640 bytes。配置 `HTTP_ASR_ENDPOINT` 后，Agent 将有界音频段以 HTTP 请求发送至 ASR，并返回 `transcript.status=final` 和文本；未配置时仍返回 `unsupported`，超时或上游错误返回结构化错误。`interrupt` 先确认本地运行令牌，再异步通知 Provider，随后返回 `ack` 与 `interrupted/run_done`，用于前端立即清空播放队列并切换到最新 revision。
 
-当前实时传输层不承诺生产 WebRTC、真实 ASR/TTS 或厂商视频渲染；这些能力通过 Provider/Runtime 端口接入，不改变上述浏览器协议。
+聊天上下文按 `X-Tenant-Id + X-User-Id` 隔离，账号偏好通过 `/api/profile` 读写；成功且无工具调用的答案进入 Redis 滑动 TTL 缓存，响应包含 `cacheHit`。命中会续期，闲置答案由 Redis 自动回收；并发 miss 使用 single-flight，避免重复 LLM 推理。
+
+配置 `HTTP_TTS_ENDPOINT` 后，文本增量会异步转换为 PCM16 二进制帧，通过同一 WebSocket 单写者队列输出；新 revision 或 `interrupt` 会丢弃旧代际音频。未配置 TTS 时能力字段保持 `unsupported`。WebRTC 和厂商视频渲染仍通过 Provider/Runtime 端口接入。
 
 ## SSE 事件
 
