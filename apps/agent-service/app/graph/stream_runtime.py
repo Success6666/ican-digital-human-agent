@@ -149,15 +149,26 @@ async def stream_runtime(
             {"owner_id": user_id, "run_id": run_id, "message_length": len(message)},
             trace_id=trace_id,
         ):
-            async for update in runtime._graph.astream(state, stream_mode="updates"):
+            async for update in runtime._graph.astream(state, stream_mode=["updates", "custom"]):
                 await ensure_running(runtime._sessions, token)
+                stream_mode = "updates"
+                if isinstance(update, tuple) and len(update) == 2 and isinstance(update[0], str):
+                    stream_mode, update = update
+                if stream_mode == "custom":
+                    if isinstance(update, dict) and update.get("event") and isinstance(update.get("data"), dict):
+                        custom_data = dict(update["data"])
+                        custom_data.setdefault("traceId", trace_id)
+                        custom_data.setdefault("runId", run_id)
+                        mark_first_visible()
+                        yield {"event": str(update["event"]), "data": custom_data}
+                    continue
                 if not isinstance(update, dict):
                     continue
                 for node_name, payload in update.items():
                     if not isinstance(payload, dict):
                         continue
                     state.update(payload)
-                    if node_name == "respond":
+                    if node_name == "respond" and not payload.get("llm_streamed"):
                         for delta in _response_events(
                             payload,
                             trace_id=trace_id,

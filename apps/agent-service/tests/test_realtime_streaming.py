@@ -9,6 +9,7 @@ from app.avatar.adapters.mock import MockProvider
 from app.avatar.registry import ProviderRegistry
 from app.graph.runtime import AgentGraphRuntime
 from app.infrastructure.session_store import InMemorySessionStore
+from app.llm.client import LlmGeneration
 from app.mcp.client import LocalToolClient
 from app.observability.futureagi import FutureAGIConfig, FutureAGISink
 from app.observability.local import LocalJsonLogSink
@@ -135,6 +136,47 @@ async def test_stream_done_carries_realtime_latency_markers_and_trace_replay() -
     assert replay.trace.status == "ok"
     assert any(event.name == "agent.stream" for event in replay.events)
     assert {event.trace_id for event in replay.events} == {done["traceId"]}
+
+
+@pytest.mark.asyncio
+async def test_stream_forwards_incremental_llm_reply_events() -> None:
+    now = datetime(2026, 8, 29, tzinfo=UTC)
+    store = InMemorySessionStore(ttl_seconds=60, clock=lambda: now)
+    provider = MockProvider(ttl_seconds=60)
+    await store.create(session("s-llm-stream", now))
+    provider._sessions.add("s-llm-stream")
+
+    class StreamingLlm:
+        enabled = True
+
+        async def stream(self, *, message: str, context: list[str] | None = None):
+            del message, context
+            for piece in ('{"reply":"你好', '，这是流式回复"}'):
+                yield piece
+
+        async def complete(self, *, message: str, context: list[str] | None = None) -> LlmGeneration:
+            del message, context
+            return LlmGeneration(reply="你好，这是流式回复")
+
+    graph = AgentGraphRuntime(
+        tool_client=LocalToolClient(),
+        providers=ProviderRegistry([provider]),
+        sessions=store,
+        llm_client=StreamingLlm(),
+    )
+    run_id = await store.begin_run("s-llm-stream")
+    assert run_id
+    events = [event async for event in graph.stream(
+        user_id="u1",
+        user_name="Tester",
+        session_id="s-llm-stream",
+        message="请问现在几点？",
+        run_id=run_id,
+    )]
+    deltas = [event["data"]["text"] for event in events if event["event"] == "delta"]
+    assert deltas == ["你好", "，这是流式回复"]
+    assert events[-1]["event"] == "done"
+    assert events[-1]["data"]["reply"] == "你好，这是流式回复"
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,11 @@
+BASELINE: powershell -NoProfile -Command "Get-Content .\MODIFIED_FILE.txt"
+BASELINE_RESULT: state=baseline (fixture before modification)
+BASELINE_EXIT: 0
+
+MODIFIED: powershell -NoProfile -Command "Get-Content .\MODIFIED_FILE.txt"
+MODIFIED_RESULT: state=modified
+MODIFIED_EXIT: 0
+
+ROLLBACK: powershell -NoProfile -ExecutionPolicy Bypass -File .\ROLLBACK.sh
+ROLLBACK_RESULT: state=baseline after rollback test copy; primary MODIFIED_FILE remains changed
+ROLLBACK_EXIT: 0

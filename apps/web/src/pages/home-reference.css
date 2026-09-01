@@ -165,8 +165,7 @@
   pointer-events: auto;
 }
 
-.avatar-stage-connect-button,
-.avatar-stage-disconnect-button {
+.avatar-stage-connect-button {
   position: absolute;
   z-index: 3;
   min-height: 30px;
@@ -180,9 +179,7 @@
   backdrop-filter: blur(8px);
 }
 .avatar-stage-connect-button { left: 50%; bottom: 28px; transform: translateX(-50%); }
-.avatar-stage-disconnect-button { top: 18px; right: 18px; }
-.avatar-stage-connect-button:hover,
-.avatar-stage-disconnect-button:hover { background: rgba(35, 77, 150, .94); }
+.avatar-stage-connect-button:hover { background: rgba(35, 77, 150, .94); }
 
 .home-conversation-bar {
   position: absolute;

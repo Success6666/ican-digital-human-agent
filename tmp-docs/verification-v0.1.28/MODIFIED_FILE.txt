@@ -1,0 +1,2 @@
+LLM streaming verification fixture
+state=modified

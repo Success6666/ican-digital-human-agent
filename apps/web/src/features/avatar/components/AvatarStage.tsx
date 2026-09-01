@@ -45,7 +45,6 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
       ) : preview ? (
         <>
           <AvatarPreviewSurface preview={preview} />
-          {!session && <button className="avatar-stage-connect-button" type="button" onClick={onCreate} disabled={isCreating}>{isCreating ? '正在连接…' : '连接数字人'}</button>}
         </>
       ) : (
         <div className="avatar-waiting" role="status">
@@ -54,7 +53,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
           {!isCreating && <button className="avatar-stage-cta" type="button" onClick={onCreate}><AudioWaveform size={14} />连接数字人</button>}
         </div>
       )}
-      {session && <button className="avatar-stage-disconnect-button" type="button" onClick={onDisconnect} disabled={isCreating}>断开连接</button>}
+      {(session || preview) && <button className="avatar-stage-connect-button" type="button" onClick={session ? onDisconnect : onCreate} disabled={isCreating}>{isCreating ? '正在连接…' : session ? '断开连接' : '连接数字人'}</button>}
     </section>
   )
 }

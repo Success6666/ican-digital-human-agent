@@ -28,6 +28,7 @@ class AgentGraphState(TypedDict, total=False):
     cancellation_latency_ms: float
     provider_error: str
     llm_error: str
+    llm_streamed: bool
     reply: str
     presentation: dict[str, Any]
     error: str

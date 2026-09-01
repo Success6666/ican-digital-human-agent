@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.config import get_stream_writer
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
 from ..agent.models import FillerPhase, IntentDecision, PerformanceCue
@@ -18,7 +19,7 @@ from ..avatar.presentation import PresentationLayer, ProviderRuntime
 from ..messaging import ReliableMessageBus
 from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
-from ..llm.client import LlmClient
+from ..llm.client import LlmClient, extract_reply_prefix, parse_generation
 from ..rag.models import SearchRequest
 from .concurrency import bounded_map
 from .builder_support import attrs as _attrs
@@ -215,13 +216,40 @@ def build_graph(
             return {"reply": fast_reply}
         if llm_client is not None and getattr(llm_client, "enabled", False):
             try:
-                generated = await llm_client.complete(message=state["message"], context=context_texts)
+                writer = None
+                try:
+                    writer = get_stream_writer()
+                except (KeyError, RuntimeError):
+                    writer = None
+                raw_parts: list[str] = []
+                emitted_reply = ""
+                stream_method = getattr(llm_client, "stream", None)
+                if callable(stream_method):
+                    async for piece in stream_method(message=state["message"], context=context_texts):
+                        raw_parts.append(piece)
+                        if callable(writer):
+                            current_reply, _ = extract_reply_prefix("".join(raw_parts))
+                            if current_reply and len(current_reply) > len(emitted_reply):
+                                delta = current_reply[len(emitted_reply):]
+                                writer({
+                                    "event": "delta",
+                                    "data": {
+                                        "traceId": state.get("trace_id"),
+                                        "runId": state.get("run_id"),
+                                        "text": delta,
+                                    },
+                                })
+                                emitted_reply = current_reply
+                    generated = parse_generation("".join(raw_parts))
+                else:
+                    generated = await llm_client.complete(message=state["message"], context=context_texts)
                 if hasattr(generated, "reply"):
                     return {
                         "reply": generated.reply,
                         "presentation": generated.presentation.model_dump(mode="json", by_alias=True),
+                        "llm_streamed": bool(emitted_reply),
                     }
-                return {"reply": str(generated)}
+                return {"reply": str(generated), "llm_streamed": bool(emitted_reply)}
             except Exception as exc:
                 return {"reply": f"已收到：{state['message']}\n\n当前模型暂不可用，已切换安全回退。", "llm_error": _safe_error(exc)}
         segments = [f"已收到：{state['message']}"]
