@@ -58,6 +58,12 @@ class Settings(BaseModel):
     cleanup_interval_seconds: int = Field(default=30, alias="SESSION_CLEANUP_INTERVAL_SECONDS", ge=1, le=3_600)
     session_max_sessions: int = Field(default=1024, alias="SESSION_MAX_SESSIONS", ge=1, le=100_000)
     session_cleanup_batch_size: int = Field(default=100, alias="SESSION_CLEANUP_BATCH_SIZE", ge=1, le=10_000)
+    session_cleanup_outbox_path: str = Field(
+        default="data/session-cleanup-outbox.jsonl",
+        alias="SESSION_CLEANUP_OUTBOX_PATH",
+        min_length=1,
+        max_length=512,
+    )
     session_idle_timeout_seconds: int = Field(default=1800, alias="SESSION_IDLE_TIMEOUT_SECONDS", ge=1, le=86_400)
     session_heartbeat_interval_seconds: int = Field(
         default=15,

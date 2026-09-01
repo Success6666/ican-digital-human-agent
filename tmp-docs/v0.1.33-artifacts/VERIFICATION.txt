@@ -1,0 +1,48 @@
+v0.1.33 验收记录
+日期：2026-09-01
+分支：main
+变更字段：SESSION_CLEANUP_OUTBOX_PATH、cleanup_outbox_path、_after_pending_change_locked、outbox 恢复与去重
+MODIFIED_FILE：tmp-docs/v0.1.33-artifacts/MODIFIED_FILE.py
+DIFF_FILE：tmp-docs/v0.1.33-artifacts/DIFF_FILE.diff
+VERIFICATION：tmp-docs/v0.1.33-artifacts/VERIFICATION.txt
+ROLLBACK：tmp-docs/v0.1.33-artifacts/ROLLBACK.sh
+原始 SHA256：1CBE32C25043D6784B112C666D1AE48C542242CBC16229EAA8394C30D4885B5E
+修改 SHA256：B51EFF166137D57B229E2A999CA591D05F7EA523D847A9236EF874E9C24F8175
+
+BASELINE
+- 命令：git show HEAD:apps/agent-service/app/infrastructure/session_store.py | Out-File -Encoding utf8 tmp-docs/v0.1.33-artifacts/session-store.original.py；Get-FileHash ... -Algorithm SHA256
+- 输入：v0.1.32 InMemorySessionStore。
+- 结果：原始副本 SHA256 为 1CBE32C25043D6784B112C666D1AE48C542242CBC16229EAA8394C30D4885B5E；退出状态 0。
+- 基线行为：待清理 Provider 快照只存在进程内队列，重启后丢失。
+
+MODIFIED
+- 命令：python -m pytest -q tests/test_session_store.py tests/test_session_generation.py tests/test_settings.py
+- 输入：清理队列、代际生命周期和配置测试。
+- 结果：45 passed，0 failed；退出状态 0。
+- 命令：python -m pytest -q
+- 输入：Agent 全量测试。
+- 结果：184 passed、1 skipped、1 warning；退出状态 0。
+- 命令：python -m pytest -q（apps/mcp-server）
+- 输入：MCP 全量测试。
+- 结果：6 passed，0 failed；退出状态 0。
+- 命令：npm run test:chat; npm run test:realtime; npm run test:avatar; npm run build
+- 输入：Web 契约测试与生产构建。
+- 结果：聊天 3 passed、实时 5 passed、数字人 3 passed；Vite 生产构建成功；退出状态 0。
+- 命令：./mvnw.cmd -q clean test
+- 输入：认证网关全量测试。
+- 结果：30 tests，0 failures；退出状态 0。
+- 命令：docker compose up -d --build; docker compose ps
+- 输入：v0.1.33 工作树。
+- 结果：agent-service、auth-service、mcp-server、rabbitmq、web 五个服务 healthy；退出状态 0。
+- 命令：docker compose exec -T agent-service python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/health').read().decode())"；docker compose exec -T mcp-server python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9000/health').read().decode())"
+- 输入：容器内部健康接口。
+- 结果：Agent 和 MCP 均返回 status=ok、version=0.1.33；退出状态 0。
+- 命令：git diff --check
+- 输入：当前差异。
+- 结果：无空白错误；退出状态 0。
+
+ROLLBACK
+- 命令：wsl bash -lc ".../tmp-docs/v0.1.33-artifacts/ROLLBACK.sh .../tmp-docs/v0.1.33-artifacts/rollback-copy.py"
+- 输入：MODIFIED_FILE.py 的独立副本。
+- 结果：rollback-restored=/mnt/e/ican数字人/tmp-docs/v0.1.33-artifacts/rollback-copy.py；cmp 一致；退出状态 0。
+- 恢复状态：rollback-copy.py SHA256 与原始副本均为 1CBE32C25043D6784B112C666D1AE48C542242CBC16229EAA8394C30D4885B5E；仓库源码保持 v0.1.33 修改。

@@ -5,12 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
-import json
-import os
-from pathlib import Path
 from uuid import uuid4
-
-from pydantic import ValidationError
 
 from ..domain.models import SessionRecord, SessionStatus
 from .session_close import SessionCloseLifecycleMixin
@@ -36,7 +31,6 @@ class InMemorySessionStore(SessionCloseLifecycleMixin, SessionExpiryMixin, Sessi
         max_sessions: int | None = None,
         cleanup_batch_size: int | None = None,
         idle_timeout_seconds: int | None = None,
-        cleanup_outbox_path: str | None = None,
     ) -> None:
         self.ttl_seconds = resource_limit(ttl_seconds, "ttl_seconds", 86_400)
         self._configure_resources(
@@ -63,50 +57,7 @@ class InMemorySessionStore(SessionCloseLifecycleMixin, SessionExpiryMixin, Sessi
         self._stop_requested_at: dict[tuple[str, str], float] = {}
         self._lock = asyncio.Lock()
         self._metrics = SessionResourceMetrics()
-        self.cleanup_outbox_path = Path(cleanup_outbox_path) if cleanup_outbox_path else None
         self._init_expiry_lifecycle()
-        self._load_expired_pending()
-
-    def _load_expired_pending(self) -> None:
-        """Recover bounded teardown snapshots without failing service startup."""
-
-        path = self.cleanup_outbox_path
-        if path is None or not path.is_file():
-            return
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return
-        for line in lines[-self._expired_pending_limit :]:
-            try:
-                record = SessionRecord.model_validate(json.loads(line))
-            except (TypeError, ValueError, ValidationError, json.JSONDecodeError):
-                continue
-            key = self._pending_key(record)
-            if key in self._expired_pending_keys:
-                continue
-            if len(self._expired_pending) >= self._expired_pending_limit:
-                break
-            self._expired_pending.append(record)
-            self._expired_pending_keys.add(key)
-
-    def _after_pending_change_locked(self) -> None:
-        path = self.cleanup_outbox_path
-        if path is None:
-            return
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            content = "".join(
-                json.dumps(record.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")) + "\n"
-                for record in self._expired_pending
-            )
-            temporary = path.with_name(f".{path.name}.tmp")
-            temporary.write_text(content, encoding="utf-8")
-            os.replace(temporary, path)
-        except OSError:
-            # Cleanup persistence is best effort; the in-memory queue remains
-            # authoritative for the current process.
-            return
 
     async def get(self, session_id: str) -> SessionRecord | None:
         async with self._lock:

@@ -36,7 +36,7 @@ docker compose up --build
 - `REALTIME_INTERRUPT_TIMEOUT_SECONDS`：实时中断确认的服务端等待上限，默认 `0.25` 秒。
 - `SESSION_IDLE_TIMEOUT_SECONDS` 必须满足 `SESSION_HEARTBEAT_INTERVAL_SECONDS < REALTIME_IDLE_TIMEOUT_SECONDS <= SESSION_IDLE_TIMEOUT_SECONDS`，否则服务不会启动。
 
-当前版本会话状态仍在进程内。多进程或多副本部署前，应接入共享 `SessionStore` 适配器，并为清理任务增加租约或领导者协调，不能依赖本地计数器实现一致性。
+当前版本会话状态仍在进程内。多进程或多副本部署前，应接入共享 `SessionStore` 适配器，并为清理任务增加租约或领导者协调，不能依赖本地计数器实现一致性。过期 Provider 快照会按 `SESSION_CLEANUP_OUTBOX_PATH` 写入有界 JSONL outbox；该文件只包含会话生命周期元数据，不包含用户输入、模型输出或凭证。进程重启后清理 worker 会先恢复 outbox，再继续关闭远端运行时。
 远端 Provider 清理失败时，当前版本只记录并继续处理其他会话；生产部署需在共享存储版本增加带退避的关闭重试或 outbox，避免进程重启后丢失待清理状态。
 
 ## 健康检查

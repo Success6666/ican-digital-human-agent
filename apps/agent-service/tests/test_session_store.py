@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import json
 
 import pytest
 
@@ -211,3 +212,82 @@ async def test_capacity_error_is_translated_and_remote_session_is_closed() -> No
         await service.create(user_id="u1", provider_name="mock")
     assert error.value.status_code == 429
     assert provider.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_cleanup_outbox_recovers_expired_snapshot_after_store_restart(tmp_path) -> None:
+    now = datetime(2026, 8, 30, tzinfo=UTC)
+    clock_value = [now]
+    outbox = tmp_path / "cleanup.jsonl"
+    store = InMemorySessionStore(
+        ttl_seconds=5,
+        idle_timeout_seconds=5,
+        clock=lambda: clock_value[0],
+        cleanup_outbox_path=str(outbox),
+    )
+    await store.create(_session("restart-expired", now, ttl=1))
+    clock_value[0] = now + timedelta(seconds=2)
+    assert await store.get("restart-expired") is None
+    assert outbox.exists()
+
+    restarted = InMemorySessionStore(
+        ttl_seconds=5,
+        idle_timeout_seconds=5,
+        clock=lambda: clock_value[0],
+        cleanup_outbox_path=str(outbox),
+    )
+    recovered = await restarted.remove_expired()
+    assert [record.session.session_id for record in recovered] == ["restart-expired"]
+    assert outbox.read_text(encoding="utf-8") == ""
+
+
+@pytest.mark.asyncio
+async def test_cleanup_outbox_skips_corrupt_lines_and_deduplicates(tmp_path) -> None:
+    now = datetime(2026, 8, 30, tzinfo=UTC)
+    record = _session("recoverable", now, ttl=1)
+    from app.domain.models import SessionRecord
+
+    payload = SessionRecord(
+        session=record.model_copy(update={"status": SessionStatus.EXPIRED}),
+        last_activity=now,
+        generation_id="generation-1",
+    ).model_dump(mode="json")
+    outbox = tmp_path / "cleanup.jsonl"
+    outbox.write_text(
+        "not-json\n{}\n" + json.dumps(payload, ensure_ascii=False) + "\n" + json.dumps(payload) + "\n",
+        encoding="utf-8",
+    )
+    store = InMemorySessionStore(
+        ttl_seconds=5,
+        idle_timeout_seconds=5,
+        clock=lambda: now,
+        cleanup_outbox_path=str(outbox),
+    )
+    recovered = await store.remove_expired()
+    assert len(recovered) == 1
+    assert recovered[0].generation_id == "generation-1"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_outbox_persists_failed_teardown_requeue(tmp_path) -> None:
+    now = datetime(2026, 8, 30, tzinfo=UTC)
+    outbox = tmp_path / "cleanup.jsonl"
+    store = InMemorySessionStore(
+        ttl_seconds=5,
+        idle_timeout_seconds=5,
+        clock=lambda: now,
+        cleanup_outbox_path=str(outbox),
+    )
+    await store.create(_session("failed-teardown", now, ttl=1))
+    expired = await store.remove_expired(now=now + timedelta(seconds=2))
+    assert len(expired) == 1
+    assert await store.requeue_expired(expired[0]) is True
+
+    restarted = InMemorySessionStore(
+        ttl_seconds=5,
+        idle_timeout_seconds=5,
+        clock=lambda: now,
+        cleanup_outbox_path=str(outbox),
+    )
+    recovered = await restarted.remove_expired()
+    assert [record.session.session_id for record in recovered] == ["failed-teardown"]

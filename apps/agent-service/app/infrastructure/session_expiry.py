@@ -150,6 +150,7 @@ class SessionExpiryMixin:
             self._expired_pending.append(snapshot)
             self._expired_pending_keys.add(key)
             self._metrics.expired_cleanup_requeued_total += 1
+            self._after_pending_change_locked()
             return True
 
     async def remove_expired(
@@ -184,6 +185,7 @@ class SessionExpiryMixin:
                 counter = "closed_reclaimed_total" if was_closed else "expired_reclaimed_total"
                 setattr(self._metrics, counter, getattr(self._metrics, counter) + 1)
                 reclaimed += 1
+            self._after_pending_change_locked()
             return expired
 
     async def _acquire_generation_lock(self, session_id: str) -> asyncio.Lock:
@@ -255,6 +257,7 @@ class SessionExpiryMixin:
                 return snapshot
             self._expired_pending.append(snapshot)
             self._expired_pending_keys.add(key)
+            self._after_pending_change_locked()
         return snapshot
 
     @staticmethod
@@ -272,6 +275,11 @@ class SessionExpiryMixin:
             self._expired_pending = deque(
                 item for item in self._expired_pending if self._pending_key(item) != key
             )
+        self._after_pending_change_locked()
+
+    def _after_pending_change_locked(self) -> None:
+        """Hook for stores that persist the bounded cleanup queue."""
+        return
 
 
 __all__ = ["SessionExpiryMixin"]

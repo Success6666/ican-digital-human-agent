@@ -97,6 +97,7 @@ def build_container(
         max_sessions=settings.session_max_sessions,
         cleanup_batch_size=settings.session_cleanup_batch_size,
         idle_timeout_seconds=settings.session_idle_timeout_seconds,
+        cleanup_outbox_path=settings.session_cleanup_outbox_path,
     )
     session_service = SessionApplicationService(providers=providers, store=store)
     observability = build_default_observability(
@@ -225,7 +226,7 @@ def create_app(
             await app.state.container.message_bus.close()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.32", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.33", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,
