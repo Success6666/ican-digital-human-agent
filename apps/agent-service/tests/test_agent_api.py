@@ -174,5 +174,6 @@ def test_mofa_session_returns_only_browser_runtime_parameters(monkeypatch) -> No
     assert response.client_params["runtime"] == "mofa-web-sdk"
     assert response.client_params["appId"] == "browser-app"
     assert response.client_params["appSecret"] == "browser-secret"
+    assert "authorization" not in response.client_params
     assert "customId" not in response.client_params
     assert "dataSource" not in response.client_params

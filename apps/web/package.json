@@ -1,7 +1,7 @@
 {
   "name": "digital-human-agent-web",
   "private": true,
-  "version": "0.1.28",
+  "version": "0.1.29",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "test:chat": "node --test tests/chat-link-contract.test.mjs",
     "test:realtime": "node --test tests/realtime-audio.test.mjs",
     "test:layout": "node --test tests/layout-contract.test.mjs",
+    "test:avatar": "node --test tests/mofa-speech.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

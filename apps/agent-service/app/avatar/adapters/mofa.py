@@ -56,7 +56,6 @@ class MofaProvider(ConfigProvider):
                 ),
                 "appId": os.environ["MOFA_APP_ID"],
                 "appSecret": os.environ["MOFA_APP_SECRET"],
-                "authorization": _env_or("MOFA_AUTHORIZATION", "888jn"),
                 **_optional_browser_context(),
             },
         )

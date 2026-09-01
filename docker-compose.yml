@@ -53,7 +53,7 @@ services:
       MCP_SERVER_URL: ${MCP_SERVER_URL:-http://mcp-server:9000/mcp}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://ican:ican@rabbitmq:5672/}
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-ican.agent}
-      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-digital-human.presentation}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-digital-human.presentation.v2}
       MCP_REQUEST_TIMEOUT_SECONDS: ${MCP_REQUEST_TIMEOUT_SECONDS:-8}
       MCP_ALLOW_LOCAL_FALLBACK: ${MCP_ALLOW_LOCAL_FALLBACK:-true}
       MCP_FAST_PATH_TIMEOUT_SECONDS: ${MCP_FAST_PATH_TIMEOUT_SECONDS:-0.25}

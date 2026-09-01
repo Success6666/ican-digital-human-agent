@@ -1,6 +1,6 @@
 [project]
 name = "digital-human-mcp-server"
-version = "0.1.28"
+version = "0.1.29"
 description = "Internal MCP 2.x Streamable HTTP probe server"
 requires-python = ">=3.11"
 dependencies = [

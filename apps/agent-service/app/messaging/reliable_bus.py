@@ -5,16 +5,22 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 
+logger = logging.getLogger(__name__)
+
+
 class ReliableMessageBus:
-    def __init__(self, *, url: str = "", exchange: str = "ican.agent", queue: str = "digital-human.presentation", outbox_path: str = "data/presentation-outbox.jsonl", timeout_seconds: float = 0.35) -> None:
+    def __init__(self, *, url: str = "", exchange: str = "ican.agent", queue: str = "digital-human.presentation.v2", outbox_path: str = "data/presentation-outbox.jsonl", timeout_seconds: float = 2.0) -> None:
         self.url = url
         self.exchange_name = exchange
         self.queue_name = queue
+        self.dead_letter_exchange = f"{exchange}.dlx"
+        self.dead_letter_queue = f"{queue}.dead"
         self.outbox_path = Path(outbox_path)
         self.timeout_seconds = timeout_seconds
         self._connection: Any | None = None
@@ -26,8 +32,8 @@ class ReliableMessageBus:
             try:
                 await asyncio.wait_for(self._publish_rabbit(envelope), timeout=self.timeout_seconds)
                 return envelope["messageId"]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("RabbitMQ presentation publish failed; writing message %s to outbox: %s", envelope["messageId"], type(exc).__name__)
         await asyncio.to_thread(self._append_outbox, envelope)
         return envelope["messageId"]
 
@@ -39,11 +45,37 @@ class ReliableMessageBus:
         async with self._lock:
             if self._connection is None or self._connection.is_closed:
                 self._connection = await aio_pika.connect_robust(self.url)
-            channel = await self._connection.channel(publisher_confirms=True)
+            channel = await self._connection.channel(publisher_confirms=True, on_return_raises=True)
             exchange = await channel.declare_exchange(self.exchange_name, aio_pika.ExchangeType.DIRECT, durable=True)
-            queue = await channel.declare_queue(self.queue_name, durable=True)
+            dead_exchange = await channel.declare_exchange(self.dead_letter_exchange, aio_pika.ExchangeType.DIRECT, durable=True)
+            dead_queue = await channel.declare_queue(
+                self.dead_letter_queue,
+                durable=True,
+                arguments={"x-queue-type": "quorum"},
+            )
+            await dead_queue.bind(dead_exchange, routing_key=envelope["topic"])
+            queue = await channel.declare_queue(
+                self.queue_name,
+                durable=True,
+                arguments={
+                    "x-dead-letter-exchange": self.dead_letter_exchange,
+                    "x-dead-letter-routing-key": envelope["topic"],
+                    "x-message-ttl": 86_400_000,
+                    "x-max-length": 10_000,
+                    "x-overflow": "reject-publish-dlx",
+                    "x-queue-type": "quorum",
+                },
+            )
             await queue.bind(exchange, routing_key=envelope["topic"])
-            await exchange.publish(aio_pika.Message(body=json.dumps(envelope, ensure_ascii=False).encode("utf-8"), delivery_mode=aio_pika.DeliveryMode.PERSISTENT), routing_key=envelope["topic"])
+            message = aio_pika.Message(
+                body=json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
+                content_type="application/json",
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                message_id=envelope["messageId"],
+                timestamp=datetime.fromisoformat(envelope["createdAt"]),
+                type=envelope["topic"],
+            )
+            await exchange.publish(message, routing_key=envelope["topic"], mandatory=True)
             await channel.close()
 
     def _append_outbox(self, envelope: dict[str, Any]) -> None:

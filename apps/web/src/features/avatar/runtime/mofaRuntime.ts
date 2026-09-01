@@ -1,11 +1,13 @@
 import type { AvatarClientParams } from '../../../shared/api/types'
 import type { AvatarPerformanceCue } from '../../../shared/api/types'
 import type { AvatarRuntimeStatus, BrowserAvatarRuntime } from './browserRuntime'
+import { buildMofaSpeechRequest } from './mofaSpeech'
 import { loadExternalScript } from './scriptLoader'
 
 interface XmovAvatarInstance {
   init(options?: Record<string, unknown>): Promise<void>
   speak(text: string, isStart?: boolean, isEnd?: boolean, extra?: Record<string, unknown>): Promise<void> | void
+  interrupt(type: string): number
   stop(): Promise<void> | void
   destroy(reason?: string): Promise<void> | void
 }
@@ -20,6 +22,17 @@ declare global {
     CryptoJS?: unknown
     CryptoJSTest?: unknown
   }
+}
+
+interface MofaRuntimeConfig {
+  sdkUrl: string
+  cryptoUrl: string
+  gatewayServer: string
+  appId: string
+  appSecret: string
+  authorization?: string
+  dataSource?: string
+  customId?: string
 }
 
 export class MofaBrowserRuntime implements BrowserAvatarRuntime {
@@ -54,12 +67,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       onStatus({ phase: 'ready', progress: 100, message: '数字人已连接' })
     }
 
+    const headers = config.authorization ? { Authorization: config.authorization } : undefined
     this.avatar = new window.XmovAvatar({
       containerId: `#${containerId}`,
       appId: config.appId,
       appSecret: config.appSecret,
-      headers: { Authorization: config.authorization },
+      ...(headers ? { headers } : {}),
       enableDebugger: false,
+      enableClientInterrupt: true,
       gatewayServer: gateway.toString(),
       config: {
         raw_audio: false,
@@ -72,6 +87,15 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       },
       onMessage: (message: { code?: string | number; message?: string }) => {
         const detail = sdkMessage(message)
+        const networkState = sdkNetworkState(message)
+        if (networkState === 'reconnecting') {
+          onStatus({ phase: 'loading', progress: 90, message: '网络波动，正在自动重连' })
+          return
+        }
+        if (networkState === 'online') {
+          markReady()
+          return
+        }
         if (detail) onStatus({ phase: 'error', message: `星云运行时：${detail}` })
       },
       onStartSessionWarning: (message: unknown) => {
@@ -85,8 +109,10 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
         if (String(state).toLowerCase().includes('render')) markReady()
       },
       onStatusChange: (state: unknown) => {
-        const normalized = String(state).toLowerCase()
-        if (normalized.includes('visible') || normalized.includes('online')) markReady()
+        const normalized = normalizeSdkStatus(state)
+        if (normalized === 'ready') markReady()
+        if (normalized === 'reconnecting') onStatus({ phase: 'loading', progress: 90, message: '数字人连接恢复中' })
+        if (normalized === 'closed') onStatus({ phase: 'error', message: '数字人连接已断开，请重新连接' })
       },
     })
 
@@ -107,16 +133,16 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const clean = text.trim()
     if (!clean || !this.avatar) return
     this.status?.({ phase: 'speaking', message: '数字人正在表达' })
-    // Xingyun's browser SDK accepts plain text for its TTS queue. SSML is not
-    // consistently supported across SDK versions and can leave the canvas in
-    // an idle/static state without surfacing a useful error.
-    await this.avatar.speak(clean, true, true, presentation ? { presentation } : {})
+    const request = buildMofaSpeechRequest(clean, presentation)
+    const ssml = request.ssml
+    const extra = { client_speak_id: crypto.randomUUID(), ...request.extra }
+    await this.avatar.speak(ssml, true, true, extra)
     this.status?.({ phase: 'ready', message: '数字人已连接' })
   }
 
   async interrupt(): Promise<void> {
     if (!this.avatar) return
-    await this.avatar.stop()
+    this.avatar.interrupt('user_speaking')
     this.status?.({ phase: 'ready', message: '已停止上一轮表达' })
   }
 
@@ -130,17 +156,17 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   }
 }
 
-function requiredConfig(params: AvatarClientParams) {
+function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {
   const values = {
     sdkUrl: params.sdkUrl, cryptoUrl: params.cryptoUrl, gatewayServer: params.gatewayServer,
     appId: params.appId, appSecret: params.appSecret, authorization: params.authorization,
     dataSource: params.dataSource, customId: params.customId,
   }
   for (const [name, value] of Object.entries(values)) {
-    if (name === 'dataSource' || name === 'customId') continue
+    if (name === 'authorization' || name === 'dataSource' || name === 'customId') continue
     if (!value) throw new Error(`魔珐数字人缺少 ${name} 配置`)
   }
-  return values as Record<keyof typeof values, string>
+  return values as MofaRuntimeConfig
 }
 
 function ensureContainerId(host: HTMLElement): string {
@@ -160,6 +186,26 @@ function sdkMessage(value: unknown): string {
     .map(([key, item]) => `${key}: ${String(item)}`)
     .join('；')
   return compact
+}
+
+function sdkNetworkState(value: { code?: string | number; message?: string }): 'online' | 'reconnecting' | undefined {
+  const code = Number(value.code)
+  const detail = `${value.code ?? ''} ${value.message ?? ''}`.toLowerCase()
+  if ([50002, 3502].includes(code) || detail.includes('network_up')) return 'online'
+  if ([50001, 50003, 3501, 3503].includes(code) || detail.includes('network_down') || detail.includes('network_retry')) return 'reconnecting'
+  return undefined
+}
+
+function normalizeSdkStatus(value: unknown): 'ready' | 'reconnecting' | 'closed' | 'unknown' {
+  const numeric = typeof value === 'number' ? value : Number.NaN
+  if ([0, 2, 5].includes(numeric)) return 'ready'
+  if ([1, 3].includes(numeric)) return 'reconnecting'
+  if ([4, 7].includes(numeric)) return 'closed'
+  const normalized = String(value).toLowerCase()
+  if (normalized.includes('visible') || normalized.includes('online') || normalized.includes('network_on')) return 'ready'
+  if (normalized.includes('offline') || normalized.includes('network_off')) return 'reconnecting'
+  if (normalized.includes('close') || normalized.includes('stopped')) return 'closed'
+  return 'unknown'
 }
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
