@@ -42,11 +42,11 @@ def test_parse_generation_does_not_expose_json_when_tail_is_truncated() -> None:
     assert generated.reply == "先给你结果"
 
 
-def test_deepseek_payload_disables_thinking_and_requests_json() -> None:
+def test_deepseek_payload_disables_thinking_without_json_grammar() -> None:
     llm = OpenAICompatibleLlm(enabled=True, base_url="https://api.deepseek.com/v1", api_key="k", model="deepseek-v4-flash")
     payload = llm._payload("你好")
-    assert payload["response_format"] == {"type": "json_object"}
     assert payload["thinking"] == {"type": "disabled"}
+    assert "response_format" not in payload
 
 
 @pytest.mark.asyncio

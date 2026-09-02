@@ -1,0 +1,8 @@
+{
+  "date": "2026-09-02",
+  "provider": "mofa",
+  "mode": "browser-runtime",
+  "serverBehavior": "client_pending",
+  "optimization": "removed artificial 600ms stable-paint delay; retained two requestAnimationFrame passes",
+  "note": "Mofa 的真实音频与渲染网络链路由浏览器 SDK 完成，服务端只负责会话与投递确认，因此本文件记录服务端行为与前端可验证改动，不虚构供应商首帧耗时。"
+}

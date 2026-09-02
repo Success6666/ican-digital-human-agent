@@ -395,6 +395,5 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 async function waitForStablePaint(): Promise<void> {
-  await delay(600)
   await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())))
 }

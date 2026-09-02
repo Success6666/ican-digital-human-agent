@@ -1,0 +1,27 @@
+版本：v0.1.49
+变更对象：DeepSeek LLM 请求体与 Mofa 数字人首帧等待
+
+BASELINE
+命令：python -m pytest -q apps/agent-service/tests/test_llm_client.py
+结果：7 passed in 1.66s（基线逻辑回归）
+状态：0
+
+MODIFIED
+命令：python -m pytest -q apps/agent-service/tests/test_llm_client.py
+结果：7 passed in 1.66s
+状态：0
+命令：npm run test:avatar; npm run test:realtime; npm run build
+结果：数字人语音 7/7、实时链路 8/8、Vite 生产构建成功
+状态：0
+命令：python -m pytest -q apps/agent-service/tests
+结果：202 passed, 2 skipped, 1 warning in 100.42s
+状态：0
+命令：docker compose exec -T agent-service python 真实 DeepSeek 流式请求
+结果：firstTokenMs=1367.38，totalMs=1977.16，chars=222，返回完整 JSON reply
+状态：0
+
+ROLLBACK
+命令：bash tmp-docs/v0.1.49-llm-avatar-artifacts/ROLLBACK.sh
+结果：rollback restored baseline: ROLLBACK_TEST_FILE.py；恢复文件 SHA-256 与 BASELINE_FILE.py 一致
+状态：0
+恢复状态：仅测试副本恢复，工作区 MODIFIED_FILE.py 保持修改后版本

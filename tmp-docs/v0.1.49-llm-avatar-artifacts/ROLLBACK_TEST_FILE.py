@@ -84,7 +84,7 @@ class OpenAICompatibleLlm:
         last_error: Exception | None = None
         delivered = ""
         payloads = [payload]
-        if self._structured_options_supported and "response_format" in payload:
+        if self._structured_options_supported and any(key in payload for key in ("thinking", "response_format")):
             # Some OpenAI-compatible gateways reject one or both optional
             # fields.  The second payload keeps the generic client usable.
             fallback = dict(payload)
@@ -167,12 +167,9 @@ class OpenAICompatibleLlm:
             "messages": [{"role": "system", "content": _structured_system_prompt()}, {"role": "user", "content": prompt}],
         }
         if self._structured_options_supported:
+            payload["response_format"] = {"type": "json_object"}
             if self._is_deepseek():
-                # DeepSeek's JSON grammar adds measurable first-token latency.
-                # The generation parser already accepts plain streamed text.
                 payload["thinking"] = {"type": "disabled"}
-            else:
-                payload["response_format"] = {"type": "json_object"}
         return payload
 
     def _is_deepseek(self) -> bool:

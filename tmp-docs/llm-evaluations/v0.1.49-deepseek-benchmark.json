@@ -1,0 +1,13 @@
+{
+  "date": "2026-09-02",
+  "model": "deepseek-v4-flash",
+  "endpoint": "https://api.deepseek.com/v1/chat/completions",
+  "note": "只保留耗时、状态与输出长度，不保存密钥或完整请求内容。上游首 token 存在抖动，样本用于链路对比，不作为稳定 SLA。",
+  "samples": [
+    {"variant": "legacy_json", "firstTokenMs": 667.39, "totalMs": 1210.08, "chars": 225, "status": 200},
+    {"variant": "optimized_plain", "firstTokenMs": 343.97, "totalMs": 959.99, "chars": 224, "status": 200},
+    {"variant": "legacy_json", "firstTokenMs": 435.13, "totalMs": 1052.58, "chars": 239, "status": 200},
+    {"variant": "optimized_plain", "firstTokenMs": 990.43, "totalMs": 1697.31, "chars": 238, "status": 200},
+    {"variant": "runtime_optimized", "firstTokenMs": 1367.38, "totalMs": 1977.16, "chars": 222, "status": 200, "completeReply": true}
+  ]
+}
