@@ -1,0 +1,36 @@
+v0.1.44 流式语音顺序播报验收记录
+日期：2026-09-02
+分支：main
+变更字段：speechQueue、speechWaiters、speak_end、streamStarted
+MODIFIED_FILE：tmp-docs/v0.1.44-speech-sequence-artifacts/MODIFIED_FILE.ts
+DIFF_FILE：tmp-docs/v0.1.44-speech-sequence-artifacts/DIFF_FILE.diff
+VERIFICATION：tmp-docs/v0.1.44-speech-sequence-artifacts/VERIFICATION.txt
+ROLLBACK：tmp-docs/v0.1.44-speech-sequence-artifacts/ROLLBACK.sh
+原始 SHA256：D02F268D50F29A4767C469F38C0AEC7648D91F7B41D174E3C4541ABFDBB9CC08
+修改 SHA256：360365C5AD1D678D64A11EFDB9AB77A51B7DA63C404E2CFB9DFE18CB6285E21B
+
+BASELINE
+- 命令：rg -n "if \(!this\.speechFlushRequested && this\.speechQueue\.length === 1" tmp-docs/v0.1.44-speech-sequence-artifacts/baseline-mofaRuntime.ts
+- 输入：修复前播报运行时副本。
+- 结果：命中单段滞留逻辑；非最后段未等待 speak_end。
+- 退出状态：0。
+
+MODIFIED
+- 命令：npm run test:avatar
+- 输入：前端星云播报与兼容性测试。
+- 结果：5 passed，0 failed；退出状态：0。
+- 命令：npm run build
+- 输入：Web 生产构建。
+- 结果：TypeScript 与 Vite 构建成功；退出状态：0。
+- 命令：docker compose build web agent-service mcp-server auth-service
+- 输入：v0.1.44 工作树。
+- 结果：四个镜像构建成功；退出状态：0。
+- 命令：docker compose up -d --force-recreate --no-deps mcp-server agent-service auth-service web
+- 输入：重建运行容器。
+- 结果：Agent/MCP 版本 0.1.44，相关服务 healthy；退出状态：0。
+
+ROLLBACK
+- 命令：bash tmp-docs/v0.1.44-speech-sequence-artifacts/ROLLBACK.sh tmp-docs/v0.1.44-speech-sequence-artifacts/rollback-copy.ts
+- 输入：MODIFIED_FILE.ts 的独立副本。
+- 结果：rollback-restored=.../rollback-copy.ts，cmp 一致性校验通过；退出状态：0。
+- 恢复状态：验证副本恢复为 baseline；MODIFIED_FILE.ts 保持修复版本。
