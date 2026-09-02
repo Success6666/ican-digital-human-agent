@@ -8,7 +8,6 @@ import json
 import re
 import secrets
 import unicodedata
-from collections import OrderedDict
 from typing import Any
 
 from ..domain.models import ChatResult
@@ -26,8 +25,6 @@ class ResponseCache:
         lock_seconds: int = 15,
         timeout_seconds: float = 0.25,
         max_entries: int = 100_000,
-        local_cache_ttl_seconds: float = 5.0,
-        local_cache_max_entries: int = 10_000,
     ) -> None:
         self.redis_url = redis_url
         self.key_prefix = key_prefix.rstrip(":") or "ican:agent"
@@ -37,11 +34,9 @@ class ResponseCache:
         self.lock_seconds = max(2, int(lock_seconds))
         self.timeout_seconds = max(0.05, float(timeout_seconds))
         self.max_entries = max(100, int(max_entries))
-        self.local_cache_ttl_seconds = max(0.1, float(local_cache_ttl_seconds))
-        self.local_cache_max_entries = max(100, int(local_cache_max_entries))
         self._redis: Any | None = None
         self._unavailable = False
-        self._local: OrderedDict[str, tuple[float, str]] = OrderedDict()
+        self._local: dict[str, tuple[float, str]] = {}
         self._local_lock = asyncio.Lock()
         self._singleflight: dict[str, asyncio.Future[ChatResult]] = {}
         self._singleflight_lock = asyncio.Lock()
@@ -76,30 +71,31 @@ class ResponseCache:
             return None
 
     async def get(self, key: str) -> ChatResult | None:
-        now = asyncio.get_running_loop().time()
-        async with self._local_lock:
-            item = self._local.get(key)
-            if item and item[0] > now:
-                self._local.move_to_end(key)
-                self._local[key] = (now + self.local_cache_ttl_seconds, item[1])
-                return self._decode(item[1])
-            if item:
-                self._local.pop(key, None)
         client = await self._client()
         raw: str | None = None
         if client is not None:
             try:
                 raw = await asyncio.wait_for(client.get(key), timeout=self.timeout_seconds)
                 if raw is not None:
-                    self._remember_local(key, raw)
-                    # Sliding TTL is maintained without adding another network
-                    # round-trip to the request critical path.
-                    asyncio.create_task(self._refresh_ttl(client, key))
+                    # Sliding TTL: every valid hit keeps a hot answer alive,
+                    # while an unused answer is reclaimed by Redis itself.
+                    await asyncio.wait_for(client.expire(key, self.ttl_seconds), timeout=self.timeout_seconds)
             except Exception:
                 self._unavailable = True
+        if raw is None:
+            async with self._local_lock:
+                item = self._local.get(key)
+                if item and item[0] > asyncio.get_running_loop().time():
+                    raw = item[1]
+                    self._local[key] = (asyncio.get_running_loop().time() + self.ttl_seconds, item[1])
+                elif item:
+                    self._local.pop(key, None)
         if not raw:
             return None
-        return self._decode(raw)
+        try:
+            return ChatResult.model_validate(json.loads(raw))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
 
     async def set(self, key: str, result: ChatResult) -> bool:
         raw = json.dumps(result.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
@@ -110,33 +106,15 @@ class ResponseCache:
         if client is not None:
             try:
                 await asyncio.wait_for(client.set(key, raw, ex=self.ttl_seconds), timeout=self.timeout_seconds)
-                self._remember_local(key, raw)
                 return True
             except Exception:
                 self._unavailable = True
-        self._remember_local(key, raw)
+        async with self._local_lock:
+            self._local[key] = (asyncio.get_running_loop().time() + self.ttl_seconds, raw)
+            if len(self._local) > self.max_entries:
+                oldest = min(self._local, key=lambda item: self._local[item][0])
+                self._local.pop(oldest, None)
         return True
-
-    def _remember_local(self, key: str, raw: str) -> None:
-        self._local[key] = (asyncio.get_running_loop().time() + self.local_cache_ttl_seconds, raw)
-        self._local.move_to_end(key)
-        while len(self._local) > min(self.max_entries, self.local_cache_max_entries):
-            self._local.popitem(last=False)
-
-    async def _refresh_ttl(self, client: Any, key: str) -> None:
-        try:
-            await asyncio.wait_for(client.expire(key, self.ttl_seconds), timeout=self.timeout_seconds)
-        except Exception:
-            return
-
-    @staticmethod
-    def _decode(raw: str | None) -> ChatResult | None:
-        if not raw:
-            return None
-        try:
-            return ChatResult.model_validate(json.loads(raw))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return None
 
     async def get_or_compute(self, key: str, compute: Any) -> tuple[ChatResult, bool]:
         cached = await self.get(key)

@@ -31,3 +31,20 @@ async def test_local_cache_hit_slides_ttl():
     first = cache._local["k"][0]
     assert await cache.get("k") is not None
     assert cache._local["k"][0] >= first
+
+
+@pytest.mark.asyncio
+async def test_local_near_cache_avoids_second_redis_read(monkeypatch):
+    cache = ResponseCache(redis_url="redis://127.0.0.1:6399/0", ttl_seconds=30)
+    result = ChatResult(reply="ok", trace_id="t", session_id="s", provider="mock")
+    calls = 0
+
+    async def unavailable_client():
+        nonlocal calls
+        calls += 1
+        return None
+
+    monkeypatch.setattr(cache, "_client", unavailable_client)
+    assert await cache.set("k", result)
+    assert await cache.get("k") is not None
+    assert calls == 1

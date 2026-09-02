@@ -161,7 +161,7 @@ def _warm_model() -> None:
         return
 
 
-app = FastAPI(title="Local Chinese ASR", version="0.1.46", lifespan=lifespan)
+app = FastAPI(title="Local Chinese ASR", version="0.1.47", lifespan=lifespan)
 
 
 @app.get("/health")

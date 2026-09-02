@@ -52,10 +52,16 @@ class ChatApplicationService:
         history: list[dict[str, str]] | None = None, tenant_id: str = "default",
     ) -> ChatResult:
         clean = self._validate(message)
-        await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
-        run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
+        preferences_task = asyncio.create_task(self._preferences(tenant_id=tenant_id, user_id=user_id))
+        try:
+            await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
+            run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
+        except BaseException:
+            preferences_task.cancel()
+            await asyncio.gather(preferences_task, return_exceptions=True)
+            raise
         started = time.perf_counter()
-        preferences = await self._preferences(tenant_id=tenant_id, user_id=user_id)
+        preferences = await preferences_task
         request_context = self._request_context(preferences, history)
         cache_key = self._cache_key(tenant_id, user_id, clean, preferences, history)
         try:
@@ -107,17 +113,23 @@ class ChatApplicationService:
         tenant_id: str = "default",
     ) -> AsyncIterator[dict[str, Any]]:
         clean = self._validate(message)
-        record = await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
-        if run_id is None:
-            run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
-        elif record.active_run_id != run_id:
-            # A realtime connection can reserve a run before handing the
-            # stream to this service. Reject a stale reservation instead of
-            # silently superseding it with a second generation.
-            raise InvalidMessageError("run is not active")
-        if not run_id:
-            raise InvalidMessageError("session is not available")
-        preferences = await self._preferences(tenant_id=tenant_id, user_id=user_id)
+        preferences_task = asyncio.create_task(self._preferences(tenant_id=tenant_id, user_id=user_id))
+        try:
+            record = await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
+            if run_id is None:
+                run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
+            elif record.active_run_id != run_id:
+                # A realtime connection can reserve a run before handing the
+                # stream to this service. Reject a stale reservation instead of
+                # silently superseding it with a second generation.
+                raise InvalidMessageError("run is not active")
+            if not run_id:
+                raise InvalidMessageError("session is not available")
+            preferences = await preferences_task
+        except BaseException:
+            preferences_task.cancel()
+            await asyncio.gather(preferences_task, return_exceptions=True)
+            raise
         request_context = self._request_context(preferences, history)
         cache_key = self._cache_key(tenant_id, user_id, clean, preferences, history)
         if self.response_cache is not None and cache_key:

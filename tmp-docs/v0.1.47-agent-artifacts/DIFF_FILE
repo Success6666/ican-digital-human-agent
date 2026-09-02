@@ -1,0 +1,262 @@
+diff --git a/apps/agent-service/app/application/chat_service.py b/apps/agent-service/app/application/chat_service.py
+index 2f1aea7..a08d992 100644
+--- a/apps/agent-service/app/application/chat_service.py
++++ b/apps/agent-service/app/application/chat_service.py
+@@ -52,10 +52,16 @@ class ChatApplicationService:
+         history: list[dict[str, str]] | None = None, tenant_id: str = "default",
+     ) -> ChatResult:
+         clean = self._validate(message)
+-        await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
+-        run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
++        preferences_task = asyncio.create_task(self._preferences(tenant_id=tenant_id, user_id=user_id))
++        try:
++            await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
++            run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
++        except BaseException:
++            preferences_task.cancel()
++            await asyncio.gather(preferences_task, return_exceptions=True)
++            raise
+         started = time.perf_counter()
+-        preferences = await self._preferences(tenant_id=tenant_id, user_id=user_id)
++        preferences = await preferences_task
+         request_context = self._request_context(preferences, history)
+         cache_key = self._cache_key(tenant_id, user_id, clean, preferences, history)
+         try:
+@@ -107,17 +113,23 @@ class ChatApplicationService:
+         tenant_id: str = "default",
+     ) -> AsyncIterator[dict[str, Any]]:
+         clean = self._validate(message)
+-        record = await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
+-        if run_id is None:
+-            run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
+-        elif record.active_run_id != run_id:
+-            # A realtime connection can reserve a run before handing the
+-            # stream to this service. Reject a stale reservation instead of
+-            # silently superseding it with a second generation.
+-            raise InvalidMessageError("run is not active")
+-        if not run_id:
+-            raise InvalidMessageError("session is not available")
+-        preferences = await self._preferences(tenant_id=tenant_id, user_id=user_id)
++        preferences_task = asyncio.create_task(self._preferences(tenant_id=tenant_id, user_id=user_id))
++        try:
++            record = await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
++            if run_id is None:
++                run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
++            elif record.active_run_id != run_id:
++                # A realtime connection can reserve a run before handing the
++                # stream to this service. Reject a stale reservation instead of
++                # silently superseding it with a second generation.
++                raise InvalidMessageError("run is not active")
++            if not run_id:
++                raise InvalidMessageError("session is not available")
++            preferences = await preferences_task
++        except BaseException:
++            preferences_task.cancel()
++            await asyncio.gather(preferences_task, return_exceptions=True)
++            raise
+         request_context = self._request_context(preferences, history)
+         cache_key = self._cache_key(tenant_id, user_id, clean, preferences, history)
+         if self.response_cache is not None and cache_key:
+diff --git a/apps/agent-service/app/infrastructure/profile_store.py b/apps/agent-service/app/infrastructure/profile_store.py
+index 10ef044..e1aa07c 100644
+--- a/apps/agent-service/app/infrastructure/profile_store.py
++++ b/apps/agent-service/app/infrastructure/profile_store.py
+@@ -5,6 +5,7 @@ from __future__ import annotations
+ import asyncio
+ import json
+ import re
++from collections import OrderedDict
+ from typing import Any
+ 
+ 
+@@ -13,13 +14,16 @@ class AccountPreferenceStore:
+ 
+     _allowed = {"language", "tone", "voice", "verbosity", "constraints"}
+ 
+-    def __init__(self, *, redis_url: str, key_prefix: str, timeout_seconds: float = 0.25) -> None:
++    def __init__(self, *, redis_url: str, key_prefix: str, timeout_seconds: float = 0.25,
++                 local_cache_ttl_seconds: float = 5.0, local_cache_max_entries: int = 10_000) -> None:
+         self.redis_url = redis_url
+         self.key_prefix = key_prefix.rstrip(":") or "ican:agent"
+         self.timeout_seconds = max(0.05, float(timeout_seconds))
+         self._redis: Any | None = None
+         self._unavailable = False
+-        self._local: dict[str, dict[str, str]] = {}
++        self._local: OrderedDict[str, tuple[float, dict[str, str]]] = OrderedDict()
++        self._local_cache_ttl_seconds = max(0.1, float(local_cache_ttl_seconds))
++        self._local_cache_max_entries = max(100, int(local_cache_max_entries))
+         self._lock = asyncio.Lock()
+ 
+     def _key(self, tenant_id: str, user_id: str) -> str:
+@@ -43,17 +47,26 @@ class AccountPreferenceStore:
+ 
+     async def get(self, *, tenant_id: str, user_id: str) -> dict[str, str]:
+         key = self._key(tenant_id, user_id)
++        now = asyncio.get_running_loop().time()
++        async with self._lock:
++            item = self._local.get(key)
++            if item and item[0] > now:
++                self._local.move_to_end(key)
++                return dict(item[1])
++            if item:
++                self._local.pop(key, None)
+         client = await self._client()
+         if client is not None:
+             try:
+                 raw = await asyncio.wait_for(client.get(key), timeout=self.timeout_seconds)
+                 if raw:
+                     payload = json.loads(raw)
+-                    return _clean(payload)
++                    value = _clean(payload)
++                    self._remember(key, value)
++                    return value
+             except Exception:
+                 self._unavailable = True
+-        async with self._lock:
+-            return dict(self._local.get(key, {}))
++        return {}
+ 
+     async def update(self, *, tenant_id: str, user_id: str, values: dict[str, Any]) -> dict[str, str]:
+         key = self._key(tenant_id, user_id)
+@@ -64,13 +77,19 @@ class AccountPreferenceStore:
+         if client is not None:
+             try:
+                 await asyncio.wait_for(client.set(key, encoded), timeout=self.timeout_seconds)
++                self._remember(key, current)
+                 return current
+             except Exception:
+                 self._unavailable = True
+-        async with self._lock:
+-            self._local[key] = dict(current)
++        self._remember(key, current)
+         return current
+ 
++    def _remember(self, key: str, value: dict[str, str]) -> None:
++        self._local[key] = (asyncio.get_running_loop().time() + self._local_cache_ttl_seconds, dict(value))
++        self._local.move_to_end(key)
++        while len(self._local) > self._local_cache_max_entries:
++            self._local.popitem(last=False)
++
+     async def close(self) -> None:
+         client, self._redis = self._redis, None
+         if client is not None:
+diff --git a/apps/agent-service/app/infrastructure/response_cache.py b/apps/agent-service/app/infrastructure/response_cache.py
+index babef20..1a8f65b 100644
+--- a/apps/agent-service/app/infrastructure/response_cache.py
++++ b/apps/agent-service/app/infrastructure/response_cache.py
+@@ -8,6 +8,7 @@ import json
+ import re
+ import secrets
+ import unicodedata
++from collections import OrderedDict
+ from typing import Any
+ 
+ from ..domain.models import ChatResult
+@@ -25,6 +26,8 @@ class ResponseCache:
+         lock_seconds: int = 15,
+         timeout_seconds: float = 0.25,
+         max_entries: int = 100_000,
++        local_cache_ttl_seconds: float = 5.0,
++        local_cache_max_entries: int = 10_000,
+     ) -> None:
+         self.redis_url = redis_url
+         self.key_prefix = key_prefix.rstrip(":") or "ican:agent"
+@@ -34,9 +37,11 @@ class ResponseCache:
+         self.lock_seconds = max(2, int(lock_seconds))
+         self.timeout_seconds = max(0.05, float(timeout_seconds))
+         self.max_entries = max(100, int(max_entries))
++        self.local_cache_ttl_seconds = max(0.1, float(local_cache_ttl_seconds))
++        self.local_cache_max_entries = max(100, int(local_cache_max_entries))
+         self._redis: Any | None = None
+         self._unavailable = False
+-        self._local: dict[str, tuple[float, str]] = {}
++        self._local: OrderedDict[str, tuple[float, str]] = OrderedDict()
+         self._local_lock = asyncio.Lock()
+         self._singleflight: dict[str, asyncio.Future[ChatResult]] = {}
+         self._singleflight_lock = asyncio.Lock()
+@@ -71,31 +76,30 @@ class ResponseCache:
+             return None
+ 
+     async def get(self, key: str) -> ChatResult | None:
++        now = asyncio.get_running_loop().time()
++        async with self._local_lock:
++            item = self._local.get(key)
++            if item and item[0] > now:
++                self._local.move_to_end(key)
++                self._local[key] = (now + self.local_cache_ttl_seconds, item[1])
++                return self._decode(item[1])
++            if item:
++                self._local.pop(key, None)
+         client = await self._client()
+         raw: str | None = None
+         if client is not None:
+             try:
+                 raw = await asyncio.wait_for(client.get(key), timeout=self.timeout_seconds)
+                 if raw is not None:
+-                    # Sliding TTL: every valid hit keeps a hot answer alive,
+-                    # while an unused answer is reclaimed by Redis itself.
+-                    await asyncio.wait_for(client.expire(key, self.ttl_seconds), timeout=self.timeout_seconds)
++                    self._remember_local(key, raw)
++                    # Sliding TTL is maintained without adding another network
++                    # round-trip to the request critical path.
++                    asyncio.create_task(self._refresh_ttl(client, key))
+             except Exception:
+                 self._unavailable = True
+-        if raw is None:
+-            async with self._local_lock:
+-                item = self._local.get(key)
+-                if item and item[0] > asyncio.get_running_loop().time():
+-                    raw = item[1]
+-                    self._local[key] = (asyncio.get_running_loop().time() + self.ttl_seconds, item[1])
+-                elif item:
+-                    self._local.pop(key, None)
+         if not raw:
+             return None
+-        try:
+-            return ChatResult.model_validate(json.loads(raw))
+-        except (TypeError, ValueError, json.JSONDecodeError):
+-            return None
++        return self._decode(raw)
+ 
+     async def set(self, key: str, result: ChatResult) -> bool:
+         raw = json.dumps(result.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
+@@ -106,16 +110,34 @@ class ResponseCache:
+         if client is not None:
+             try:
+                 await asyncio.wait_for(client.set(key, raw, ex=self.ttl_seconds), timeout=self.timeout_seconds)
++                self._remember_local(key, raw)
+                 return True
+             except Exception:
+                 self._unavailable = True
+-        async with self._local_lock:
+-            self._local[key] = (asyncio.get_running_loop().time() + self.ttl_seconds, raw)
+-            if len(self._local) > self.max_entries:
+-                oldest = min(self._local, key=lambda item: self._local[item][0])
+-                self._local.pop(oldest, None)
++        self._remember_local(key, raw)
+         return True
+ 
++    def _remember_local(self, key: str, raw: str) -> None:
++        self._local[key] = (asyncio.get_running_loop().time() + self.local_cache_ttl_seconds, raw)
++        self._local.move_to_end(key)
++        while len(self._local) > min(self.max_entries, self.local_cache_max_entries):
++            self._local.popitem(last=False)
++
++    async def _refresh_ttl(self, client: Any, key: str) -> None:
++        try:
++            await asyncio.wait_for(client.expire(key, self.ttl_seconds), timeout=self.timeout_seconds)
++        except Exception:
++            return
++
++    @staticmethod
++    def _decode(raw: str | None) -> ChatResult | None:
++        if not raw:
++            return None
++        try:
++            return ChatResult.model_validate(json.loads(raw))
++        except (TypeError, ValueError, json.JSONDecodeError):
++            return None
++
+     async def get_or_compute(self, key: str, compute: Any) -> tuple[ChatResult, bool]:
+         cached = await self.get(key)
+         if cached is not None:
