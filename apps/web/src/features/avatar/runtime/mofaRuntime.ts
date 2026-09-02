@@ -192,7 +192,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       this.speechBuffer = this.speechBuffer.slice(boundary).trimStart()
       if (segment) this.speechQueue.push({ text: segment, presentation })
     }
-    if (!this.speechQueue.length) return
+    if (!this.speechQueue.length) {
+      if (flush && !this.speechWorker) {
+        this.speechFlushRequested = false
+        this.streamStarted = false
+        this.status?.({ phase: 'ready', message: '数字人已连接' })
+      }
+      return
+    }
     await this.ensureSpeechWorker()
   }
 

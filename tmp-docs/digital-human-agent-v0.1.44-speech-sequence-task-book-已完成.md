@@ -26,5 +26,5 @@
 
 ## 验证记录
 
-- `npm run test:avatar`：5 passed。
+- `npm run test:avatar`：7 passed。
 - `npm run build`：TypeScript 与 Vite 构建成功。

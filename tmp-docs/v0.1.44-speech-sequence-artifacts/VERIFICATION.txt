@@ -7,7 +7,7 @@ DIFF_FILE：tmp-docs/v0.1.44-speech-sequence-artifacts/DIFF_FILE.diff
 VERIFICATION：tmp-docs/v0.1.44-speech-sequence-artifacts/VERIFICATION.txt
 ROLLBACK：tmp-docs/v0.1.44-speech-sequence-artifacts/ROLLBACK.sh
 原始 SHA256：D02F268D50F29A4767C469F38C0AEC7648D91F7B41D174E3C4541ABFDBB9CC08
-修改 SHA256：360365C5AD1D678D64A11EFDB9AB77A51B7DA63C404E2CFB9DFE18CB6285E21B
+修改 SHA256：717BB5352E98575B86AACCF67F1ED42330D238D36D6F5F69C3212EB1EA2DE40C
 
 BASELINE
 - 命令：rg -n "if \(!this\.speechFlushRequested && this\.speechQueue\.length === 1" tmp-docs/v0.1.44-speech-sequence-artifacts/baseline-mofaRuntime.ts
@@ -18,7 +18,7 @@ BASELINE
 MODIFIED
 - 命令：npm run test:avatar
 - 输入：前端星云播报与兼容性测试。
-- 结果：5 passed，0 failed；退出状态：0。
+- 结果：7 passed，0 failed；退出状态：0。
 - 命令：npm run build
 - 输入：Web 生产构建。
 - 结果：TypeScript 与 Vite 构建成功；退出状态：0。

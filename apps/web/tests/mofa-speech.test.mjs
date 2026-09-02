@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import vm from 'node:vm'
 import * as ts from 'typescript'
 
 const sourcePath = fileURLToPath(new URL('../src/features/avatar/runtime/mofaSpeech.ts', import.meta.url))
@@ -71,3 +72,80 @@ test('generates runtime ids when randomUUID is unavailable on public HTTP', asyn
   const id = runtimeIdModule.createRuntimeId(source)
   assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/)
 })
+
+test('waits for each speak_end before dispatching the next fast stream segment', async () => {
+  const Runtime = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd, extra) {
+      calls.push({ ssml, isStart, isEnd, id: extra.client_speak_id })
+    },
+    interrupt() { return 0 },
+  }
+
+  const pending = runtime.speak('第一段。第二段。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].isStart, true)
+  assert.equal(calls[0].isEnd, false)
+
+  runtime.speechWaiters.get(calls[0].id).resolve()
+  await nextTask()
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].isStart, false)
+  assert.equal(calls[1].isEnd, true)
+
+  runtime.speechWaiters.get(calls[1].id).resolve()
+  await pending
+  assert.equal(runtime.streamStarted, false)
+})
+
+test('dispatches the first complete sentence immediately and closes an empty flush', async () => {
+  const Runtime = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd, extra) {
+      calls.push({ ssml, isStart, isEnd, id: extra.client_speak_id })
+    },
+    interrupt() { return 0 },
+  }
+
+  const pending = runtime.speak('第一段。')
+  await nextTask()
+  assert.equal(calls.length, 1)
+  runtime.speechWaiters.get(calls[0].id).resolve()
+  await pending
+  assert.equal(runtime.streamStarted, true)
+
+  await runtime.speak('', undefined, { flush: true })
+  assert.equal(runtime.streamStarted, false)
+})
+
+async function loadRuntimeForTest() {
+  const runtimeSource = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
+  const runtimeOutput = ts.transpileModule(runtimeSource, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+  }).outputText
+  const module = { exports: {} }
+  const context = {
+    module,
+    exports: module.exports,
+    require(specifier) {
+      if (specifier.endsWith('/mofaSpeech')) return { buildMofaSpeechRequest: (text) => ({ ssml: text, extra: {} }) }
+      if (specifier.endsWith('/runtimeId')) return { createRuntimeId: (() => { let id = 0; return () => `speech-${++id}` })() }
+      if (specifier.endsWith('/scriptLoader')) return { loadExternalScript: async () => undefined }
+      return {}
+    },
+    window: { setTimeout, clearTimeout, requestAnimationFrame: (callback) => setTimeout(callback, 0) },
+    console,
+    URL,
+  }
+  vm.runInNewContext(runtimeOutput, context)
+  return module.exports.MofaBrowserRuntime
+}
+
+function nextTask() {
+  return new Promise((resolve) => setImmediate(resolve))
+}
