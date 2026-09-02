@@ -32,7 +32,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.42")
+    return HealthResponse(service=container.settings.service_name, version="0.1.43")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
