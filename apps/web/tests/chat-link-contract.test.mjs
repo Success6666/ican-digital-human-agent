@@ -20,8 +20,9 @@ test('session creation is guarded while the provider session is being created', 
   assert.match(source, /disabled=\{!draft\.trim\(\) \|\| !interactionReady \|\| isCreating\}/)
 })
 
-test('waiting filler is routed into the avatar speech stream before the first answer delta', () => {
+test('assistant speech only uses real response text', () => {
   assert.equal(homeSource.includes('message.content.trim() || message.statusText?.trim()'), true)
   assert.equal(homeSource.includes("text: latestAssistant.content || latestAssistant.statusText || ''"), true)
   assert.equal(homeSource.includes('pending: latestAssistant.content ? latestAssistant.pending : false'), true)
+  assert.equal(homeSource.includes('我先理解一下你的意思'), false)
 })

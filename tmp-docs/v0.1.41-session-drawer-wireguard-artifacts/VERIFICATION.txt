@@ -1,0 +1,42 @@
+ICAN v0.1.41 会话记录与 WireGuard 验证记录
+日期：2026-09-02
+
+变更对象
+- 分支：当前工作分支
+- 版本：v0.1.41
+- 关键字段：ConversationDrawer useDeferredValue、MessageBubble memo、UNKNOWN filler 空文本、WEB_WG_BIND_ADDRESS、云端 Nginx 6666
+
+证据文件
+- MODIFIED_FILE：tmp-docs/v0.1.41-session-drawer-wireguard-artifacts/modified-ConversationDrawer.tsx
+- DIFF_FILE：tmp-docs/v0.1.41-session-drawer-wireguard-artifacts/DIFF_FILE.patch
+- VERIFICATION.txt：tmp-docs/v0.1.41-session-drawer-wireguard-artifacts/VERIFICATION.txt
+- ROLLBACK.sh：tmp-docs/v0.1.41-session-drawer-wireguard-artifacts/ROLLBACK.sh
+
+基线/修改/回滚
+- BASELINE command: git show HEAD:apps/web/src/features/chat/components/ConversationDrawer.tsx > baseline-ConversationDrawer.tsx
+- BASELINE result: SHA256 0C0F4EEF38476F9C2ADACA97A44728206F04388C6212E659640D110D6503BCD6
+- MODIFIED command: Copy-Item apps/web/src/features/chat/components/ConversationDrawer.tsx modified-ConversationDrawer.tsx
+- MODIFIED result: SHA256 387503E1FD189453510564D3D6A4E11BE9096DAF3B70742731AF7ECB07D8CE1E
+- ROLLBACK command: bash ROLLBACK.sh
+- ROLLBACK literal output: ROLLBACK_OK baseline restored to verification copy
+- ROLLBACK status: exit 0; cmp baseline and rollback copy passed
+- 工作树状态：保留修改后的源码；回滚只作用于验证副本
+
+测试命令与结果
+- MODIFIED: npm run test:layout；7/7 passed；exit 0
+- MODIFIED: npm run test:chat；3/3 passed；exit 0
+- MODIFIED: npm run test:realtime；8/8 passed；exit 0
+- MODIFIED: npm run test:avatar；4/4 passed；exit 0
+- MODIFIED: npm run build；Vite build succeeded；exit 0
+- MODIFIED: $env:PYTHONPATH='src'; python -m pytest -q；192 passed, 2 skipped, 1 warning；exit 0
+- MODIFIED: docker compose ps；6 services running/healthy；exit 0
+- MODIFIED: local http://127.0.0.1:8088/healthz；200；exit 0
+- MODIFIED: WireGuard peer http://10.66.66.2:8088/healthz；200；exit 0
+- MODIFIED: cloud http://127.0.0.1:6666/healthz；200；exit 0
+- MODIFIED: public http://39.97.253.99:6666/healthz；200；exit 0
+- MODIFIED: local access to http://39.97.253.99:6666/healthz；200；exit 0
+- MODIFIED: /www/server/nginx/sbin/nginx -t -c /www/server/nginx/conf/nginx.conf；syntax successful；exit 0
+
+部署回滚
+- 删除云端 `/www/server/panel/vhost/nginx/ican-digital-human-6666.conf` 并 reload 宝塔 Nginx。
+- 移除本机 `.env` 中 `WEB_WG_BIND_ADDRESS`、`WEB_WG_PORT`，Web 恢复仅监听 127.0.0.1:8088。

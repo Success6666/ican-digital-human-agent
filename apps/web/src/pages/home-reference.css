@@ -351,7 +351,7 @@
 }
 
 .conversation-drawer-actions { display: flex; gap: 5px; }
-.conversation-drawer-list { min-height: 0; flex: 1; overflow: auto; padding-top: 16px; }
+.conversation-drawer-list { min-height: 0; flex: 1; overflow: auto; padding-top: 16px; contain: content; content-visibility: auto; }
 .conversation-drawer-empty { padding: 48px 10px; color: var(--ink-faint); text-align: center; font-size: 12px; }
 
 @media (max-width: 820px) {

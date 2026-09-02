@@ -1,8 +1,9 @@
+import { memo } from 'react'
 import { Bot, UserRound } from 'lucide-react'
 import type { ChatMessage } from '../model'
 import { formatTime } from '../../../shared/lib/format'
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
+export const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
   return (
     <article className={`message-row ${isUser ? 'message-row--user' : 'message-row--assistant'}`}>
@@ -13,4 +14,13 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
       </div>
     </article>
   )
-}
+}, (previous, next) => {
+  const before = previous.message
+  const after = next.message
+  return before.id === after.id
+    && before.role === after.role
+    && before.content === after.content
+    && before.statusText === after.statusText
+    && before.pending === after.pending
+    && before.createdAt === after.createdAt
+})

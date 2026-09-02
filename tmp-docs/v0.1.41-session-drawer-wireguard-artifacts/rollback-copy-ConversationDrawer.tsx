@@ -1,4 +1,3 @@
-import { useDeferredValue } from 'react'
 import { History, Trash2, X } from 'lucide-react'
 import type { ChatMessage } from '../model'
 import { MessageBubble } from './MessageBubble'
@@ -11,7 +10,6 @@ interface ConversationDrawerProps {
 }
 
 export function ConversationDrawer({ open, messages, onClose, onClear }: ConversationDrawerProps) {
-  const deferredMessages = useDeferredValue(messages)
   if (!open) return null
 
   return (
@@ -24,7 +22,7 @@ export function ConversationDrawer({ open, messages, onClose, onClear }: Convers
             <h2>对话记录</h2>
           </div>
           <div className="conversation-drawer-actions">
-            <button className="icon-button" type="button" title="清空对话记录" aria-label="清空对话记录" onClick={onClear} disabled={!deferredMessages.length}>
+            <button className="icon-button" type="button" title="清空对话记录" aria-label="清空对话记录" onClick={onClear} disabled={!messages.length}>
               <Trash2 size={16} />
             </button>
             <button className="icon-button" type="button" title="关闭对话记录" aria-label="关闭对话记录" onClick={onClose}>
@@ -33,7 +31,7 @@ export function ConversationDrawer({ open, messages, onClose, onClear }: Convers
           </div>
         </header>
         <div className="conversation-drawer-list">
-          {deferredMessages.length ? deferredMessages.map((message) => <MessageBubble key={message.id} message={message} />) : (
+          {messages.length ? messages.map((message) => <MessageBubble key={message.id} message={message} />) : (
             <div className="conversation-drawer-empty">暂无对话记录</div>
           )}
         </div>

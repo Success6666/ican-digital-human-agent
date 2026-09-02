@@ -10,6 +10,8 @@ const homeCss = fs.readFileSync(path.resolve(here, '../src/pages/home-reference.
 const app = fs.readFileSync(path.resolve(here, '../src/app/AuthenticatedApp.tsx'), 'utf8')
 const runtimeSurface = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/AvatarRuntimeSurface.tsx'), 'utf8')
 const mofaRuntime = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/mofaRuntime.ts'), 'utf8')
+const drawer = fs.readFileSync(path.resolve(here, '../src/features/chat/components/ConversationDrawer.tsx'), 'utf8')
+const messageBubble = fs.readFileSync(path.resolve(here, '../src/features/chat/components/MessageBubble.tsx'), 'utf8')
 
 test('console keeps navigation fixed while main content owns scrolling', () => {
   assert.match(css, /\.console-shell\s*\{[^}]*overflow:\s*hidden/)
@@ -46,4 +48,11 @@ test('avatar runtime uses invisible mode instead of rebuilding the SDK', () => {
   assert.match(mofaRuntime, /switchInvisibleMode\(\)/)
   assert.match(mofaRuntime, /changeAvatarVisible\(visible: boolean\)/)
   assert.match(mofaRuntime, /current\.destroy\('component_unmounted'\)/)
+})
+
+test('conversation drawer defers stream updates and memoizes stable messages', () => {
+  assert.match(drawer, /useDeferredValue\(messages\)/)
+  assert.match(drawer, /deferredMessages\.map\(/)
+  assert.match(messageBubble, /memo\(function MessageBubble/)
+  assert.match(homeCss, /\.conversation-drawer-list\s*\{[^}]*contain:\s*content[^}]*content-visibility:\s*auto/)
 })

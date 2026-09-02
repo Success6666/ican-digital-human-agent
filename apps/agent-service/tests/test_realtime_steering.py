@@ -517,7 +517,6 @@ async def test_superseding_run_cancels_slow_classifier() -> None:
         user_id="u1", user_name="Tester", session_id="s-classifier", message="今天天气怎么样", run_id=first
     )
     assert (await stream.__anext__())["event"] == "start"
-    assert (await stream.__anext__())["event"] == "filler"
     interrupted_event = asyncio.create_task(stream.__anext__())
     await asyncio.wait_for(classifier.started.wait(), timeout=1)
 

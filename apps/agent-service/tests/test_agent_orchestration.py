@@ -83,6 +83,9 @@ def test_filler_and_micro_expression_are_semantic() -> None:
     assert plan.cue.gesture == "small_nod"
     assert plan.cue.lip_sync is False
     assert PerformancePlanner().for_phase(FillerPhase.SPEAKING).lip_sync is True
+    unknown = AdaptiveFillerPolicy().plan(IntentDecision(name=IntentName.UNKNOWN))
+    assert unknown.should_emit is False
+    assert unknown.text == ""
 
 
 def test_prompt_injection_assessment_is_conservative_and_refusal_is_safe() -> None:
@@ -144,7 +147,7 @@ async def test_interrupt_marks_run_before_provider_io() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stream_emits_filler_performance_and_interrupt_event() -> None:
+async def test_stream_skips_speculative_filler_and_reports_interrupt_event() -> None:
     settings = Settings(
         internal_token="test-token",
         mcp_allow_local_fallback=False,
@@ -167,11 +170,9 @@ async def test_stream_emits_filler_performance_and_interrupt_event() -> None:
     )
     first = await anext(stream)
     assert first["event"] == "start"
-    filler = await anext(stream)
-    assert filler["event"] == "filler"
-    assert filler["data"]["performance"]["expression"] == "thinking"
     await container.store.mark_interrupted(session.session_id, run_id=run_id)
     remaining = [event async for event in stream]
+    assert all(event["event"] != "filler" for event in remaining)
     assert any(event["event"] == "interrupted" for event in remaining)
     done = [event for event in remaining if event["event"] == "done"]
     assert done and done[-1]["data"]["interrupted"] is True

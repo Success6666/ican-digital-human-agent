@@ -38,11 +38,13 @@ async def test_stream_emits_ack_before_slow_intent_classification() -> None:
         user_id="u1", user_name="Tester", session_id="s-first-byte", message="今天天气怎么样", run_id=run_id
     )
     start = await asyncio.wait_for(anext(stream), timeout=0.2)
-    filler = await asyncio.wait_for(anext(stream), timeout=0.2)
     assert start["event"] == "start"
-    assert filler["event"] == "filler"
-    assert filler["data"]["runId"] == run_id
-    assert classifier.started.is_set() is False
+    pending = asyncio.create_task(anext(stream))
+    await asyncio.wait_for(classifier.started.wait(), timeout=0.2)
+    assert pending.done() is False
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
     await stream.aclose()
 
 
@@ -203,7 +205,6 @@ async def test_stream_interrupt_reports_cancellation_latency() -> None:
         run_id=run_id,
     )
     assert (await anext(stream))["event"] == "start"
-    assert (await anext(stream))["event"] == "filler"
     pending = asyncio.create_task(anext(stream))
     await classifier.started.wait()
     await store.mark_interrupted("s-cancel-latency", run_id)
