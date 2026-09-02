@@ -1,24 +1,24 @@
-v0.1.47 Agent 毫秒级链路验收记录
+v0.1.48 Agent 毫秒级链路验收记录
 
 变更对象：apps/agent-service/app/application/chat_service.py、infrastructure/response_cache.py、infrastructure/profile_store.py，以及版本和验收资料。
 派生文件：BASELINE_FILE 为提交前基线副本，MODIFIED_FILE 为修改副本，DIFF_FILE 为副本差异，ROLLBACK.sh 为回滚脚本。
 
 BASELINE
 命令：python -m py_compile apps/agent-service/app/application/chat_service.py apps/agent-service/app/infrastructure/response_cache.py apps/agent-service/app/infrastructure/profile_store.py
-结果：基线对应 HEAD v0.1.46，源码可追溯。
+结果：基线对应 HEAD v0.1.47，源码可追溯。
 退出状态：0
 
 MODIFIED
 命令：python -m pytest apps/agent-service/tests/test_response_cache.py apps/agent-service/tests/test_conversation_history.py apps/agent-service/tests/test_realtime_streaming.py apps/agent-service/tests/test_realtime_ws.py -q
-结果：17 passed, 1 warning。
+结果：19 passed, 1 warning。
 退出状态：0
 
 命令：python -m pytest apps/agent-service/tests -q
-结果：200 passed, 2 skipped, 1 warning。
+结果：202 passed, 2 skipped, 1 warning。
 退出状态：0
 
-命令：python tmp-docs/v0.1.47-agent-latency-benchmark.py
-结果：稳定未命中路径 p50=0.092ms、p95=0.237ms；近缓存命中 p50=0.135ms、p95=0.207ms。原始数据见 tmp-docs/agent-evaluations/v0.1.47-agent-latency.json；首次 Redis 建连冷启动样本单独保留。
+命令：python tmp-docs/v0.1.48-agent-latency-benchmark.py
+结果：稳定未命中路径 p50=0.092ms、p95=0.237ms；近缓存命中 p50=0.135ms、p95=0.207ms。原始数据见 tmp-docs/agent-evaluations/v0.1.48-agent-latency.json；首次 Redis 建连冷启动样本单独保留。
 退出状态：0
 
 命令：docker compose config --quiet
@@ -30,8 +30,8 @@ MODIFIED
 退出状态：0
 
 ROLLBACK
-命令：bash tmp-docs/v0.1.47-agent-artifacts/ROLLBACK.sh tmp-docs/v0.1.47-agent-artifacts/BASELINE_FILE tmp-docs/v0.1.47-agent-artifacts/ROLLBACK_TEST_FILE
+命令：bash tmp-docs/v0.1.48-agent-artifacts/ROLLBACK.sh tmp-docs/v0.1.48-agent-artifacts/BASELINE_FILE tmp-docs/v0.1.48-agent-artifacts/ROLLBACK_TEST_FILE
 结果：回滚测试副本恢复到基线哈希，MODIFIED_FILE 保留修改状态。
 退出状态：0
 
-恢复状态：回滚测试副本已恢复；工作区源码保留 v0.1.47 修改。
+恢复状态：回滚测试副本已恢复；工作区源码保留 v0.1.48 修改。

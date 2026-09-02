@@ -27,6 +27,8 @@ class ReliableMessageBus:
         self.prefetch_count = max(1, int(prefetch_count))
         self.retry_limit = max(0, int(retry_limit))
         self._connection: Any | None = None
+        self._channel: Any | None = None
+        self._exchange: Any | None = None
         self._lock = asyncio.Lock()
         self._publish_gate = asyncio.Semaphore(self.max_in_flight)
 
@@ -50,39 +52,44 @@ class ReliableMessageBus:
         async with self._lock:
             if self._connection is None or self._connection.is_closed:
                 self._connection = await aio_pika.connect_robust(self.url)
-            channel = await self._connection.channel(publisher_confirms=True, on_return_raises=True)
-            exchange = await channel.declare_exchange(self.exchange_name, aio_pika.ExchangeType.DIRECT, durable=True)
-            dead_exchange = await channel.declare_exchange(self.dead_letter_exchange, aio_pika.ExchangeType.DIRECT, durable=True)
-            dead_queue = await channel.declare_queue(
-                self.dead_letter_queue,
-                durable=True,
-                arguments={"x-queue-type": "quorum"},
-            )
-            await dead_queue.bind(dead_exchange, routing_key=envelope["topic"])
-            queue = await channel.declare_queue(
-                self.queue_name,
-                durable=True,
-                arguments={
-                    "x-dead-letter-exchange": self.dead_letter_exchange,
-                    "x-dead-letter-routing-key": envelope["topic"],
-                    "x-message-ttl": 86_400_000,
-                    "x-max-length": 10_000,
-                    "x-overflow": "reject-publish-dlx",
-                    "x-queue-type": "quorum",
-                },
-            )
-            await queue.bind(exchange, routing_key=envelope["topic"])
-            message = aio_pika.Message(
-                body=json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
-                content_type="application/json",
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                message_id=envelope["messageId"],
-                timestamp=datetime.fromisoformat(envelope["createdAt"]),
-                type=envelope["topic"],
-                headers={"x-idempotency-key": envelope["messageId"], "x-prefetch-count": self.prefetch_count},
-            )
-            await exchange.publish(message, routing_key=envelope["topic"], mandatory=True)
-            await channel.close()
+                self._channel = None
+                self._exchange = None
+            if self._channel is None or self._channel.is_closed:
+                channel = await self._connection.channel(publisher_confirms=True, on_return_raises=True)
+                exchange = await channel.declare_exchange(self.exchange_name, aio_pika.ExchangeType.DIRECT, durable=True)
+                dead_exchange = await channel.declare_exchange(self.dead_letter_exchange, aio_pika.ExchangeType.DIRECT, durable=True)
+                dead_queue = await channel.declare_queue(
+                    self.dead_letter_queue,
+                    durable=True,
+                    arguments={"x-queue-type": "quorum"},
+                )
+                await dead_queue.bind(dead_exchange, routing_key=envelope["topic"])
+                queue = await channel.declare_queue(
+                    self.queue_name,
+                    durable=True,
+                    arguments={
+                        "x-dead-letter-exchange": self.dead_letter_exchange,
+                        "x-dead-letter-routing-key": envelope["topic"],
+                        "x-message-ttl": 86_400_000,
+                        "x-max-length": 10_000,
+                        "x-overflow": "reject-publish-dlx",
+                        "x-queue-type": "quorum",
+                    },
+                )
+                await queue.bind(exchange, routing_key=envelope["topic"])
+                self._channel = channel
+                self._exchange = exchange
+            exchange = self._exchange
+        message = aio_pika.Message(
+            body=json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
+            content_type="application/json",
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            message_id=envelope["messageId"],
+            timestamp=datetime.fromisoformat(envelope["createdAt"]),
+            type=envelope["topic"],
+            headers={"x-idempotency-key": envelope["messageId"], "x-prefetch-count": self.prefetch_count},
+        )
+        await exchange.publish(message, routing_key=envelope["topic"], mandatory=True)
 
     def _append_outbox(self, envelope: dict[str, Any]) -> None:
         self.outbox_path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,5 +99,9 @@ class ReliableMessageBus:
     async def close(self) -> None:
         connection = self._connection
         self._connection = None
+        channel, self._channel = self._channel, None
+        self._exchange = None
+        if channel is not None and not channel.is_closed:
+            await channel.close()
         if connection is not None and not connection.is_closed:
             await connection.close()

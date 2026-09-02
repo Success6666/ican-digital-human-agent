@@ -57,7 +57,7 @@ async def main() -> None:
         await service.send(user_id="u", user_name="用户", session_id=f"s-warm-{index}", message=f"问题 {index}", tenant_id="t")
         warm.append((time.perf_counter() - started) * 1000)
     result = {
-        "version": "0.1.47",
+        "version": "0.1.48",
         "generatedAt": "2026-09-02",
         "samples": 20,
         "metrics": {
@@ -70,7 +70,7 @@ async def main() -> None:
     }
     output = ROOT / "tmp-docs" / "agent-evaluations"
     output.mkdir(parents=True, exist_ok=True)
-    (output / "v0.1.47-agent-latency.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "v0.1.48-agent-latency.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

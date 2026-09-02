@@ -1,3 +1,3 @@
 """MCP tool service."""
 
-__version__ = "0.1.47"
+__version__ = "0.1.48"

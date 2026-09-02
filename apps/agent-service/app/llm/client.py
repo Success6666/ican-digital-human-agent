@@ -147,7 +147,15 @@ class OpenAICompatibleLlm:
 
     def _get_client(self, timeout: httpx.Timeout) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=timeout, trust_env=True)
+            self._client = httpx.AsyncClient(
+                timeout=timeout,
+                trust_env=True,
+                limits=httpx.Limits(
+                    max_connections=256,
+                    max_keepalive_connections=128,
+                    keepalive_expiry=30.0,
+                ),
+            )
         return self._client
 
     def _payload(self, prompt: str) -> dict[str, Any]:

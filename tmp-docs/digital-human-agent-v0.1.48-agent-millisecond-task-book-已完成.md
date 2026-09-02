@@ -1,7 +1,7 @@
-# 数字人 Agent v0.1.47 Agent 毫秒级链路优化任务书
+# 数字人 Agent v0.1.48 Agent 毫秒级链路优化任务书
 
 状态：已完成  
-版本：v0.1.47  
+版本：v0.1.48  
 日期：2026-09-02
 
 ## 原始问题
@@ -29,6 +29,6 @@
 - 近缓存热路径：p50 `0.135ms`，p95 `0.207ms`。
 - 首次未命中请求（本地 Redis 不可用回退路径）：p50 `0.092ms`，p95 `0.237ms`；首次 Redis 连接建立产生一次 `431.653ms` 冷启动样本，已单独保留在原始数据中，不计入稳定热路径结论。
 - 代码优化：响应缓存增加有界 5 秒进程内近缓存，Redis 滑动续期后台执行；账号偏好增加有界近缓存；会话与偏好读取并行预取。
-- 回归测试：缓存/会话/实时流专项 `17 passed`；全量 Agent 测试待本轮最终提交前复跑。
-- 全量 Agent 测试：`200 passed, 2 skipped, 1 warning`。
-- 原始数据：`tmp-docs/agent-evaluations/v0.1.47-agent-latency.json`。
+- 回归测试：缓存/会话/实时流专项 `19 passed`；全量 Agent 测试已复跑。
+- 全量 Agent 测试：`202 passed, 2 skipped, 1 warning`。
+- 原始数据：`tmp-docs/agent-evaluations/v0.1.48-agent-latency.json`。

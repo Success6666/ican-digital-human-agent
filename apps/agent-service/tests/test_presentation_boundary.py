@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+import asyncio
+import time
 
 from app.avatar.presentation import PresentationLayer, ProviderRuntime
 from app.domain.models import AgentResponse, AvatarCapabilities, ChatResult, ProviderResult
@@ -15,6 +17,21 @@ class RecordingRuntime:
     async def send_text(self, session_id: str, text: str, *, mode: str = "text") -> ProviderResult:
         self.calls.append((session_id, text, mode))
         return ProviderResult(provider=self.name, metadata={"runtime": "recording"})
+
+
+class RecordingPublisher:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def publish(self, *, topic: str, payload: dict) -> str:
+        self.calls.append({"topic": topic, "payload": payload})
+        return "message-1"
+
+
+class SlowPublisher(RecordingPublisher):
+    async def publish(self, *, topic: str, payload: dict) -> str:
+        await asyncio.sleep(0.05)
+        return await super().publish(topic=topic, payload=payload)
 
 
 @pytest.mark.asyncio
@@ -40,6 +57,35 @@ async def test_presentation_layer_keeps_agent_response_out_of_provider_contract(
 
     runtime_result = await ProviderRuntime(runtime).present(response)
     assert runtime_result.metadata["agentResponse"]["sessionId"] == "session-1"
+
+
+@pytest.mark.asyncio
+async def test_presentation_does_not_wait_for_message_bus_before_provider() -> None:
+    publisher = RecordingPublisher()
+    runtime = RecordingRuntime()
+    response = AgentResponse(text="快速响应", traceId="trace-2", sessionId="session-2")
+
+    result = await PresentationLayer(publisher).present(runtime, response)
+    await __import__("asyncio").sleep(0)
+
+    assert result.provider == "recording"
+    assert runtime.calls == [("session-2", "快速响应", "agent_response")]
+    assert publisher.calls[0]["topic"] == "presentation"
+
+
+@pytest.mark.asyncio
+async def test_presentation_overlaps_slow_message_bus_with_provider_call() -> None:
+    publisher = SlowPublisher()
+    runtime = RecordingRuntime()
+    response = AgentResponse(text="并行发送", traceId="trace-3", sessionId="session-3")
+
+    started = time.perf_counter()
+    await PresentationLayer(publisher).present(runtime, response)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    await asyncio.sleep(0.06)
+
+    assert elapsed_ms < 30
+    assert publisher.calls
 
 
 def test_agent_response_contract_is_vendor_neutral() -> None:

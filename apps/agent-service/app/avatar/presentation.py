@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from ..domain.models import AgentResponse, ProviderResult
@@ -31,7 +32,10 @@ class PresentationLayer:
 
     async def present(self, runtime: AvatarProvider, response: AgentResponse) -> ProviderResult:
         if self.publisher is not None:
-            await self.publisher.publish(topic="presentation", payload=response.model_dump(mode="json", by_alias=True))
+            task = asyncio.create_task(
+                self.publisher.publish(topic="presentation", payload=response.model_dump(mode="json", by_alias=True))
+            )
+            task.add_done_callback(_consume_task)
         result = await send_text(runtime, response)
         result.metadata = {
             **result.metadata,
@@ -39,6 +43,13 @@ class PresentationLayer:
             "performance": response.performance,
         }
         return result
+
+
+def _consume_task(task: asyncio.Task[object]) -> None:
+    try:
+        task.result()
+    except BaseException:
+        return
 
 
 class ProviderRuntime:
