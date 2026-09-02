@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -40,11 +40,19 @@ class SessionResponse(BaseModel):
     client_params: dict[str, Any] = Field(default_factory=dict, alias="clientParams")
 
 
+class ChatHistoryMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
 class ChatRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     session_id: str = Field(alias="sessionId", min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=4000)
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=12)
 
 
 class ProfilePatch(BaseModel):

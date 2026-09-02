@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.messaging.reliable_bus import ReliableMessageBus
@@ -19,3 +21,8 @@ def test_dead_letter_names_are_stable() -> None:
     bus = ReliableMessageBus(exchange='ican.agent', queue='digital-human.presentation.v2')
     assert bus.dead_letter_exchange == 'ican.agent.dlx'
     assert bus.dead_letter_queue == 'digital-human.presentation.v2.dead'
+
+
+def test_existing_quorum_queue_declaration_does_not_pin_delivery_limit() -> None:
+    source = Path(__file__).parents[1].joinpath('app/messaging/reliable_bus.py').read_text(encoding='utf-8')
+    assert '"x-delivery-limit":' not in source

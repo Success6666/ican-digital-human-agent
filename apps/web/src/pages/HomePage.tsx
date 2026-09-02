@@ -1,5 +1,5 @@
 import { History } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { useAvatar } from '../features/avatar/model'
 import type { useChat } from '../features/chat/model'
 import type { useRealtimeSession } from '../features/realtime/model'
@@ -20,6 +20,20 @@ interface HomePageProps {
 
 export function HomePage({ avatar, chat, realtime, visible = true }: HomePageProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerMessages, setDrawerMessages] = useState(chat.messages)
+  const [drawerConversations, setDrawerConversations] = useState(chat.conversations)
+  const chatActionsRef = useRef({
+    clear: chat.clear,
+    newConversation: chat.newConversation,
+    selectConversation: chat.selectConversation,
+    deleteConversation: chat.deleteConversation,
+  })
+  chatActionsRef.current = {
+    clear: chat.clear,
+    newConversation: chat.newConversation,
+    selectConversation: chat.selectConversation,
+    deleteConversation: chat.deleteConversation,
+  }
   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
   const [avatarSpeaking, setAvatarSpeaking] = useState(false)
@@ -45,6 +59,32 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
     return () => window.clearTimeout(timer)
   }, [avatar.session?.sessionId, realtime.connect, realtime.disconnect])
 
+  const openConversationDrawer = useCallback(() => {
+    setDrawerMessages(chat.messages.map((message) => ({ ...message, pending: false, statusText: undefined })))
+    setDrawerConversations(chat.conversations.map((conversation) => ({
+      ...conversation,
+      messages: conversation.messages.map((message) => ({ ...message, pending: false, statusText: undefined })),
+    })))
+    setDrawerOpen(true)
+  }, [chat.conversations, chat.messages])
+  const closeConversationDrawer = useCallback(() => setDrawerOpen(false), [])
+  const clearConversationDrawer = useCallback(() => {
+    chatActionsRef.current.clear()
+    setDrawerMessages([])
+  }, [])
+  const newConversationFromDrawer = useCallback(() => {
+    chatActionsRef.current.newConversation()
+    setDrawerOpen(false)
+  }, [])
+  const selectConversationFromDrawer = useCallback((conversationId: string) => {
+    chatActionsRef.current.selectConversation(conversationId)
+    setDrawerOpen(false)
+  }, [])
+  const deleteConversationFromDrawer = useCallback((conversationId: string) => {
+    chatActionsRef.current.deleteConversation(conversationId)
+    setDrawerConversations((current) => current.filter((conversation) => conversation.id !== conversationId))
+  }, [])
+
   return (
     <div className="page-stack home-page">
       <main className="home-reference-stage">
@@ -53,7 +93,7 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           visible={visible}
           isCreating={avatar.isCreating}
           speech={activeSpeech}
-          interruptKey={latestUser?.id}
+          interruptKey={avatarSpeaking ? latestUser?.id : undefined}
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}
           onDisconnect={() => void avatar.close()}
@@ -61,11 +101,21 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           onReadyChange={setAvatarReady}
         />
         <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarReady={avatarReady} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} />
-        <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
+        <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={openConversationDrawer}>
           <History size={18} />
         </button>
       </main>
-      <ConversationDrawer open={drawerOpen} messages={chat.messages} onClose={() => setDrawerOpen(false)} onClear={chat.clear} />
+      <ConversationDrawer
+        open={drawerOpen}
+        messages={drawerMessages}
+        conversations={drawerConversations}
+        activeConversationId={chat.activeConversationId}
+        onClose={closeConversationDrawer}
+        onClear={clearConversationDrawer}
+        onNew={newConversationFromDrawer}
+        onSelect={selectConversationFromDrawer}
+        onDelete={deleteConversationFromDrawer}
+      />
     </div>
   )
 }

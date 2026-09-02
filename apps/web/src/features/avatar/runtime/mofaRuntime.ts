@@ -2,6 +2,7 @@ import type { AvatarClientParams } from '../../../shared/api/types'
 import type { AvatarPerformanceCue } from '../../../shared/api/types'
 import type { AvatarRuntimeStatus, BrowserAvatarRuntime } from './browserRuntime'
 import { buildMofaSpeechRequest } from './mofaSpeech'
+import { createRuntimeId } from './runtimeId'
 import { loadExternalScript } from './scriptLoader'
 
 interface XmovAvatarInstance {
@@ -67,13 +68,15 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     // The SDK renders a 1080x1920 portrait canvas. Fit the complete avatar
     // inside the conversation stage instead of clipping the head at the top.
     const avatarScale = Math.min(0.36, Math.max(0.28, (height / 1920) * 0.98))
-    let markRendered!: () => void
-    const firstFrame = new Promise<void>((resolve) => { markRendered = resolve })
+    let signalFirstFrame!: () => void
+    const firstFrame = new Promise<void>((resolve) => { signalFirstFrame = resolve })
+    let initialized = false
     let rendered = false
     const markReady = () => {
+      signalFirstFrame()
+      if (!initialized) return
       if (rendered) return
       rendered = true
-      markRendered()
       onStatus({ phase: 'ready', progress: 100, message: '数字人已连接' })
     }
 
@@ -160,7 +163,10 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       },
       onClose: () => onStatus({ phase: 'error', message: '数字人连接已断开，请重新连接' }),
     }))
-    await withTimeout(Promise.race([initPromise, firstFrame]), 60_000)
+    await withTimeout(initPromise, 60_000)
+    initialized = true
+    await Promise.race([firstFrame, delay(2_000)])
+    await waitForStablePaint()
     markReady()
     if (this.invisible) this.applyVisibility()
   }
@@ -259,16 +265,20 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       })
       .finally(() => {
         if (this.speechWorker === worker) this.speechWorker = undefined
-        if (this.speechQueue.length && this.avatar) void this.ensureSpeechWorker()
+        if (this.avatar && this.speechQueue.length && this.canDrainSpeechQueue()) void this.ensureSpeechWorker()
       })
     this.speechWorker = worker
     return worker
   }
 
+  private canDrainSpeechQueue(): boolean {
+    return this.speechFlushRequested || this.speechQueue.length > 1 || Boolean(this.speechBuffer.trim())
+  }
+
   private async speakChunk(text: string, presentation: AvatarPerformanceCue | undefined, generation: number, isStart: boolean, isEnd: boolean): Promise<void> {
     if (!this.avatar || generation !== this.speechGeneration) return
     const request = buildMofaSpeechRequest(text, presentation)
-    const clientSpeakId = crypto.randomUUID()
+    const clientSpeakId = createRuntimeId()
     const extra = { client_speak_id: clientSpeakId, ...request.extra }
     let completion: Promise<void> | undefined
     let timer = 0
@@ -315,7 +325,7 @@ function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {
 }
 
 function ensureContainerId(host: HTMLElement): string {
-  if (!host.id) host.id = `mofa-avatar-${crypto.randomUUID()}`
+  if (!host.id) host.id = `mofa-avatar-${createRuntimeId()}`
   return host.id
 }
 
@@ -366,4 +376,13 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
     timer = window.setTimeout(() => reject(new Error('数字人初始化超时')), timeoutMs)
   })
   try { return await Promise.race([operation, timeout]) } finally { window.clearTimeout(timer) }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
+
+async function waitForStablePaint(): Promise<void> {
+  await delay(600)
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())))
 }

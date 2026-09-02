@@ -1,5 +1,5 @@
 import { AlertCircle, LoaderCircle, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { AvatarPerformanceCue, AvatarSession } from '../../../shared/api/types'
 import type { AvatarRuntimeStatus, BrowserAvatarRuntime } from './browserRuntime'
 import { MofaBrowserRuntime } from './mofaRuntime'
@@ -14,7 +14,7 @@ interface AvatarRuntimeSurfaceProps {
   onReadyChange?: (ready: boolean) => void
 }
 
-export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange, onReadyChange }: AvatarRuntimeSurfaceProps) {
+export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange, onReadyChange }: AvatarRuntimeSurfaceProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<BrowserAvatarRuntime>()
   const spokenMessageRef = useRef<string>()
@@ -46,9 +46,11 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = 
       onSpeakingChange?.(next.phase === 'speaking')
       onReadyChange?.(next.phase === 'ready' || next.phase === 'speaking')
       if (next.phase === 'ready') window.setTimeout(() => { if (active) saveAvatarPreview(host, session.provider) }, 3_000)
-    }).catch(() => {
+    }).catch((cause) => {
       if (active) {
-        setStatus({ phase: 'error', message: '魔珐数字人连接失败，请检查网络和应用配置' })
+        const detail = cause instanceof Error ? cause.message : '未知初始化错误'
+        console.error('[Mofa Runtime] connect failed', cause)
+        setStatus({ phase: 'error', message: `魔珐数字人连接失败：${detail}` })
         onReadyChange?.(false)
       }
     })
@@ -98,4 +100,4 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = 
       )}
     </div>
   )
-}
+})

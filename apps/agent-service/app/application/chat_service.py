@@ -47,13 +47,17 @@ class ChatApplicationService:
         self.response_cache = response_cache
         self.cache_model = cache_model
 
-    async def send(self, *, user_id: str, user_name: str, session_id: str, message: str, tenant_id: str = "default") -> ChatResult:
+    async def send(
+        self, *, user_id: str, user_name: str, session_id: str, message: str,
+        history: list[dict[str, str]] | None = None, tenant_id: str = "default",
+    ) -> ChatResult:
         clean = self._validate(message)
         await self.sessions.get_for_user(user_id=user_id, session_id=session_id)
         run_id = await self.sessions.begin_run(user_id=user_id, session_id=session_id)
         started = time.perf_counter()
         preferences = await self._preferences(tenant_id=tenant_id, user_id=user_id)
-        cache_key = self._cache_key(tenant_id, user_id, clean, preferences)
+        request_context = self._request_context(preferences, history)
+        cache_key = self._cache_key(tenant_id, user_id, clean, preferences, history)
         try:
             async def compute() -> ChatResult:
                 return await self.graph.invoke(
@@ -62,7 +66,7 @@ class ChatApplicationService:
                     session_id=session_id,
                     message=clean,
                     run_id=run_id,
-                    profile_context=self._profile_context(preferences),
+                    profile_context=request_context,
                 )
             if self.response_cache is not None and cache_key:
                 result, cache_hit = await self.response_cache.get_or_compute(cache_key, compute)
@@ -99,6 +103,7 @@ class ChatApplicationService:
         session_id: str,
         message: str,
         run_id: str | None = None,
+        history: list[dict[str, str]] | None = None,
         tenant_id: str = "default",
     ) -> AsyncIterator[dict[str, Any]]:
         clean = self._validate(message)
@@ -113,7 +118,8 @@ class ChatApplicationService:
         if not run_id:
             raise InvalidMessageError("session is not available")
         preferences = await self._preferences(tenant_id=tenant_id, user_id=user_id)
-        cache_key = self._cache_key(tenant_id, user_id, clean, preferences)
+        request_context = self._request_context(preferences, history)
+        cache_key = self._cache_key(tenant_id, user_id, clean, preferences, history)
         if self.response_cache is not None and cache_key:
             cached = await self.response_cache.get(cache_key)
             if cached is not None:
@@ -124,7 +130,7 @@ class ChatApplicationService:
             session_id=session_id,
             message=clean,
             run_id=run_id,
-            profile_context=self._profile_context(preferences),
+            profile_context=request_context,
             cache_key=cache_key,
         )
 
@@ -259,11 +265,19 @@ class ChatApplicationService:
             return {}
         return await self.profile_store.get(tenant_id=tenant_id, user_id=user_id)
 
-    def _cache_key(self, tenant_id: str, user_id: str, message: str, preferences: dict[str, str]) -> str | None:
+    def _cache_key(
+        self, tenant_id: str, user_id: str, message: str, preferences: dict[str, str],
+        history: list[dict[str, str]] | None = None,
+    ) -> str | None:
         if self.response_cache is None:
             return None
         profile_version = hashlib.sha256(
-            json.dumps(preferences, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            json.dumps(
+                {"preferences": preferences, "history": history or []},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
         ).hexdigest()[:16]
         return self.response_cache.key(
             tenant_id=tenant_id,
@@ -276,6 +290,24 @@ class ChatApplicationService:
     @staticmethod
     def _profile_context(preferences: dict[str, str]) -> str:
         return "; ".join(f"{key}={value}" for key, value in sorted(preferences.items()))[:1200]
+
+    @classmethod
+    def _request_context(
+        cls, preferences: dict[str, str], history: list[dict[str, str]] | None,
+    ) -> str:
+        sections: list[str] = []
+        profile = cls._profile_context(preferences)
+        if profile:
+            sections.append(f"用户沟通偏好：{profile}")
+        turns: list[str] = []
+        for item in (history or [])[-12:]:
+            role = "用户" if item.get("role") == "user" else "助手"
+            content = str(item.get("content") or "").strip().replace("\n", " ")[:600]
+            if content:
+                turns.append(f"{role}：{content}")
+        if turns:
+            sections.append("最近对话（仅作为本轮上下文）：\n" + "\n".join(turns))
+        return "\n".join(sections)[:4000]
 
     async def _cached_stream_events(self, result: ChatResult, *, session_id: str, run_id: str) -> AsyncIterator[dict[str, Any]]:
         trace_id = uuid.uuid4().hex

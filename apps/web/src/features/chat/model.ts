@@ -7,6 +7,7 @@ import { presentStreamEvent, type StreamEventState } from './streamEventPresente
 import { recoverableStreamMessage, streamFailureAction } from './streamRecovery'
 import { normalizeToolCall, toolDetail } from './streamPresentation'
 import { AssistantDeltaBatcher } from './deltaBatch'
+import { createConversation, readConversations, writeConversations } from './conversationStore'
 
 export interface ChatMessage {
   id: string
@@ -29,11 +30,23 @@ export interface TimelineItem {
   seq?: number
 }
 
+export interface ChatConversation {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messages: ChatMessage[]
+}
+
 const id = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 const MAX_TIMELINE_ITEMS = 400
+const MAX_CONTEXT_MESSAGES = 12
+const HISTORY_WRITE_DELAY_MS = 240
 
-export function useChat(session: AvatarSession | null) {
+export function useChat(session: AvatarSession | null, accountId?: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [conversations, setConversations] = useState<ChatConversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [isSending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,6 +55,61 @@ export function useChat(session: AvatarSession | null) {
   const activeSessionIdRef = useRef<string | null>(null)
   const activeRunIdRef = useRef<string | null>(null)
   const interruptRef = useRef<{ sessionId: string; runId?: string; promise: Promise<void> } | null>(null)
+  const messagesRef = useRef<ChatMessage[]>([])
+  const activeConversationIdRef = useRef<string | null>(null)
+  const historyReadyRef = useRef(false)
+  const historyWriteTimerRef = useRef<number | null>(null)
+
+  useEffect(() => { messagesRef.current = messages }, [messages])
+  useEffect(() => { activeConversationIdRef.current = activeConversationId }, [activeConversationId])
+
+  useEffect(() => {
+    if (historyWriteTimerRef.current !== null) window.clearTimeout(historyWriteTimerRef.current)
+    historyReadyRef.current = false
+    if (!accountId) {
+      setConversations([])
+      setActiveConversationId(null)
+      setMessages([])
+      return
+    }
+    const stored = readConversations(accountId)
+    const initial = stored[0] ?? createConversation()
+    const next = stored.length ? stored : [initial]
+    setConversations(next)
+    setActiveConversationId(initial.id)
+    setMessages(initial.messages)
+    historyReadyRef.current = true
+    if (!stored.length) writeConversations(accountId, next)
+    return () => {
+      if (historyWriteTimerRef.current !== null) window.clearTimeout(historyWriteTimerRef.current)
+    }
+  }, [accountId])
+
+  useEffect(() => {
+    if (!historyReadyRef.current || !accountId || !activeConversationId) return
+    if (historyWriteTimerRef.current !== null) window.clearTimeout(historyWriteTimerRef.current)
+    const snapshot = messages.map((message) => ({ ...message, pending: false, statusText: undefined }))
+    historyWriteTimerRef.current = window.setTimeout(() => {
+      setConversations((current) => {
+        const existing = current.find((item) => item.id === activeConversationId) ?? createConversation()
+        const firstUser = snapshot.find((message) => message.role === 'user' && message.content.trim())
+        const updated: ChatConversation = {
+          ...existing,
+          id: activeConversationId,
+          title: firstUser?.content.trim().slice(0, 32) || existing.title,
+          updatedAt: new Date().toISOString(),
+          messages: snapshot,
+        }
+        const next = [updated, ...current.filter((item) => item.id !== activeConversationId)]
+        writeConversations(accountId, next)
+        return next
+      })
+      historyWriteTimerRef.current = null
+    }, HISTORY_WRITE_DELAY_MS)
+    return () => {
+      if (historyWriteTimerRef.current !== null) window.clearTimeout(historyWriteTimerRef.current)
+    }
+  }, [accountId, activeConversationId, messages])
 
   const requestInterrupt = useCallback((sessionId: string, runId?: string): Promise<void> => {
     const current = interruptRef.current
@@ -66,7 +134,6 @@ export function useChat(session: AvatarSession | null) {
     activeSessionIdRef.current = session?.sessionId ?? null
     activeRunIdRef.current = null
     setSending(false)
-    setMessages([])
     setTimeline([])
     setError(null)
 
@@ -169,8 +236,13 @@ export function useChat(session: AvatarSession | null) {
       }
     }
 
+    const history = messagesRef.current
+      .filter((item) => !item.pending && (item.role === 'user' || item.role === 'assistant') && item.content.trim())
+      .slice(-MAX_CONTEXT_MESSAGES)
+      .map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content.trim().slice(0, 2000) }))
+
     try {
-      await chatApi.streamChat({ sessionId, message }, onEvent, controller.signal)
+      await chatApi.streamChat({ sessionId, message, history }, onEvent, controller.signal)
       if (!isCurrentTurn()) return
       const action = streamFailureAction({ executionStarted: eventState.executionStarted, preExecutionError: eventState.preExecutionError, terminal: eventState.sawTerminal || eventState.sawInterrupted, aborted: controller.signal.aborted })
       if (action === 'fallback') {
@@ -222,7 +294,7 @@ export function useChat(session: AvatarSession | null) {
       if (!isCurrentTurn()) return
       try {
         addTimeline({ type: 'info', title: '流式连接未开始执行，切换同步响应' })
-        const response = await chatApi.sendChat({ sessionId, message }, controller.signal)
+        const response = await chatApi.sendChat({ sessionId, message, history }, controller.signal)
         if (!isCurrentTurn()) return
         if (response.runId) activeRunIdRef.current = response.runId
         updateAssistant(assistantId, { content: response.reply, pending: false, statusText: undefined, traceId: response.traceId, presentation: response.agentResponse?.presentation ?? response.agentResponse?.performance })
@@ -268,5 +340,47 @@ export function useChat(session: AvatarSession | null) {
     setError(null)
   }, [requestInterrupt, session])
 
-  return { messages, timeline, isSending, error, sendMessage, stop, clear, formatTime }
+  const newConversation = useCallback(() => {
+    stop()
+    const next = createConversation()
+    activeConversationIdRef.current = next.id
+    setActiveConversationId(next.id)
+    setMessages([])
+    setTimeline([])
+    setError(null)
+    setConversations((current) => {
+      const records = [next, ...current]
+      if (accountId) writeConversations(accountId, records)
+      return records
+    })
+  }, [accountId, stop])
+
+  const selectConversation = useCallback((conversationId: string) => {
+    const target = conversations.find((item) => item.id === conversationId)
+    if (!target || target.id === activeConversationIdRef.current) return
+    stop()
+    activeConversationIdRef.current = target.id
+    setActiveConversationId(target.id)
+    setMessages(target.messages.map((message) => ({ ...message, pending: false, statusText: undefined })))
+    setTimeline([])
+    setError(null)
+  }, [conversations, stop])
+
+  const deleteConversation = useCallback((conversationId: string) => {
+    const remaining = conversations.filter((item) => item.id !== conversationId)
+    let nextRecords = remaining
+    if (!remaining.length) nextRecords = [createConversation()]
+    if (activeConversationIdRef.current === conversationId) {
+      stop()
+      const next = nextRecords[0]
+      activeConversationIdRef.current = next.id
+      setActiveConversationId(next.id)
+      setMessages(next.messages)
+      setTimeline([])
+    }
+    setConversations(nextRecords)
+    if (accountId) writeConversations(accountId, nextRecords)
+  }, [accountId, conversations, stop])
+
+  return { messages, conversations, activeConversationId, timeline, isSending, error, sendMessage, stop, clear, newConversation, selectConversation, deleteConversation, formatTime }
 }

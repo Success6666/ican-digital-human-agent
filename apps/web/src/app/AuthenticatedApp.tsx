@@ -14,7 +14,7 @@ import { pageAllowedForRole, pageFromHash, pageToHash, type PageKey } from '../s
 export function AuthenticatedApp() {
   const { user, logout } = useAuth()
   const avatar = useAvatar()
-  const chat = useChat(avatar.session)
+  const chat = useChat(avatar.session, user?.id)
   const realtime = useRealtimeSession(avatar.session, { onInterrupt: chat.stop })
   const [page, setPage] = useState<PageKey>(() => pageFromHash(window.location.hash))
 

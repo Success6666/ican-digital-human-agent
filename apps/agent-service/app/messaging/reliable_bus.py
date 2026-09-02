@@ -69,7 +69,6 @@ class ReliableMessageBus:
                     "x-max-length": 10_000,
                     "x-overflow": "reject-publish-dlx",
                     "x-queue-type": "quorum",
-                    "x-delivery-limit": self.retry_limit + 1,
                 },
             )
             await queue.bind(exchange, routing_key=envelope["topic"])

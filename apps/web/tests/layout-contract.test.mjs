@@ -8,6 +8,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const css = fs.readFileSync(path.resolve(here, '../src/pages/pages.css'), 'utf8')
 const homeCss = fs.readFileSync(path.resolve(here, '../src/pages/home-reference.css'), 'utf8')
 const app = fs.readFileSync(path.resolve(here, '../src/app/AuthenticatedApp.tsx'), 'utf8')
+const homePage = fs.readFileSync(path.resolve(here, '../src/pages/HomePage.tsx'), 'utf8')
 const runtimeSurface = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/AvatarRuntimeSurface.tsx'), 'utf8')
 const mofaRuntime = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/mofaRuntime.ts'), 'utf8')
 const drawer = fs.readFileSync(path.resolve(here, '../src/features/chat/components/ConversationDrawer.tsx'), 'utf8')
@@ -30,6 +31,7 @@ test('avatar rendering layer cannot intercept conversation controls', () => {
   assert.match(homeCss, /\.avatar-runtime-host\s*\{[^}]*pointer-events:\s*none/)
   assert.match(homeCss, /\.avatar-runtime-shell\s*\{[^}]*pointer-events:\s*none/)
   assert.match(homeCss, /\.home-conversation-bar\s*\{[^}]*z-index:\s*20[^}]*pointer-events:\s*auto/)
+  assert.match(runtimeSurface, /export const AvatarRuntimeSurface = memo\(function AvatarRuntimeSurface/)
 })
 
 test('home workspace owns the full console viewport', () => {
@@ -50,9 +52,16 @@ test('avatar runtime uses invisible mode instead of rebuilding the SDK', () => {
   assert.match(mofaRuntime, /current\.destroy\('component_unmounted'\)/)
 })
 
-test('conversation drawer defers stream updates and memoizes stable messages', () => {
-  assert.match(drawer, /useDeferredValue\(messages\)/)
-  assert.match(drawer, /deferredMessages\.map\(/)
+test('avatar canvas avoids backdrop filters that trigger full-stage recomposition', () => {
+  assert.doesNotMatch(homeCss, /backdrop-filter/)
+})
+
+test('conversation drawer snapshots stream updates and memoizes stable messages', () => {
+  assert.match(homePage, /setDrawerMessages\(chat\.messages\.map\(/)
+  assert.match(homePage, /chatActionsRef = useRef/)
+  assert.match(drawer, /export const ConversationDrawer = memo\(ConversationDrawerView\)/)
   assert.match(messageBubble, /memo\(function MessageBubble/)
-  assert.match(homeCss, /\.conversation-drawer-list\s*\{[^}]*contain:\s*content[^}]*content-visibility:\s*auto/)
+  assert.doesNotMatch(drawer, /conversation-drawer-backdrop/)
+  assert.match(homeCss, /\.conversation-drawer\s*\{[^}]*contain:\s*layout paint/)
+  assert.doesNotMatch(homeCss, /content-visibility:\s*auto/)
 })

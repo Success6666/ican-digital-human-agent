@@ -17,6 +17,10 @@ docker compose up --build
 
 浏览器访问 `http://localhost:8088`。演示账号：`demo/demo123`。
 
+WireGuard 公网入口保留 `http://39.97.253.99:6666`；浏览器和手机请使用
+`https://39.97.253.99:16666`。16666 使用可信 IP 证书和 WSS，证书由
+`deploy/certbot/ican-ip-renew.cron` 定时续期；云安全组需放行 TCP 16666。
+
 生产环境将 `ENVIRONMENT` 设置为 `production`，并为 Agent、MCP 和认证网关提供至少 32
 字符的随机内部令牌；公开占位值会被启动校验拒绝。HTTPS 部署时将
 `AUTH_COOKIE_SECURE=true`，认证 Cookie 默认使用 `HttpOnly` 和 `SameSite=Lax`。

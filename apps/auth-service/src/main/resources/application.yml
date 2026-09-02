@@ -41,4 +41,4 @@ agent:
   realtime-max-connections: ${AGENT_REALTIME_MAX_CONNECTIONS:256}
 
 security:
-  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8088,http://127.0.0.1:8088}
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8088,http://127.0.0.1:8088,http://39.97.253.99:16666,https://39.97.253.99:16666}

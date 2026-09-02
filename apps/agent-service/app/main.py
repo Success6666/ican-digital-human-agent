@@ -308,7 +308,7 @@ def create_app(
                 await app.state.container.response_cache.close()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.41", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.42", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

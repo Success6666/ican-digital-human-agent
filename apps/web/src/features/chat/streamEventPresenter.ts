@@ -51,7 +51,6 @@ export function presentStreamEvent(
     context.updateAssistant(context.assistantId, { presentation: event.performance })
     const filler = eventText(event)
     const statusText = filler ? sanitizeDisplayText(filler, 180) : performanceText(event)
-    if (statusText && !state.accumulated) context.updateAssistant(context.assistantId, { statusText })
     context.addTimeline({ type: 'filler', title: '数字人正在思考', detail: statusText, seq: event.seq })
     return
   }

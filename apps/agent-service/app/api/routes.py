@@ -32,7 +32,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.41")
+    return HealthResponse(service=container.settings.service_name, version="0.1.42")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -136,6 +136,7 @@ async def chat(payload: ChatRequest, context: InternalContext, request: Request)
             user_name=context["user_name"],
             session_id=payload.session_id,
             message=payload.message,
+            history=[item.model_dump(mode="json") for item in payload.history],
             tenant_id=context.get("tenant_id", "default"),
         )
     except ApplicationError as exc:
@@ -152,6 +153,7 @@ async def chat_stream(payload: ChatRequest, context: InternalContext, request: R
             user_name=context["user_name"],
             session_id=payload.session_id,
             message=payload.message,
+            history=[item.model_dump(mode="json") for item in payload.history],
             tenant_id=context.get("tenant_id", "default"),
         )
     except ApplicationError as exc:

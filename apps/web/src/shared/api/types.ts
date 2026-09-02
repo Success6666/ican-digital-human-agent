@@ -93,6 +93,10 @@ export interface ToolCall {
 export interface ChatRequest {
   sessionId: string
   message: string
+  history?: Array<{
+    role: 'user' | 'assistant'
+    content: string
+  }>
 }
 
 export interface ChatResponse {

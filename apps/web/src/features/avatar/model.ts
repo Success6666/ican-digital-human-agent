@@ -42,6 +42,8 @@ export function useAvatar() {
   const [providers, setProviders] = useState<ProviderStatus[]>([])
   const [selectedProvider, setSelectedProvider] = useState<ProviderName>('mock')
   const [session, setSession] = useState<AvatarSession | null>(null)
+  const sessionRef = useRef<AvatarSession | null>(null)
+  const createInFlightRef = useRef<Promise<AvatarSession> | null>(null)
   const selectionInitializedRef = useRef(false)
   const [isLoading, setLoading] = useState(true)
   const [isCreating, setCreating] = useState(false)
@@ -71,28 +73,48 @@ export function useAvatar() {
 
   useEffect(() => { void loadProviders() }, [loadProviders])
 
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
+
   const create = useCallback(async (provider?: ProviderName) => {
+    if (createInFlightRef.current) return createInFlightRef.current
     setCreating(true)
     setError(null)
-    try {
-      if (session) await avatarApi.closeSession(session.sessionId).catch(() => undefined)
-      const next = await avatarApi.createSession(provider)
-      setSession(next)
-      selectionInitializedRef.current = true
-      setSelectedProvider(next.provider)
-      return next
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '会话创建失败'
-      setError(message)
-      throw cause
-    } finally {
-      setCreating(false)
-    }
-  }, [session])
+    const request = (async () => {
+      try {
+        const current = sessionRef.current
+        if (current) await avatarApi.closeSession(current.sessionId).catch(() => undefined)
+        const next = await avatarApi.createSession(provider)
+        sessionRef.current = next
+        setSession(next)
+        selectionInitializedRef.current = true
+        setSelectedProvider(next.provider)
+        return next
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : '会话创建失败'
+        setError(message)
+        throw cause
+      }
+    })()
+    createInFlightRef.current = request
+    void request.then(
+      () => {
+        if (createInFlightRef.current === request) createInFlightRef.current = null
+        setCreating(false)
+      },
+      () => {
+        if (createInFlightRef.current === request) createInFlightRef.current = null
+        setCreating(false)
+      },
+    )
+    return request
+  }, [])
 
   const close = useCallback(async () => {
     if (!session) return
     const current = session
+    sessionRef.current = null
     setSession(null)
     try {
       await avatarApi.closeSession(current.sessionId)

@@ -42,4 +42,27 @@ test('streams avatar sentence chunks without reopening every sentence', async ()
   assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, isEnd, extra\)/)
   assert.match(runtime, /const isEnd = this\.speechFlushRequested && this\.speechQueue\.length === 0/)
   assert.match(runtime, /if \(!this\.speechFlushRequested && this\.speechQueue\.length === 1 && !this\.speechBuffer\.trim\(\)\) break/)
+  assert.match(runtime, /await withTimeout\(initPromise, 60_000\)/)
+  assert.match(runtime, /await waitForStablePaint\(\)/)
+  assert.doesNotMatch(runtime, /Promise\.race\(\[initPromise, firstFrame\]\)/)
+  assert.match(runtime, /this\.speechQueue\.length && this\.canDrainSpeechQueue\(\)/)
+  assert.match(runtime, /return this\.speechFlushRequested \|\| this\.speechQueue\.length > 1 \|\| Boolean\(this\.speechBuffer\.trim\(\)\)/)
+})
+
+test('generates runtime ids when randomUUID is unavailable on public HTTP', async () => {
+  const runtimeIdPath = fileURLToPath(new URL('../src/features/avatar/runtime/runtimeId.ts', import.meta.url))
+  const runtimeIdSource = await readFile(runtimeIdPath, 'utf8')
+  const runtimeIdOutput = ts.transpileModule(runtimeIdSource, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext },
+  }).outputText
+  const runtimeIdModule = await import(`data:text/javascript;base64,${Buffer.from(runtimeIdOutput).toString('base64')}`)
+  let next = 0
+  const source = {
+    getRandomValues(buffer) {
+      for (let index = 0; index < buffer.length; index += 1) buffer[index] = next++
+      return buffer
+    },
+  }
+  const id = runtimeIdModule.createRuntimeId(source)
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/)
 })

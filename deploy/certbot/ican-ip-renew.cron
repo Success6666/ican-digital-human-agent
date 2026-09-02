@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/opt/certbot-ip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+17 */6 * * * root certbot renew --quiet --deploy-hook "/www/server/nginx/sbin/nginx -t && /www/server/nginx/sbin/nginx -s reload"

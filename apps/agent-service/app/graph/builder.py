@@ -200,7 +200,7 @@ def build_graph(
         context_texts: list[str] = []
         profile_context = str(state.get("profile_context") or "").strip()
         if profile_context:
-            context_texts.append(f"用户沟通偏好（仅用于本次回复）：{profile_context[:1200]}")
+            context_texts.append(profile_context[:4000])
         if hits:
             references = []
             for item in hits[:3]:
