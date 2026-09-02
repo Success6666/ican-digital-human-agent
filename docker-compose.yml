@@ -43,6 +43,31 @@ services:
       retries: 12
     restart: unless-stopped
 
+  asr-service:
+    build:
+      context: ./apps/asr-service
+    environment:
+      ASR_MODEL_DIR: /models
+      ASR_MODEL_SIZE: ${ASR_MODEL_SIZE:-tiny}
+      ASR_DEVICE: ${ASR_DEVICE:-auto}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-auto}
+      ASR_LANGUAGE: zh
+      ASR_BEAM_SIZE: ${ASR_BEAM_SIZE:-1}
+      ASR_MAX_AUDIO_BYTES: ${ASR_MAX_AUDIO_BYTES:-10485760}
+      ASR_INTERNAL_TOKEN: ${ASR_INTERNAL_TOKEN:-dev-asr-token}
+    expose:
+      - "7000"
+    volumes:
+      - asr-model-cache:/models
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:7000/health', timeout=3)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+    restart: unless-stopped
+
   agent-service:
     build:
       context: ./apps/agent-service
@@ -69,9 +94,9 @@ services:
       RABBITMQ_MAX_IN_FLIGHT: ${RABBITMQ_MAX_IN_FLIGHT:-512}
       RABBITMQ_PREFETCH_COUNT: ${RABBITMQ_PREFETCH_COUNT:-256}
       RABBITMQ_RETRY_LIMIT: ${RABBITMQ_RETRY_LIMIT:-3}
-      HTTP_ASR_ENDPOINT: ${HTTP_ASR_ENDPOINT:-}
-      HTTP_ASR_API_KEY: ${HTTP_ASR_API_KEY:-}
-      HTTP_ASR_TIMEOUT_SECONDS: ${HTTP_ASR_TIMEOUT_SECONDS:-8}
+      HTTP_ASR_ENDPOINT: ${HTTP_ASR_ENDPOINT:-http://asr-service:7000/transcribe}
+      HTTP_ASR_API_KEY: ${HTTP_ASR_API_KEY:-${ASR_INTERNAL_TOKEN:-dev-asr-token}}
+      HTTP_ASR_TIMEOUT_SECONDS: ${HTTP_ASR_TIMEOUT_SECONDS:-30}
       HTTP_ASR_MAX_RESPONSE_BYTES: ${HTTP_ASR_MAX_RESPONSE_BYTES:-1048576}
       HTTP_TTS_ENDPOINT: ${HTTP_TTS_ENDPOINT:-}
       HTTP_TTS_API_KEY: ${HTTP_TTS_API_KEY:-}
@@ -183,6 +208,8 @@ services:
     depends_on:
       mcp-server:
         condition: service_healthy
+      asr-service:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
@@ -257,5 +284,6 @@ networks:
 volumes:
   agent-runtime-config:
   agent-model-cache:
+  asr-model-cache:
   rabbitmq-data:
   redis-data:

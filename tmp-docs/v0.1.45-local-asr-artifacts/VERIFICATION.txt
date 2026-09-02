@@ -1,0 +1,45 @@
+v0.1.45 本地中文 ASR 验收记录
+
+变更对象：apps/asr-service/app.py、docker-compose.yml、docker-compose.gpu.yml、Agent ASR 配置与版本元数据。
+派生文件：MODIFIED_FILE 为修改副本，DIFF_FILE 为副本差异，ROLLBACK.sh 为回滚脚本。
+
+BASELINE
+命令：python -m py_compile apps/asr-service/app.py
+结果：编译通过（无输出）
+退出状态：0
+
+MODIFIED
+命令：docker build --progress=plain -t ican-digital-human-asr-service:latest apps/asr-service
+结果：镜像构建完成，镜像大小约 836MB。
+退出状态：0
+
+命令：docker compose -f docker-compose.yml -f docker-compose.gpu.yml config --quiet
+结果：Compose 配置有效。
+退出状态：0
+
+命令：docker compose -f docker-compose.yml -f docker-compose.gpu.yml ps asr-service agent-service
+结果：asr-service 与 agent-service 均为 Up (healthy)。
+退出状态：0
+
+命令：docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec -T asr-service python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:7000/health').read().decode())"
+结果：{"status":"ok","service":"local-asr","model":"tiny","language":"zh","device":"cuda","computeType":"float16","modelLoaded":true,"loadError":null}
+退出状态：0
+
+命令：docker compose exec -T asr-service python3 -c "import urllib.request; req=urllib.request.Request('http://127.0.0.1:7000/transcribe',data=b'\\x00'*640,headers={'Authorization':'Bearer dev-asr-token','Content-Type':'audio/pcm;rate=16000;channels=1'}); print(urllib.request.urlopen(req,timeout=60).read().decode())"
+结果：{"text":"","language":"zh","device":"cpu"}（CUDA 动态库缺失时自动回退 CPU，静音输入返回空文本）
+退出状态：0
+
+命令：$env:PYTHONPATH='apps/agent-service'; python -m pytest apps/agent-service/tests/test_media_adapters.py apps/agent-service/tests/test_realtime_audio.py apps/agent-service/tests/test_realtime_protocol.py apps/agent-service/tests/test_realtime_ws.py
+结果：20 passed。
+退出状态：0
+
+命令：$env:PYTHONPATH='apps/agent-service'; python -m pytest apps/agent-service/tests/test_settings.py apps/agent-service/tests/test_media_adapters.py
+结果：30 passed。
+退出状态：0
+
+ROLLBACK
+命令：bash tmp-docs/v0.1.45-local-asr-artifacts/ROLLBACK.sh tmp-docs/v0.1.45-local-asr-artifacts/BASELINE_FILE tmp-docs/v0.1.45-local-asr-artifacts/ROLLBACK_TEST_FILE
+结果：restored=tmp-docs/v0.1.45-local-asr-artifacts/ROLLBACK_TEST_FILE；baseline_hash=7CF84094CBA7E2B0793E2F671464285433C47B3C1072A675B751C235FE1F20D7；rollback_hash=7CF84094CBA7E2B0793E2F671464285433C47B3C1072A675B751C235FE1F20D7；restored=True；rollback_compare_exit=0
+退出状态：0
+
+恢复状态：回滚测试副本已恢复；MODIFIED_FILE 保留验证标记，源代码修改保留在工作区。

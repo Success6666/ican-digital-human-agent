@@ -16,7 +16,7 @@ from .limits import DEFAULT_LIMITS, RealtimeLimits
 class HttpAsrIngress(MockPcmIngress):
     """Send bounded PCM16 utterances to an HTTP transcription endpoint."""
 
-    def __init__(self, *, endpoint: str, api_key: str = "", timeout_seconds: float = 8.0,
+    def __init__(self, *, endpoint: str, api_key: str = "", timeout_seconds: float = 30.0,
                  max_response_bytes: int = 1_048_576, limits: RealtimeLimits = DEFAULT_LIMITS,
                  audio_format: AudioFormat | None = None) -> None:
         super().__init__(limits=limits, audio_format=audio_format)

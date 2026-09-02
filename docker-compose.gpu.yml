@@ -1,0 +1,7 @@
+services:
+  asr-service:
+    gpus: all
+    environment:
+      # 自动优先 CUDA；容器缺少 CUDA 运行库时由服务回退 CPU，保证链路可用。
+      ASR_DEVICE: ${ASR_DEVICE:-auto}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-auto}

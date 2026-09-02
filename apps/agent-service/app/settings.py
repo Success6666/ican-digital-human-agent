@@ -105,7 +105,7 @@ class Settings(BaseModel):
     )
     asr_endpoint: str = Field(default="", alias="HTTP_ASR_ENDPOINT", max_length=512)
     asr_api_key: str = Field(default="", alias="HTTP_ASR_API_KEY", max_length=512)
-    asr_timeout_seconds: float = Field(default=8.0, alias="HTTP_ASR_TIMEOUT_SECONDS", gt=0, le=60)
+    asr_timeout_seconds: float = Field(default=30.0, alias="HTTP_ASR_TIMEOUT_SECONDS", gt=0, le=60)
     asr_max_response_bytes: int = Field(default=1_048_576, alias="HTTP_ASR_MAX_RESPONSE_BYTES", ge=1024, le=16 * 1024 * 1024)
     tts_endpoint: str = Field(default="", alias="HTTP_TTS_ENDPOINT", max_length=512)
     tts_api_key: str = Field(default="", alias="HTTP_TTS_API_KEY", max_length=512)

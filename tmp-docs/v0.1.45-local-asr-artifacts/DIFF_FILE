@@ -1,0 +1,11 @@
+warning: in the working copy of 'tmp-docs/v0.1.45-local-asr-artifacts/BASELINE_FILE', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tmp-docs/v0.1.45-local-asr-artifacts/MODIFIED_FILE', LF will be replaced by CRLF the next time Git touches it
+diff --git a/tmp-docs/v0.1.45-local-asr-artifacts/BASELINE_FILE b/tmp-docs/v0.1.45-local-asr-artifacts/MODIFIED_FILE
+index 1a43f2e..90f406a 100644
+--- a/tmp-docs/v0.1.45-local-asr-artifacts/BASELINE_FILE
++++ b/tmp-docs/v0.1.45-local-asr-artifacts/MODIFIED_FILE
+@@ -187,3 +187,4 @@ async def transcribe(request: Request) -> JSONResponse:
+
+ __all__ = ["app"]
+
++# Verification copy marker: source of truth remains apps/asr-service/app.py.
