@@ -175,6 +175,27 @@ export class RealtimeRuntime {
     this.dispatch({ type: 'phase', phase: 'thinking', message: '正在理解' })
   }
 
+  async cancelRecording(): Promise<void> {
+    ++this.operation
+    const recorder = this.recorder
+    const utteranceId = this.utteranceId
+    const revision = this.revision
+    this.recorder = undefined
+    if (recorder) await recorder.stop()
+    this.clearRecordingTimers()
+    this.dispatch({ type: 'audio_level', level: 0 })
+    if (this.audioStarted && this.transport?.isReady && this.sessionId) {
+      this.transport.send(controlFrame('speech_end', {
+        requestId: nextId('speech-end'), sessionId: this.sessionId,
+        utteranceId, revision: revision || undefined, reason: 'voice_mode_stopped',
+      }))
+    }
+    this.audioStarted = false
+    this.utteranceOpen = false
+    this.dispatch({ type: 'recording', state: 'idle', message: '实时对话已结束' })
+    this.dispatch({ type: 'phase', phase: 'idle', message: '实时对话已结束' })
+  }
+
   sendText(text: string, isFinal = true): boolean {
     const clean = text.trim()
     const transport = this.transport

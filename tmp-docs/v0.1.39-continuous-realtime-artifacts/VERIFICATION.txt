@@ -1,0 +1,41 @@
+v0.1.39 持续实时对话验收记录
+日期: 2026-09-02
+
+变更对象
+- 分支: 当前工作分支
+- 版本: v0.1.39
+- 核心变更: 一次进入持续实时对话、VAD 自动收口、Agent 回答后自动恢复聆听、再次点击退出、浏览器识别回退暂停/恢复、动态音量波纹。
+
+基线
+- 命令: git show HEAD:apps/agent-service/app/realtime/audio_handlers.py | Out-File -Encoding utf8 tmp-docs/v0.1.39-continuous-realtime-artifacts/baseline-audio_handlers.py
+- 结果: 生成基线文件
+- SHA-256: 82A097774EE5FAA7E95F89C79E1E2E9A3E262C8B6A77D8A9C5271F95957515BD
+- 退出状态: 0
+
+基线/修改文件语法测试
+- 命令: python -m py_compile baseline-audio_handlers.py; python -m py_compile MODIFIED_FILE-audio_handlers.py
+- 结果: BASELINE_PYCOMPILE=0、MODIFIED_PYCOMPILE=0
+- 退出状态: 0
+
+修改后测试
+- 命令: cd apps/web; npm run test:chat; npm run test:realtime; npm run test:layout; npm run test:avatar; npm run build
+- 结果: chat 3/3、realtime 7/7、layout 6/6、avatar 3/3；Vite 构建成功
+- 退出状态: 0
+- 命令: cd apps/agent-service; $env:PYTHONPATH='src'; python -m pytest -q
+- 结果: 192 passed, 2 skipped, 1 warning
+- 退出状态: 0
+- 命令: cd apps/auth-service; .\mvnw.cmd -q test
+- 结果: 测试完成
+- 退出状态: 0
+- 命令: docker compose ps
+- 结果: agent-service、auth-service、mcp-server、web、redis、rabbitmq 均 healthy
+- 退出状态: 0
+- 命令: Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/api/health
+- 结果: HTTP 200
+- 退出状态: 0
+
+回滚
+- 命令: bash tmp-docs/v0.1.39-continuous-realtime-artifacts/ROLLBACK.sh tmp-docs/v0.1.39-continuous-realtime-artifacts/rollback-copy
+- 结果: ROLLBACK_OK；副本 SHA-256 与基线一致（82A097774EE5FAA7E95F89C79E1E2E9A3E262C8B6A77D8A9C5271F95957515BD）
+- 退出状态: 0
+- 恢复状态: 工作树保持 v0.1.39 修改，回滚仅作用于副本，未覆盖源码。

@@ -208,7 +208,10 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
             await self._audio_start(message)
         elif kind is MessageType.AUDIO_END:
             await self._audio_end(message)
-        elif kind in {MessageType.SPEECH_START, MessageType.SPEECH_END}:
+        elif kind is MessageType.SPEECH_END:
+            await self._clear_audio(reason=message.reason or "client_cancelled")
+            await self._emit("ack", request_id=message.request_id, action=kind.value, accepted=True)
+        elif kind is MessageType.SPEECH_START:
             await self._emit("ack", request_id=message.request_id, action=kind.value, accepted=True)
         elif kind is MessageType.CLOSE:
             await self._emit("ack", request_id=message.request_id, action="close", accepted=True)

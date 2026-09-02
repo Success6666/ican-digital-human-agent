@@ -12,11 +12,12 @@ interface AvatarStageProps {
   interruptKey?: string
   activate?: boolean
   visible?: boolean
+  onSpeakingChange?: (speaking: boolean) => void
   onCreate: () => void
   onDisconnect: () => void
 }
 
-export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onCreate, onDisconnect }: AvatarStageProps) {
+export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onSpeakingChange, onCreate, onDisconnect }: AvatarStageProps) {
   const [preview, setPreview] = useState<AvatarPreview | null>(() => readAvatarPreview())
   const [runtimeActive, setRuntimeActive] = useState(() => !readAvatarPreview())
   const activateRuntime = useCallback(() => {
@@ -42,7 +43,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
   return (
     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
       {session && shouldConnect ? (
-        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} />
+        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} onSpeakingChange={onSpeakingChange} />
       ) : preview ? (
         <>
           <AvatarPreviewSurface preview={preview} />

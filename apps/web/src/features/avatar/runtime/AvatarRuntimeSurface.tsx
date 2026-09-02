@@ -10,9 +10,10 @@ interface AvatarRuntimeSurfaceProps {
   speech?: { id: string; text: string; presentation?: AvatarPerformanceCue; pending?: boolean }
   interruptKey?: string
   visible?: boolean
+  onSpeakingChange?: (speaking: boolean) => void
 }
 
-export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true }: AvatarRuntimeSurfaceProps) {
+export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange }: AvatarRuntimeSurfaceProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<BrowserAvatarRuntime>()
   const spokenMessageRef = useRef<string>()
@@ -40,12 +41,14 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = 
     void runtime.connect(host, params, (next) => {
       if (!active) return
       setStatus(next)
+      onSpeakingChange?.(next.phase === 'speaking')
       if (next.phase === 'ready') window.setTimeout(() => { if (active) saveAvatarPreview(host, session.provider) }, 3_000)
     }).catch(() => {
       if (active) setStatus({ phase: 'error', message: '魔珐数字人连接失败，请检查网络和应用配置' })
     })
     return () => {
       active = false
+      onSpeakingChange?.(false)
       if (runtimeRef.current === runtime) runtimeRef.current = undefined
       void runtime.dispose()
       host.replaceChildren()

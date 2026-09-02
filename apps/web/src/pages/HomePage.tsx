@@ -23,6 +23,18 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const [avatarSpeaking, setAvatarSpeaking] = useState(false)
+  const realtimeAssistant = realtime.state.assistantText.trim()
+  const activeSpeech = realtimeAssistant ? {
+    id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
+    text: realtimeAssistant,
+    pending: realtime.state.phase === 'speaking',
+  } : latestAssistant ? {
+    id: `${latestAssistant.id}:${latestAssistant.content.length}:${latestAssistant.statusText?.length ?? 0}:${latestAssistant.pending ? 'streaming' : 'final'}`,
+    text: latestAssistant.content || latestAssistant.statusText || '',
+    presentation: latestAssistant.presentation,
+    pending: latestAssistant.content ? latestAssistant.pending : false,
+  } : undefined
 
   useEffect(() => {
     if (!avatar.session) {
@@ -52,18 +64,14 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           session={avatar.session}
           visible={visible}
           isCreating={avatar.isCreating}
-          speech={latestAssistant ? {
-            id: `${latestAssistant.id}:${latestAssistant.content.length}:${latestAssistant.statusText?.length ?? 0}:${latestAssistant.pending ? 'streaming' : 'final'}`,
-            text: latestAssistant.content || latestAssistant.statusText || '',
-            presentation: latestAssistant.presentation,
-            pending: latestAssistant.content ? latestAssistant.pending : false,
-          } : undefined}
+          speech={activeSpeech}
           interruptKey={latestUser?.id}
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}
           onDisconnect={() => void avatar.close()}
+          onSpeakingChange={setAvatarSpeaking}
         />
-        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
+        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
           <History size={18} />
         </button>

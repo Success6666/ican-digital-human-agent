@@ -63,7 +63,7 @@ export function resolveEndpoint(value: string): string {
 }
 
 export function controlFrame(
-  type: 'hello' | 'text' | 'interrupt' | 'audio_start' | 'audio_end' | 'ping' | 'pong' | 'close',
+  type: 'hello' | 'text' | 'interrupt' | 'audio_start' | 'audio_end' | 'speech_start' | 'speech_end' | 'ping' | 'pong' | 'close',
   payload: Record<string, unknown>,
 ): string {
   return JSON.stringify({ type, ...payload })

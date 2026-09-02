@@ -41,3 +41,16 @@ test('microphone feedback exposes normalized level and silence auto-stop', async
   assert.match(runtime, /void this\.stopRecording\(\)/)
   assert.match(button, /--voice-level/)
 })
+
+test('voice mode automatically resumes listening after a completed turn', async () => {
+  const source = await readFile(fileURLToPath(new URL('../src/features/chat/components/HomeConversationBar.tsx', import.meta.url)), 'utf8')
+  const home = await readFile(fileURLToPath(new URL('../src/pages/HomePage.tsx', import.meta.url)), 'utf8')
+  assert.match(source, /continuousVoiceActive/)
+  assert.match(source, /realtime\.state\.phase !== 'idle'/)
+  assert.match(source, /realtime\.startRecording\(\)/)
+  assert.match(source, /realtime\.cancelRecording\(\)/)
+  assert.match(source, /aria-pressed=\{continuousVoiceActive\}/)
+  assert.match(source, /avatarSpeaking \|\| realtime\.state\.phase !== 'idle'/)
+  assert.match(home, /realtimeAssistant/)
+  assert.match(home, /onSpeakingChange=\{setAvatarSpeaking\}/)
+})

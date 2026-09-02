@@ -158,3 +158,25 @@ def test_realtime_audio_lifecycle_is_bounded_and_explicitly_unsupported() -> Non
             assert transcript["status"] == "unsupported"
             assert transcript["reason"] == "asr_unconfigured"
             assert websocket.receive_json()["type"] == "ack"
+
+
+def test_realtime_speech_end_discards_active_audio_without_transcription() -> None:
+    with _client() as client:
+        session_id = _session(client)
+        with client.websocket_connect("/internal/realtime", headers=HEADERS) as websocket:
+            websocket.send_json({"type": "hello", "sessionId": session_id})
+            assert websocket.receive_json()["type"] == "ready"
+            websocket.send_json({"type": "audio_start", "requestId": "a1", "utteranceId": "audio-cancel", "revision": 1})
+            assert websocket.receive_json()["type"] == "ack"
+            assert websocket.receive_json()["type"] == "audio_queue"
+            websocket.send_json({"type": "speech_end", "requestId": "cancel", "reason": "voice_mode_stopped"})
+            interrupted = websocket.receive_json()
+            assert interrupted["type"] == "audio_queue"
+            assert interrupted["status"] == "interrupted"
+            cancelled = websocket.receive_json()
+            assert cancelled["type"] == "ack"
+            assert cancelled["action"] == "speech_end"
+            websocket.send_json({"type": "audio_end", "requestId": "late", "utteranceId": "audio-cancel", "revision": 1})
+            late = websocket.receive_json()
+            assert late["type"] == "ack"
+            assert late["accepted"] is False

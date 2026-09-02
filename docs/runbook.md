@@ -27,6 +27,8 @@ docker compose up --build
 
 实时语音在 ASR 返回 `final` transcript 后会自动进入 Agent run，不需要再次点击发送。浏览器端按 16 kHz PCM16 采集并计算归一化音量；检测到说话后连续静音约 650ms 自动发送 `audio_end`，最长录音 15 秒。麦克风按钮波纹半径随音量变化；若 ASR 未配置则回退到浏览器连续识别，识别权限或网络异常会保留可读状态并允许改用文本输入。
 
+首页麦克风是持续实时对话模式开关。进入后自动轮转“聆听、理解、数字人表达、继续聆听”，不需要逐轮重新点击；Agent 或数字人仍在表达时不会重开 PCM，浏览器识别回退也会暂停，避免扬声器回声形成自问自答。退出模式使用 `speech_end` 丢弃未完成音频，不触发一次残缺的 ASR 请求。
+
 默认 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期。配置 `SESSION_STORE_BACKEND=redis` 后会话与 cleanup 队列进入 Redis；配置 `HTTP_ASR_ENDPOINT`、`HTTP_TTS_ENDPOINT` 后启用真实媒体适配，适配器使用复用连接、超时和响应体上限，故障时保留协议连接并报告降级状态。
 
 ### 会话资源参数

@@ -12,6 +12,7 @@ export interface RealtimeController {
   disconnect: () => Promise<void>
   startRecording: () => Promise<boolean>
   stopRecording: () => Promise<void>
+  cancelRecording: () => Promise<void>
   interrupt: (reason?: string) => Promise<void>
   toggleRecording: () => Promise<boolean>
   sendText: (text: string, isFinal?: boolean) => boolean
@@ -45,6 +46,7 @@ export function useRealtimeSession(
   const disconnect = useCallback(async () => runtimeRef.current?.disconnect(), [])
   const startRecording = useCallback(async () => runtimeRef.current?.startRecording() ?? false, [])
   const stopRecording = useCallback(async () => runtimeRef.current?.stopRecording(), [])
+  const cancelRecording = useCallback(async () => runtimeRef.current?.cancelRecording(), [])
   const interrupt = useCallback(async (reason?: string) => runtimeRef.current?.interrupt(reason), [])
   const toggleRecording = useCallback(async () => {
     const runtime = runtimeRef.current
@@ -65,6 +67,7 @@ export function useRealtimeSession(
     disconnect,
     startRecording,
     stopRecording,
+    cancelRecording,
     interrupt,
     toggleRecording,
     sendText,

@@ -1,4 +1,4 @@
-import { AudioLines, Mic, Send, Square } from 'lucide-react'
+import { AudioLines, Mic, Send } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 import type { AvatarSession } from '../../../shared/api/types'
 import type { RealtimeController } from '../../realtime/model'
@@ -9,43 +9,80 @@ interface HomeConversationBarProps {
   realtime: RealtimeController
   isSending: boolean
   isCreating?: boolean
+  avatarSpeaking?: boolean
   onSend: (message: string) => void
   onCreateSession: (initialMessage?: string) => void
 }
 
-export function HomeConversationBar({ session, realtime, isSending, isCreating = false, onSend, onCreateSession }: HomeConversationBarProps) {
+export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarSpeaking = false, onSend, onCreateSession }: HomeConversationBarProps) {
   const [draft, setDraft] = useState('')
+  const [continuousVoiceActive, setContinuousVoiceActive] = useState(false)
   const [browserVoiceActive, setBrowserVoiceActive] = useState(false)
   const [browserVoiceLevel, setBrowserVoiceLevel] = useState(0)
   const browserRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const browserVoiceStoppingRef = useRef(false)
+  const browserVoicePausedRef = useRef(false)
+  const browserRecognitionRunningRef = useRef(false)
   const browserRestartTimerRef = useRef<number | null>(null)
+  const realtimeRestartTimerRef = useRef<number | null>(null)
   const sessionRef = useRef(session)
   const isCreatingRef = useRef(isCreating)
   const onSendRef = useRef(onSend)
   const onCreateSessionRef = useRef(onCreateSession)
+  const isSendingRef = useRef(isSending)
   const recording = realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'
   // 文本 SSE 与实时语音 WebSocket 是两条独立链路。文本不应等待语音通道。
   const ready = Boolean(session) && realtime.state.connection === 'connected'
   const browserVoiceAvailable = browserSpeechSupported()
-  const voiceAvailable = (ready && realtime.state.audioSupported) || browserVoiceAvailable
+  const backendVoiceAvailable = ready && realtime.state.audioSupported
+  const voiceAvailable = backendVoiceAvailable || browserVoiceAvailable
 
   useEffect(() => {
     sessionRef.current = session
     isCreatingRef.current = isCreating
     onSendRef.current = onSend
     onCreateSessionRef.current = onCreateSession
-  }, [isCreating, onCreateSession, onSend, session])
+    isSendingRef.current = isSending
+  }, [isCreating, isSending, onCreateSession, onSend, session])
 
   useEffect(() => () => {
     browserVoiceStoppingRef.current = true
     if (browserRestartTimerRef.current !== null) window.clearTimeout(browserRestartTimerRef.current)
+    if (realtimeRestartTimerRef.current !== null) window.clearTimeout(realtimeRestartTimerRef.current)
     browserRecognitionRef.current?.abort()
     browserRecognitionRef.current = null
   }, [])
 
   useEffect(() => {
-    if (!browserVoiceActive || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    if (!continuousVoiceActive || !backendVoiceAvailable || recording) return
+    if (avatarSpeaking || realtime.state.phase !== 'idle' || realtime.state.playback === 'playing' || realtime.state.runId) return
+    realtimeRestartTimerRef.current = window.setTimeout(() => {
+      realtimeRestartTimerRef.current = null
+      void realtime.startRecording().then((started) => {
+        if (!started) setContinuousVoiceActive(false)
+      })
+    }, 180)
+    return () => {
+      if (realtimeRestartTimerRef.current !== null) window.clearTimeout(realtimeRestartTimerRef.current)
+      realtimeRestartTimerRef.current = null
+    }
+  }, [avatarSpeaking, backendVoiceAvailable, continuousVoiceActive, realtime.startRecording, realtime.state.phase, realtime.state.playback, realtime.state.runId, recording])
+
+  useEffect(() => {
+    const recognition = browserRecognitionRef.current
+    if (!browserVoiceActive || !recognition) return
+    if (isSending || isCreating || avatarSpeaking) {
+      browserVoicePausedRef.current = true
+      if (browserRecognitionRunningRef.current) recognition.stop()
+      return
+    }
+    if (!browserVoicePausedRef.current || browserRecognitionRunningRef.current) return
+    browserVoicePausedRef.current = false
+    scheduleBrowserRecognition(recognition, 180)
+  }, [avatarSpeaking, browserVoiceActive, isCreating, isSending])
+
+  useEffect(() => {
+    if (!browserVoiceActive || isSending || isCreating || avatarSpeaking || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       setBrowserVoiceLevel(0)
       return
     }
@@ -91,7 +128,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
       void context?.close()
       setBrowserVoiceLevel(0)
     }
-  }, [browserVoiceActive])
+  }, [avatarSpeaking, browserVoiceActive, isCreating, isSending])
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -114,24 +151,53 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
     }
   }
 
+  function scheduleBrowserRecognition(recognition: BrowserSpeechRecognition, delay = 120) {
+    if (browserRestartTimerRef.current !== null) window.clearTimeout(browserRestartTimerRef.current)
+    browserRestartTimerRef.current = window.setTimeout(() => {
+      browserRestartTimerRef.current = null
+      if (browserVoiceStoppingRef.current || browserVoicePausedRef.current || browserRecognitionRunningRef.current) return
+      try {
+        recognition.start()
+        browserRecognitionRunningRef.current = true
+      } catch {
+        setContinuousVoiceActive(false)
+        setBrowserVoiceActive(false)
+      }
+    }, delay)
+  }
+
   async function toggleVoice() {
-    if (ready && realtime.state.audioSupported) {
-      await realtime.toggleRecording()
+    if (continuousVoiceActive) {
+      setContinuousVoiceActive(false)
+      if (backendVoiceAvailable) {
+        await realtime.cancelRecording()
+      } else {
+        browserVoiceStoppingRef.current = true
+        browserVoicePausedRef.current = false
+        if (browserRestartTimerRef.current !== null) window.clearTimeout(browserRestartTimerRef.current)
+        if (browserRecognitionRunningRef.current) browserRecognitionRef.current?.stop()
+        else {
+          setBrowserVoiceActive(false)
+          browserRecognitionRef.current = null
+        }
+      }
       return
     }
+    setContinuousVoiceActive(true)
+    if (backendVoiceAvailable) return
     if (!browserVoiceAvailable) {
-      return
-    }
-    if (browserVoiceActive) {
-      browserVoiceStoppingRef.current = true
-      if (browserRestartTimerRef.current !== null) window.clearTimeout(browserRestartTimerRef.current)
-      browserRecognitionRef.current?.stop()
+      setContinuousVoiceActive(false)
       return
     }
     const recognition = createBrowserSpeechRecognition()
-    if (!recognition) return
+    if (!recognition) {
+      setContinuousVoiceActive(false)
+      return
+    }
     browserRecognitionRef.current = recognition
     browserVoiceStoppingRef.current = false
+    browserVoicePausedRef.current = false
+    browserRecognitionRunningRef.current = false
     setBrowserVoiceActive(true)
     recognition.onresult = (event) => {
       const results = readBrowserSpeechResults(event)
@@ -140,6 +206,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
       const finalText = results.filter((item) => item.isFinal).map((item) => item.transcript).join(' ').trim()
       if (!finalText) return
       setDraft('')
+      browserVoicePausedRef.current = true
       if (!sessionRef.current) {
         if (isCreatingRef.current) setDraft(finalText)
         else {
@@ -149,30 +216,34 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
       } else {
         onSendRef.current(finalText)
       }
+      if (browserRecognitionRunningRef.current) recognition.stop()
     }
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         browserVoiceStoppingRef.current = true
+        setContinuousVoiceActive(false)
         setBrowserVoiceActive(false)
         browserRecognitionRef.current = null
       }
     }
     recognition.onend = () => {
       if (browserRecognitionRef.current !== recognition) return
+      browserRecognitionRunningRef.current = false
+      if (browserVoicePausedRef.current || isSendingRef.current || isCreatingRef.current) return
       if (!browserVoiceStoppingRef.current) {
-        browserRestartTimerRef.current = window.setTimeout(() => {
-          browserRestartTimerRef.current = null
-          try { recognition.start() } catch { setBrowserVoiceActive(false) }
-        }, 120)
+        scheduleBrowserRecognition(recognition)
         return
       }
+      setContinuousVoiceActive(false)
       setBrowserVoiceActive(false)
       browserRecognitionRef.current = null
     }
     try {
       recognition.start()
+      browserRecognitionRunningRef.current = true
     } catch {
       browserVoiceStoppingRef.current = true
+      setContinuousVoiceActive(false)
       setBrowserVoiceActive(false)
       browserRecognitionRef.current = null
     }
@@ -180,23 +251,28 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
 
   const placeholder = !session
     ? isCreating ? '正在创建数字人会话…' : '等待数字人连接…'
-    : browserVoiceActive ? '实时对话已开启，可随时改口…'
+    : continuousVoiceActive
+      ? recording || browserVoiceActive && !isSending ? '实时对话中 · 正在聆听…'
+        : realtime.state.phase === 'speaking' || isSending ? '实时对话中 · 数字人正在回答…'
+          : realtime.state.phase === 'thinking' ? '实时对话中 · 正在理解…'
+            : '实时对话中 · 正在准备下一轮…'
     : realtime.state.connection !== 'connected'
       ? '输入消息，实时通道连接中…'
-      : '输入消息，或点击左侧开始说话…'
+      : '输入消息，或点击左侧进入实时对话…'
 
   return (
     <form className="home-conversation-bar" onSubmit={submit} aria-label="数字人对话输入">
       <button
-        className={'home-voice-button' + (recording || browserVoiceActive ? ' home-voice-button--active' : '')}
+        className={'home-voice-button' + (continuousVoiceActive ? ' home-voice-button--active' : '')}
         style={{ '--voice-level': String(Math.max(0, Math.min(1, recording ? realtime.state.audioLevel : browserVoiceLevel))) } as CSSProperties}
         type="button"
         onClick={() => void toggleVoice()}
-        disabled={!voiceAvailable}
-        aria-label={recording || browserVoiceActive ? '结束实时对话' : '开始实时对话'}
-        title={recording || browserVoiceActive ? '结束实时对话' : browserVoiceAvailable && !(ready && realtime.state.audioSupported) ? '开始实时对话' : '开始实时对话'}
+        disabled={!voiceAvailable && !continuousVoiceActive}
+        aria-pressed={continuousVoiceActive}
+        aria-label={continuousVoiceActive ? '退出实时对话' : '进入实时对话'}
+        title={continuousVoiceActive ? '退出实时对话' : '进入实时对话'}
       >
-        {recording || browserVoiceActive ? <Square size={19} /> : voiceAvailable ? <Mic size={21} /> : <AudioLines size={21} />}
+        {continuousVoiceActive ? <AudioLines size={21} /> : voiceAvailable ? <Mic size={21} /> : <AudioLines size={21} />}
       </button>
       <textarea
         value={draft}
