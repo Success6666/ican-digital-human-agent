@@ -1,0 +1,605 @@
+diff --git a/README.md b/README.md
+index 028d02f..f9045c7 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # ICAN 数字人 Agent
+
+-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.39）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
++ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.40）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+
+ ## 目录
+
+@@ -116,5 +116,5 @@ Set-Location ..\web
+ npm run build
+ ```
+
+-本版本持续实时对话模式验收记录见 [`tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md)，上一版实时语音响应与音量反馈验收记录见 [`tmp-docs/digital-human-agent-v0.1.38-realtime-voice-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.38-realtime-voice-task-book-已完成.md)。
++本版本实时语音链路验收记录见 [`tmp-docs/digital-human-agent-v0.1.40-realtime-chain-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.40-realtime-chain-task-book-已完成.md)，上一版持续实时对话验收记录见 [`tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md)。
+ 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。
+diff --git a/apps/agent-service/app/__init__.py b/apps/agent-service/app/__init__.py
+index 4766108..10e3774 100644
+--- a/apps/agent-service/app/__init__.py
++++ b/apps/agent-service/app/__init__.py
+@@ -2,4 +2,4 @@
+
+ __all__ = ["__version__"]
+
+-__version__ = "0.1.39"
++__version__ = "0.1.40"
+diff --git a/apps/agent-service/app/api/routes.py b/apps/agent-service/app/api/routes.py
+index 92578f6..4e91eb2 100644
+--- a/apps/agent-service/app/api/routes.py
++++ b/apps/agent-service/app/api/routes.py
+@@ -32,7 +32,7 @@ router = APIRouter()
+ @router.get("/health", response_model=HealthResponse, include_in_schema=False)
+ async def health(request: Request) -> HealthResponse:
+     container = get_container(request)
+-    return HealthResponse(service=container.settings.service_name, version="0.1.39")
++    return HealthResponse(service=container.settings.service_name, version="0.1.40")
+
+
+ @router.get("/internal/providers", response_model=list[ProviderResponse])
+diff --git a/apps/agent-service/app/main.py b/apps/agent-service/app/main.py
+index 28428a8..4db0efe 100644
+--- a/apps/agent-service/app/main.py
++++ b/apps/agent-service/app/main.py
+@@ -308,7 +308,7 @@ def create_app(
+                 await app.state.container.response_cache.close()
+             await app.state.container.observability.flush()
+
+-    app = FastAPI(title="Digital Human Agent", version="0.1.39", lifespan=lifespan)
++    app = FastAPI(title="Digital Human Agent", version="0.1.40", lifespan=lifespan)
+     app.state.container = service_container
+     app.add_middleware(
+         RequestBodyLimitMiddleware,
+diff --git a/apps/agent-service/pyproject.toml b/apps/agent-service/pyproject.toml
+index ecd81cc..bca8854 100644
+--- a/apps/agent-service/pyproject.toml
++++ b/apps/agent-service/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "digital-human-agent-service"
+-version = "0.1.39"
++version = "0.1.40"
+ description = "FastAPI and LangGraph runtime for the digital human agent"
+ requires-python = ">=3.11"
+ dependencies = [
+diff --git a/apps/auth-service/pom.xml b/apps/auth-service/pom.xml
+index d630e0e..5039e0e 100644
+--- a/apps/auth-service/pom.xml
++++ b/apps/auth-service/pom.xml
+@@ -13,7 +13,7 @@
+
+     <groupId>com.ican.digitalhuman</groupId>
+     <artifactId>auth-service</artifactId>
+-    <version>0.1.39</version>
++    <version>0.1.40</version>
+     <name>digital-human-auth-service</name>
+     <description>Authentication gateway for the digital human agent</description>
+
+diff --git a/apps/mcp-server/app/__init__.py b/apps/mcp-server/app/__init__.py
+index 9188278..377b7ed 100644
+--- a/apps/mcp-server/app/__init__.py
++++ b/apps/mcp-server/app/__init__.py
+@@ -1,3 +1,3 @@
+ """MCP tool service."""
+
+-__version__ = "0.1.39"
++__version__ = "0.1.40"
+diff --git a/apps/mcp-server/app/server.py b/apps/mcp-server/app/server.py
+index 47d015c..276a541 100644
+--- a/apps/mcp-server/app/server.py
++++ b/apps/mcp-server/app/server.py
+@@ -16,7 +16,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
+     settings = settings or get_settings()
+     server = MCPServer(
+         name=settings.service_name,
+-        version="0.1.39",
++        version="0.1.40",
+         instructions="Deterministic chain-probe tools for the digital human agent.",
+         debug=False,
+     )
+@@ -24,7 +24,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
+
+     @server.custom_route("/health", methods=["GET"], include_in_schema=False)
+     async def health(_: Request) -> JSONResponse:
+-        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.39"})
++        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.40"})
+
+     @server.custom_route("/ready", methods=["GET"], include_in_schema=False)
+     async def ready(_: Request) -> JSONResponse:
+diff --git a/apps/mcp-server/pyproject.toml b/apps/mcp-server/pyproject.toml
+index 8adfcbc..713749e 100644
+--- a/apps/mcp-server/pyproject.toml
++++ b/apps/mcp-server/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "digital-human-mcp-server"
+-version = "0.1.39"
++version = "0.1.40"
+ description = "Internal MCP 2.x Streamable HTTP probe server"
+ requires-python = ">=3.11"
+ dependencies = [
+diff --git a/apps/web/package-lock.json b/apps/web/package-lock.json
+index b63d73f..ea7758d 100644
+--- a/apps/web/package-lock.json
++++ b/apps/web/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "digital-human-agent-web",
+-  "version": "0.1.39",
++  "version": "0.1.40",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "digital-human-agent-web",
+-      "version": "0.1.39",
++      "version": "0.1.40",
+       "dependencies": {
+         "lucide-react": "^0.468.0",
+         "react": "^18.3.1",
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 5cf2fce..070434f 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "digital-human-agent-web",
+   "private": true,
+-  "version": "0.1.39",
++  "version": "0.1.40",
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
+diff --git a/apps/web/src/features/avatar/components/AvatarStage.tsx b/apps/web/src/features/avatar/components/AvatarStage.tsx
+index 22ad2d3..d564e14 100644
+--- a/apps/web/src/features/avatar/components/AvatarStage.tsx
++++ b/apps/web/src/features/avatar/components/AvatarStage.tsx
+@@ -13,11 +13,12 @@ interface AvatarStageProps {
+   activate?: boolean
+   visible?: boolean
+   onSpeakingChange?: (speaking: boolean) => void
++  onReadyChange?: (ready: boolean) => void
+   onCreate: () => void
+   onDisconnect: () => void
+ }
+
+-export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onSpeakingChange, onCreate, onDisconnect }: AvatarStageProps) {
++export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onSpeakingChange, onReadyChange, onCreate, onDisconnect }: AvatarStageProps) {
+   const [preview, setPreview] = useState<AvatarPreview | null>(() => readAvatarPreview())
+   const [runtimeActive, setRuntimeActive] = useState(() => !readAvatarPreview())
+   const activateRuntime = useCallback(() => {
+@@ -29,11 +30,12 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
+     setPreview(nextPreview)
+     if (!session) {
+       setRuntimeActive(false)
++      onReadyChange?.(false)
+       return
+     }
+     activateRuntime()
+     return subscribeAvatarPreview(() => setPreview(readAvatarPreview()))
+-  }, [activateRuntime, session?.sessionId])
++  }, [activateRuntime, onReadyChange, session?.sessionId])
+
+   useEffect(() => {
+     if (activate || speech?.id) activateRuntime()
+@@ -43,7 +45,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
+   return (
+     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
+       {session && shouldConnect ? (
+-        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} onSpeakingChange={onSpeakingChange} />
++        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} onSpeakingChange={onSpeakingChange} onReadyChange={onReadyChange} />
+       ) : preview ? (
+         <>
+           <AvatarPreviewSurface preview={preview} />
+diff --git a/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx b/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
+index c1ca862..681e763 100644
+--- a/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
++++ b/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
+@@ -11,9 +11,10 @@ interface AvatarRuntimeSurfaceProps {
+   interruptKey?: string
+   visible?: boolean
+   onSpeakingChange?: (speaking: boolean) => void
++  onReadyChange?: (ready: boolean) => void
+ }
+
+-export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange }: AvatarRuntimeSurfaceProps) {
++export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange, onReadyChange }: AvatarRuntimeSurfaceProps) {
+   const hostRef = useRef<HTMLDivElement>(null)
+   const runtimeRef = useRef<BrowserAvatarRuntime>()
+   const spokenMessageRef = useRef<string>()
+@@ -30,6 +31,7 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible =
+     const params = session.clientParams
+     if (!host || session.provider !== 'mofa' || params?.runtime !== 'mofa-web-sdk') {
+       setStatus({ phase: 'error', message: '当前会话未提供可视化数字人 Runtime' })
++      onReadyChange?.(false)
+       return
+     }
+     let active = true
+@@ -42,18 +44,23 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible =
+       if (!active) return
+       setStatus(next)
+       onSpeakingChange?.(next.phase === 'speaking')
++      onReadyChange?.(next.phase === 'ready' || next.phase === 'speaking')
+       if (next.phase === 'ready') window.setTimeout(() => { if (active) saveAvatarPreview(host, session.provider) }, 3_000)
+     }).catch(() => {
+-      if (active) setStatus({ phase: 'error', message: '魔珐数字人连接失败，请检查网络和应用配置' })
++      if (active) {
++        setStatus({ phase: 'error', message: '魔珐数字人连接失败，请检查网络和应用配置' })
++        onReadyChange?.(false)
++      }
+     })
+     return () => {
+       active = false
+       onSpeakingChange?.(false)
++      onReadyChange?.(false)
+       if (runtimeRef.current === runtime) runtimeRef.current = undefined
+       void runtime.dispose()
+       host.replaceChildren()
+     }
+-  }, [generation, session.sessionId])
++  }, [generation, onReadyChange, onSpeakingChange, session.sessionId])
+
+   useEffect(() => {
+     if (!interruptKey) return
+diff --git a/apps/web/src/features/avatar/runtime/mofaRuntime.ts b/apps/web/src/features/avatar/runtime/mofaRuntime.ts
+index 6fc29ae..157453f 100644
+--- a/apps/web/src/features/avatar/runtime/mofaRuntime.ts
++++ b/apps/web/src/features/avatar/runtime/mofaRuntime.ts
+@@ -45,6 +45,8 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+   private speechWorker?: Promise<void>
+   private speechGeneration = 0
+   private speechWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
++  private speechFlushRequested = false
++  private streamStarted = false
+   private invisible = false
+
+   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
+@@ -174,6 +176,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     const clean = text.trim()
+     const flush = Boolean(options?.flush)
+     if (!this.avatar || (!clean && !flush)) return
++    if (flush) this.speechFlushRequested = true
+     if (clean) this.speechBuffer += clean
+     while (true) {
+       if (!this.speechBuffer.trim()) break
+@@ -191,6 +194,8 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     if (!this.avatar) return
+     this.speechBuffer = ''
+     this.speechQueue = []
++    this.speechFlushRequested = false
++    this.streamStarted = false
+     this.speechGeneration += 1
+     for (const waiter of this.speechWaiters.values()) waiter.resolve()
+     this.speechWaiters.clear()
+@@ -201,6 +206,8 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+   async dispose(): Promise<void> {
+     this.speechBuffer = ''
+     this.speechQueue = []
++    this.speechFlushRequested = false
++    this.streamStarted = false
+     this.speechGeneration += 1
+     for (const waiter of this.speechWaiters.values()) waiter.resolve()
+     this.speechWaiters.clear()
+@@ -227,15 +234,20 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     const generation = this.speechGeneration
+     while (this.speechQueue.length && this.avatar) {
+       if (generation !== this.speechGeneration) return
++      // Keep the last non-final sentence pending until another chunk arrives
++      // or the response is flushed. The real final text can then carry
++      // isEnd=true, avoiding an empty vendor request and a second handshake.
++      if (!this.speechFlushRequested && this.speechQueue.length === 1 && !this.speechBuffer.trim()) break
+       const next = this.speechQueue.shift()
+       if (!next) continue
++      const isEnd = this.speechFlushRequested && this.speechQueue.length === 0 && !this.speechBuffer.trim()
++      const isStart = !this.streamStarted
+       this.status?.({ phase: 'speaking', message: '数字人正在表达' })
+-      const request = buildMofaSpeechRequest(next.text, next.presentation)
+-      const clientSpeakId = crypto.randomUUID()
+-      const extra = { client_speak_id: clientSpeakId, ...request.extra }
+-      await this.speakAndWait(request.ssml, extra, generation)
++      await this.speakChunk(next.text, next.presentation, generation, isStart, isEnd)
++      this.streamStarted = !isEnd
++      if (isEnd) this.speechFlushRequested = false
+     }
+-    this.status?.({ phase: 'ready', message: '数字人已连接' })
++    if (!this.streamStarted) this.status?.({ phase: 'ready', message: '数字人已连接' })
+   }
+
+   private ensureSpeechWorker(): Promise<void> {
+@@ -253,26 +265,32 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     return worker
+   }
+
+-  private async speakAndWait(ssml: string, extra: Record<string, unknown>, generation: number): Promise<void> {
++  private async speakChunk(text: string, presentation: AvatarPerformanceCue | undefined, generation: number, isStart: boolean, isEnd: boolean): Promise<void> {
+     if (!this.avatar || generation !== this.speechGeneration) return
+-    const clientSpeakId = String(extra.client_speak_id ?? '')
++    const request = buildMofaSpeechRequest(text, presentation)
++    const clientSpeakId = crypto.randomUUID()
++    const extra = { client_speak_id: clientSpeakId, ...request.extra }
++    let completion: Promise<void> | undefined
+     let timer = 0
+-    const completion = new Promise<void>((resolve, reject) => {
+-      this.speechWaiters.set(clientSpeakId, { resolve, reject })
+-      timer = window.setTimeout(() => {
+-        this.speechWaiters.delete(clientSpeakId)
+-        if (generation === this.speechGeneration) this.avatar?.interrupt('speak_timeout')
+-        resolve()
+-      }, 15_000)
+-    })
++    if (isEnd) {
++      completion = new Promise<void>((resolve, reject) => {
++        this.speechWaiters.set(clientSpeakId, { resolve, reject })
++        timer = window.setTimeout(() => {
++          this.speechWaiters.delete(clientSpeakId)
++          if (generation === this.speechGeneration) this.avatar?.interrupt('speak_timeout')
++          resolve()
++        }, 15_000)
++      })
++    }
+     try {
+-      await Promise.resolve(this.avatar.speak(ssml, true, true, extra))
+-      await completion
++      await Promise.resolve(this.avatar.speak(request.ssml, isStart, isEnd, extra))
++      if (completion) await completion
+     } finally {
+       window.clearTimeout(timer)
+       this.speechWaiters.delete(clientSpeakId)
+     }
+   }
++
+ }
+
+ function findSpeechBoundary(value: string, flush: boolean): number {
+diff --git a/apps/web/src/features/chat/components/HomeConversationBar.tsx b/apps/web/src/features/chat/components/HomeConversationBar.tsx
+index aee4e29..b80ae34 100644
+--- a/apps/web/src/features/chat/components/HomeConversationBar.tsx
++++ b/apps/web/src/features/chat/components/HomeConversationBar.tsx
+@@ -9,12 +9,12 @@ interface HomeConversationBarProps {
+   realtime: RealtimeController
+   isSending: boolean
+   isCreating?: boolean
++  avatarReady?: boolean
+   avatarSpeaking?: boolean
+   onSend: (message: string) => void
+-  onCreateSession: (initialMessage?: string) => void
+ }
+
+-export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarSpeaking = false, onSend, onCreateSession }: HomeConversationBarProps) {
++export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarReady = false, avatarSpeaking = false, onSend }: HomeConversationBarProps) {
+   const [draft, setDraft] = useState('')
+   const [continuousVoiceActive, setContinuousVoiceActive] = useState(false)
+   const [browserVoiceActive, setBrowserVoiceActive] = useState(false)
+@@ -28,22 +28,21 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
+   const sessionRef = useRef(session)
+   const isCreatingRef = useRef(isCreating)
+   const onSendRef = useRef(onSend)
+-  const onCreateSessionRef = useRef(onCreateSession)
+   const isSendingRef = useRef(isSending)
+   const recording = realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'
+   // 文本 SSE 与实时语音 WebSocket 是两条独立链路。文本不应等待语音通道。
+   const ready = Boolean(session) && realtime.state.connection === 'connected'
+   const browserVoiceAvailable = browserSpeechSupported()
+   const backendVoiceAvailable = ready && realtime.state.audioSupported
+-  const voiceAvailable = backendVoiceAvailable || browserVoiceAvailable
++  const interactionReady = Boolean(session && avatarReady)
++  const voiceAvailable = interactionReady && (backendVoiceAvailable || browserVoiceAvailable)
+
+   useEffect(() => {
+     sessionRef.current = session
+     isCreatingRef.current = isCreating
+     onSendRef.current = onSend
+-    onCreateSessionRef.current = onCreateSession
+     isSendingRef.current = isSending
+-  }, [isCreating, isSending, onCreateSession, onSend, session])
++  }, [isCreating, isSending, onSend, session])
+
+   useEffect(() => () => {
+     browserVoiceStoppingRef.current = true
+@@ -133,13 +132,8 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
+   function submit(event: FormEvent) {
+     event.preventDefault()
+     const message = draft.trim()
+-    if (!message) return
+-    if (!session) {
+-      if (isCreating) return
+-      onCreateSession(message)
+-    } else {
+-      onSend(message)
+-    }
++    if (!message || !interactionReady || isCreating) return
++    onSend(message)
+     setDraft('')
+   }
+
+@@ -183,6 +177,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
+       }
+       return
+     }
++    if (!interactionReady) return
+     setContinuousVoiceActive(true)
+     if (backendVoiceAvailable) return
+     if (!browserVoiceAvailable) {
+@@ -207,14 +202,12 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
+       if (!finalText) return
+       setDraft('')
+       browserVoicePausedRef.current = true
+-      if (!sessionRef.current) {
+-        if (isCreatingRef.current) setDraft(finalText)
+-        else {
+-          isCreatingRef.current = true
+-          onCreateSessionRef.current(finalText)
+-        }
+-      } else {
+-        onSendRef.current(finalText)
++      if (sessionRef.current) {
++        // Browser recognition is the local ASR fallback. Prefer the same
++        // realtime WebSocket text boundary so the Agent and avatar keep one
++        // generation; use SSE only while that socket is still connecting.
++        const sent = realtime.sendText(finalText)
++        if (!sent) onSendRef.current(finalText)
+       }
+       if (browserRecognitionRunningRef.current) recognition.stop()
+     }
+@@ -249,7 +242,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
+     }
+   }
+
+-  const placeholder = !session
++  const placeholder = !session || !avatarReady
+     ? isCreating ? '正在创建数字人会话…' : '等待数字人连接…'
+     : continuousVoiceActive
+       ? recording || browserVoiceActive && !isSending ? '实时对话中 · 正在聆听…'
+@@ -282,11 +275,12 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
+         maxLength={4000}
+         rows={1}
+         aria-label="输入消息"
++        disabled={!interactionReady || isCreating}
+       />
+       <button
+         className="home-send-button"
+         type="submit"
+-        disabled={!draft.trim() || (!session && isCreating)}
++        disabled={!draft.trim() || !interactionReady || isCreating}
+         aria-label={isSending ? '发送新消息并切换当前回应' : '发送消息'}
+         title={isSending ? '发送新消息并切换当前回应' : '发送消息'}
+       >
+diff --git a/apps/web/src/pages/HomePage.tsx b/apps/web/src/pages/HomePage.tsx
+index 421de03..62576ba 100644
+--- a/apps/web/src/pages/HomePage.tsx
++++ b/apps/web/src/pages/HomePage.tsx
+@@ -22,8 +22,8 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
+   const [drawerOpen, setDrawerOpen] = useState(false)
+   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
+   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
+-  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+   const [avatarSpeaking, setAvatarSpeaking] = useState(false)
++  const [avatarReady, setAvatarReady] = useState(false)
+   const realtimeAssistant = realtime.state.assistantText.trim()
+   const activeSpeech = realtimeAssistant ? {
+     id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
+@@ -45,18 +45,6 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
+     return () => window.clearTimeout(timer)
+   }, [avatar.session?.sessionId, realtime.connect, realtime.disconnect])
+
+-  useEffect(() => {
+-    if (!avatar.session || !queuedMessage) return
+-    const message = queuedMessage
+-    setQueuedMessage(null)
+-    void chat.sendMessage(message)
+-  }, [avatar.session?.sessionId, chat.sendMessage, queuedMessage])
+-
+-  function startConversation(message?: string) {
+-    if (message) setQueuedMessage(message)
+-    void avatar.create().catch(() => setQueuedMessage(null))
+-  }
+-
+   return (
+     <div className="page-stack home-page">
+       <main className="home-reference-stage">
+@@ -70,8 +58,9 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
+           onCreate={() => void avatar.create()}
+           onDisconnect={() => void avatar.close()}
+           onSpeakingChange={setAvatarSpeaking}
++          onReadyChange={setAvatarReady}
+         />
+-        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
++        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarReady={avatarReady} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} />
+         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
+           <History size={18} />
+         </button>
+diff --git a/apps/web/tests/chat-link-contract.test.mjs b/apps/web/tests/chat-link-contract.test.mjs
+index d1bf048..a3d5a53 100644
+--- a/apps/web/tests/chat-link-contract.test.mjs
++++ b/apps/web/tests/chat-link-contract.test.mjs
+@@ -6,16 +6,18 @@ import { fileURLToPath } from 'node:url'
+ const source = await readFile(fileURLToPath(new URL('../src/features/chat/components/HomeConversationBar.tsx', import.meta.url)), 'utf8')
+ const homeSource = await readFile(fileURLToPath(new URL('../src/pages/HomePage.tsx', import.meta.url)), 'utf8')
+
+-test('text chat does not wait for the realtime websocket', () => {
+-  assert.match(source, /if \(!session\) \{[\s\S]*?onCreateSession\(message\)[\s\S]*?\} else \{[\s\S]*?onSend\(message\)/)
+-  assert.doesNotMatch(source, /else if \(ready\) onSend\(message\)/)
+-  assert.doesNotMatch(source, /disabled=\{Boolean\(session\) && !ready\}/)
++test('text chat is gated by a ready digital-human runtime', () => {
++  assert.match(source, /const interactionReady = Boolean\(session && avatarReady\)/)
++  assert.match(source, /if \(!message \|\| !interactionReady \|\| isCreating\) return/)
++  assert.match(source, /disabled=\{!interactionReady \|\| isCreating\}/)
++  assert.doesNotMatch(source, /onCreateSession\(message\)/)
+ })
+
+ test('session creation is guarded while the provider session is being created', () => {
+   assert.match(source, /isCreating\?: boolean/)
+-  assert.match(source, /if \(isCreating\) return/)
+-  assert.match(source, /disabled=\{!draft\.trim\(\) \|\| \(!session && isCreating\)\}/)
++  assert.match(source, /isCreating\?: boolean/)
++  assert.match(source, /if \(!message \|\| !interactionReady \|\| isCreating\) return/)
++  assert.match(source, /disabled=\{!draft\.trim\(\) \|\| !interactionReady \|\| isCreating\}/)
+ })
+
+ test('waiting filler is routed into the avatar speech stream before the first answer delta', () => {
+diff --git a/apps/web/tests/mofa-speech.test.mjs b/apps/web/tests/mofa-speech.test.mjs
+index 36e2b4b..7d9f894 100644
+--- a/apps/web/tests/mofa-speech.test.mjs
++++ b/apps/web/tests/mofa-speech.test.mjs
+@@ -35,3 +35,11 @@ test('maps agent semantic aliases to the documented action intent catalog', () =
+   const nod = buildMofaSpeechRequest('明白了', { expression: 'acknowledging', gesture: 'nod' })
+   assert.match(nod.ssml, /<ka_intent>Approve<\/ka_intent>/)
+ })
++
++test('streams avatar sentence chunks without reopening every sentence', async () => {
++  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
++  assert.match(runtime, /private streamStarted = false/)
++  assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, isEnd, extra\)/)
++  assert.match(runtime, /const isEnd = this\.speechFlushRequested && this\.speechQueue\.length === 0/)
++  assert.match(runtime, /if \(!this\.speechFlushRequested && this\.speechQueue\.length === 1 && !this\.speechBuffer\.trim\(\)\) break/)
++})
+diff --git a/apps/web/tests/realtime-lifecycle.test.mjs b/apps/web/tests/realtime-lifecycle.test.mjs
+index c62b253..9010872 100644
+--- a/apps/web/tests/realtime-lifecycle.test.mjs
++++ b/apps/web/tests/realtime-lifecycle.test.mjs
+@@ -24,11 +24,16 @@ test('browser voice is configured as a continuous recognition session', async ()
+   assert.match(source, /recognition\.continuous\s*=\s*true/)
+ })
+
+-test('continuous voice reads the latest session after asynchronous session creation', async () => {
++test('continuous voice requires a ready avatar and does not create sessions from typing', async () => {
+   const source = await readFile(fileURLToPath(new URL('../src/features/chat/components/HomeConversationBar.tsx', import.meta.url)), 'utf8')
+   assert.match(source, /sessionRef\.current\s*=\s*session/)
+-  assert.match(source, /if \(!sessionRef\.current\)/)
++  assert.match(source, /const interactionReady = Boolean\(session && avatarReady\)/)
++  assert.match(source, /if \(!message \|\| !interactionReady \|\| isCreating\) return/)
++  assert.match(source, /disabled=\{!interactionReady \|\| isCreating\}/)
++  assert.doesNotMatch(source, /onCreateSessionRef/)
+   assert.match(source, /onSendRef\.current\(finalText\)/)
++  assert.match(source, /const sent = realtime\.sendText\(finalText\)/)
++  assert.match(source, /if \(!sent\) onSendRef\.current\(finalText\)/)
+ })
+
+ test('microphone feedback exposes normalized level and silence auto-stop', async () => {
+@@ -53,4 +58,14 @@ test('voice mode automatically resumes listening after a completed turn', async
+   assert.match(source, /avatarSpeaking \|\| realtime\.state\.phase !== 'idle'/)
+   assert.match(home, /realtimeAssistant/)
+   assert.match(home, /onSpeakingChange=\{setAvatarSpeaking\}/)
++  assert.match(home, /onReadyChange=\{setAvatarReady\}/)
++})
++
++test('avatar readiness is propagated from the SDK runtime to the conversation gate', async () => {
++  const stage = await readFile(fileURLToPath(new URL('../src/features/avatar/components/AvatarStage.tsx', import.meta.url)), 'utf8')
++  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/AvatarRuntimeSurface.tsx', import.meta.url)), 'utf8')
++  assert.match(stage, /onReadyChange\?: \(ready: boolean\) => void/)
++  assert.match(stage, /onReadyChange=\{onReadyChange\}/)
++  assert.match(runtime, /onReadyChange\?\.\(next\.phase === 'ready' \|\| next\.phase === 'speaking'\)/)
++  assert.match(runtime, /onReadyChange\?\.\(false\)/)
+ })
+diff --git a/docs/api-contract.md b/docs/api-contract.md
+index 0c732c2..2ca9ff5 100644
+--- a/docs/api-contract.md
++++ b/docs/api-contract.md
+@@ -1,4 +1,4 @@
+-# API 契约（v0.1.39）
++# API 契约（v0.1.40）
+
+ ## 浏览器 API

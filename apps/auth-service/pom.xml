@@ -13,7 +13,7 @@
 
     <groupId>com.ican.digitalhuman</groupId>
     <artifactId>auth-service</artifactId>
-    <version>0.1.39</version>
+    <version>0.1.40</version>
     <name>digital-human-auth-service</name>
     <description>Authentication gateway for the digital human agent</description>
 

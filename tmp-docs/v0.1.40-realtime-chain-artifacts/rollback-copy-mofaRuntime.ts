@@ -45,8 +45,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private speechWorker?: Promise<void>
   private speechGeneration = 0
   private speechWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
-  private speechFlushRequested = false
-  private streamStarted = false
   private invisible = false
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
@@ -176,7 +174,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const clean = text.trim()
     const flush = Boolean(options?.flush)
     if (!this.avatar || (!clean && !flush)) return
-    if (flush) this.speechFlushRequested = true
     if (clean) this.speechBuffer += clean
     while (true) {
       if (!this.speechBuffer.trim()) break
@@ -194,8 +191,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     if (!this.avatar) return
     this.speechBuffer = ''
     this.speechQueue = []
-    this.speechFlushRequested = false
-    this.streamStarted = false
     this.speechGeneration += 1
     for (const waiter of this.speechWaiters.values()) waiter.resolve()
     this.speechWaiters.clear()
@@ -206,8 +201,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   async dispose(): Promise<void> {
     this.speechBuffer = ''
     this.speechQueue = []
-    this.speechFlushRequested = false
-    this.streamStarted = false
     this.speechGeneration += 1
     for (const waiter of this.speechWaiters.values()) waiter.resolve()
     this.speechWaiters.clear()
@@ -234,20 +227,15 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const generation = this.speechGeneration
     while (this.speechQueue.length && this.avatar) {
       if (generation !== this.speechGeneration) return
-      // Keep the last non-final sentence pending until another chunk arrives
-      // or the response is flushed. The real final text can then carry
-      // isEnd=true, avoiding an empty vendor request and a second handshake.
-      if (!this.speechFlushRequested && this.speechQueue.length === 1 && !this.speechBuffer.trim()) break
       const next = this.speechQueue.shift()
       if (!next) continue
-      const isEnd = this.speechFlushRequested && this.speechQueue.length === 0 && !this.speechBuffer.trim()
-      const isStart = !this.streamStarted
       this.status?.({ phase: 'speaking', message: '数字人正在表达' })
-      await this.speakChunk(next.text, next.presentation, generation, isStart, isEnd)
-      this.streamStarted = !isEnd
-      if (isEnd) this.speechFlushRequested = false
+      const request = buildMofaSpeechRequest(next.text, next.presentation)
+      const clientSpeakId = crypto.randomUUID()
+      const extra = { client_speak_id: clientSpeakId, ...request.extra }
+      await this.speakAndWait(request.ssml, extra, generation)
     }
-    if (!this.streamStarted) this.status?.({ phase: 'ready', message: '数字人已连接' })
+    this.status?.({ phase: 'ready', message: '数字人已连接' })
   }
 
   private ensureSpeechWorker(): Promise<void> {
@@ -265,32 +253,26 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     return worker
   }
 
-  private async speakChunk(text: string, presentation: AvatarPerformanceCue | undefined, generation: number, isStart: boolean, isEnd: boolean): Promise<void> {
+  private async speakAndWait(ssml: string, extra: Record<string, unknown>, generation: number): Promise<void> {
     if (!this.avatar || generation !== this.speechGeneration) return
-    const request = buildMofaSpeechRequest(text, presentation)
-    const clientSpeakId = crypto.randomUUID()
-    const extra = { client_speak_id: clientSpeakId, ...request.extra }
-    let completion: Promise<void> | undefined
+    const clientSpeakId = String(extra.client_speak_id ?? '')
     let timer = 0
-    if (isEnd) {
-      completion = new Promise<void>((resolve, reject) => {
-        this.speechWaiters.set(clientSpeakId, { resolve, reject })
-        timer = window.setTimeout(() => {
-          this.speechWaiters.delete(clientSpeakId)
-          if (generation === this.speechGeneration) this.avatar?.interrupt('speak_timeout')
-          resolve()
-        }, 15_000)
-      })
-    }
+    const completion = new Promise<void>((resolve, reject) => {
+      this.speechWaiters.set(clientSpeakId, { resolve, reject })
+      timer = window.setTimeout(() => {
+        this.speechWaiters.delete(clientSpeakId)
+        if (generation === this.speechGeneration) this.avatar?.interrupt('speak_timeout')
+        resolve()
+      }, 15_000)
+    })
     try {
-      await Promise.resolve(this.avatar.speak(request.ssml, isStart, isEnd, extra))
-      if (completion) await completion
+      await Promise.resolve(this.avatar.speak(ssml, true, true, extra))
+      await completion
     } finally {
       window.clearTimeout(timer)
       this.speechWaiters.delete(clientSpeakId)
     }
   }
-
 }
 
 function findSpeechBoundary(value: string, flush: boolean): number {

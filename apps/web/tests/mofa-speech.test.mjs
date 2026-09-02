@@ -35,3 +35,11 @@ test('maps agent semantic aliases to the documented action intent catalog', () =
   const nod = buildMofaSpeechRequest('明白了', { expression: 'acknowledging', gesture: 'nod' })
   assert.match(nod.ssml, /<ka_intent>Approve<\/ka_intent>/)
 })
+
+test('streams avatar sentence chunks without reopening every sentence', async () => {
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
+  assert.match(runtime, /private streamStarted = false/)
+  assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, isEnd, extra\)/)
+  assert.match(runtime, /const isEnd = this\.speechFlushRequested && this\.speechQueue\.length === 0/)
+  assert.match(runtime, /if \(!this\.speechFlushRequested && this\.speechQueue\.length === 1 && !this\.speechBuffer\.trim\(\)\) break/)
+})

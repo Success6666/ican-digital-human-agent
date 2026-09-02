@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.39）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.40）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
@@ -116,5 +116,5 @@ Set-Location ..\web
 npm run build
 ```
 
-本版本持续实时对话模式验收记录见 [`tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md)，上一版实时语音响应与音量反馈验收记录见 [`tmp-docs/digital-human-agent-v0.1.38-realtime-voice-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.38-realtime-voice-task-book-已完成.md)。
+本版本实时语音链路验收记录见 [`tmp-docs/digital-human-agent-v0.1.40-realtime-chain-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.40-realtime-chain-task-book-已完成.md)，上一版持续实时对话验收记录见 [`tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.39-continuous-realtime-task-book-已完成.md)。
 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。

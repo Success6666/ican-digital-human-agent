@@ -24,11 +24,16 @@ test('browser voice is configured as a continuous recognition session', async ()
   assert.match(source, /recognition\.continuous\s*=\s*true/)
 })
 
-test('continuous voice reads the latest session after asynchronous session creation', async () => {
+test('continuous voice requires a ready avatar and does not create sessions from typing', async () => {
   const source = await readFile(fileURLToPath(new URL('../src/features/chat/components/HomeConversationBar.tsx', import.meta.url)), 'utf8')
   assert.match(source, /sessionRef\.current\s*=\s*session/)
-  assert.match(source, /if \(!sessionRef\.current\)/)
+  assert.match(source, /const interactionReady = Boolean\(session && avatarReady\)/)
+  assert.match(source, /if \(!message \|\| !interactionReady \|\| isCreating\) return/)
+  assert.match(source, /disabled=\{!interactionReady \|\| isCreating\}/)
+  assert.doesNotMatch(source, /onCreateSessionRef/)
   assert.match(source, /onSendRef\.current\(finalText\)/)
+  assert.match(source, /const sent = realtime\.sendText\(finalText\)/)
+  assert.match(source, /if \(!sent\) onSendRef\.current\(finalText\)/)
 })
 
 test('microphone feedback exposes normalized level and silence auto-stop', async () => {
@@ -53,4 +58,14 @@ test('voice mode automatically resumes listening after a completed turn', async 
   assert.match(source, /avatarSpeaking \|\| realtime\.state\.phase !== 'idle'/)
   assert.match(home, /realtimeAssistant/)
   assert.match(home, /onSpeakingChange=\{setAvatarSpeaking\}/)
+  assert.match(home, /onReadyChange=\{setAvatarReady\}/)
+})
+
+test('avatar readiness is propagated from the SDK runtime to the conversation gate', async () => {
+  const stage = await readFile(fileURLToPath(new URL('../src/features/avatar/components/AvatarStage.tsx', import.meta.url)), 'utf8')
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/AvatarRuntimeSurface.tsx', import.meta.url)), 'utf8')
+  assert.match(stage, /onReadyChange\?: \(ready: boolean\) => void/)
+  assert.match(stage, /onReadyChange=\{onReadyChange\}/)
+  assert.match(runtime, /onReadyChange\?\.\(next\.phase === 'ready' \|\| next\.phase === 'speaking'\)/)
+  assert.match(runtime, /onReadyChange\?\.\(false\)/)
 })

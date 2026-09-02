@@ -13,11 +13,12 @@ interface AvatarStageProps {
   activate?: boolean
   visible?: boolean
   onSpeakingChange?: (speaking: boolean) => void
+  onReadyChange?: (ready: boolean) => void
   onCreate: () => void
   onDisconnect: () => void
 }
 
-export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onSpeakingChange, onCreate, onDisconnect }: AvatarStageProps) {
+export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onSpeakingChange, onReadyChange, onCreate, onDisconnect }: AvatarStageProps) {
   const [preview, setPreview] = useState<AvatarPreview | null>(() => readAvatarPreview())
   const [runtimeActive, setRuntimeActive] = useState(() => !readAvatarPreview())
   const activateRuntime = useCallback(() => {
@@ -29,11 +30,12 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
     setPreview(nextPreview)
     if (!session) {
       setRuntimeActive(false)
+      onReadyChange?.(false)
       return
     }
     activateRuntime()
     return subscribeAvatarPreview(() => setPreview(readAvatarPreview()))
-  }, [activateRuntime, session?.sessionId])
+  }, [activateRuntime, onReadyChange, session?.sessionId])
 
   useEffect(() => {
     if (activate || speech?.id) activateRuntime()
@@ -43,7 +45,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
   return (
     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
       {session && shouldConnect ? (
-        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} onSpeakingChange={onSpeakingChange} />
+        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} onSpeakingChange={onSpeakingChange} onReadyChange={onReadyChange} />
       ) : preview ? (
         <>
           <AvatarPreviewSurface preview={preview} />

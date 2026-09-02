@@ -1,0 +1,36 @@
+ICAN v0.1.40 实时语音链路验证记录
+日期：2026-09-02
+
+变更对象
+- 分支：当前工作分支
+- 版本：v0.1.40
+- 关键字段：avatarReady 门禁、浏览器本机 ASR 最终文本进入 WebSocket text、Mofa 流式分句 isStart/isEnd
+
+证据文件
+- MODIFIED_FILE：tmp-docs/v0.1.40-realtime-chain-artifacts/modified-mofaRuntime.ts
+- DIFF_FILE：tmp-docs/v0.1.40-realtime-chain-artifacts/DIFF_FILE.patch
+- VERIFICATION.txt：tmp-docs/v0.1.40-realtime-chain-artifacts/VERIFICATION.txt
+- ROLLBACK.sh：tmp-docs/v0.1.40-realtime-chain-artifacts/ROLLBACK.sh
+
+基线/修改/回滚
+- BASELINE command: git show HEAD:apps/web/src/features/avatar/runtime/mofaRuntime.ts > baseline-mofaRuntime.ts
+- BASELINE result: SHA256 57545D0684D5C3E63FE0D147207B4C89C021A270ED571A9BCD77B3F2FBE34FBD
+- MODIFIED command: Copy-Item apps/web/src/features/avatar/runtime/mofaRuntime.ts modified-mofaRuntime.ts
+- MODIFIED result: SHA256 D0D5B62B66BA90E47B484204F436F4DB0871103F34032AE8B376F545E51B94A7
+- ROLLBACK command: bash ROLLBACK.sh
+- ROLLBACK literal output: ROLLBACK_OK baseline restored to verification copy
+- ROLLBACK status: exit 0; cmp baseline and rollback copy passed
+- 工作树状态：保留修改后的源码，回滚仅作用于验证副本
+
+测试命令与结果
+- BASELINE: git show HEAD:apps/web/src/features/avatar/runtime/mofaRuntime.ts > baseline-mofaRuntime.ts；exit 0
+- MODIFIED: npm run test:chat；3/3 passed；exit 0
+- MODIFIED: npm run test:realtime；8/8 passed；exit 0
+- MODIFIED: npm run test:layout；6/6 passed；exit 0
+- MODIFIED: npm run test:avatar；4/4 passed；exit 0
+- MODIFIED: npm run build；Vite build succeeded；exit 0
+- MODIFIED: $env:PYTHONPATH='src'; python -m pytest -q；192 passed, 2 skipped, 1 warning；exit 0
+- MODIFIED: .\\mvnw.cmd -q test；通过；exit 0
+- MODIFIED: docker compose build web；image built；exit 0
+- MODIFIED: docker compose up -d --no-build；all services healthy；exit 0
+- MODIFIED: Invoke-WebRequest http://127.0.0.1:8088/api/health；literal output 200；exit 0

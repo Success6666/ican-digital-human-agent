@@ -22,8 +22,8 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
   const [drawerOpen, setDrawerOpen] = useState(false)
   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
-  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
   const [avatarSpeaking, setAvatarSpeaking] = useState(false)
+  const [avatarReady, setAvatarReady] = useState(false)
   const realtimeAssistant = realtime.state.assistantText.trim()
   const activeSpeech = realtimeAssistant ? {
     id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
@@ -45,18 +45,6 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
     return () => window.clearTimeout(timer)
   }, [avatar.session?.sessionId, realtime.connect, realtime.disconnect])
 
-  useEffect(() => {
-    if (!avatar.session || !queuedMessage) return
-    const message = queuedMessage
-    setQueuedMessage(null)
-    void chat.sendMessage(message)
-  }, [avatar.session?.sessionId, chat.sendMessage, queuedMessage])
-
-  function startConversation(message?: string) {
-    if (message) setQueuedMessage(message)
-    void avatar.create().catch(() => setQueuedMessage(null))
-  }
-
   return (
     <div className="page-stack home-page">
       <main className="home-reference-stage">
@@ -70,8 +58,9 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           onCreate={() => void avatar.create()}
           onDisconnect={() => void avatar.close()}
           onSpeakingChange={setAvatarSpeaking}
+          onReadyChange={setAvatarReady}
         />
-        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} onCreateSession={startConversation} />
+        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarReady={avatarReady} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} />
         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
           <History size={18} />
         </button>

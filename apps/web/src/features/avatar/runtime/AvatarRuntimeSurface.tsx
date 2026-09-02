@@ -11,9 +11,10 @@ interface AvatarRuntimeSurfaceProps {
   interruptKey?: string
   visible?: boolean
   onSpeakingChange?: (speaking: boolean) => void
+  onReadyChange?: (ready: boolean) => void
 }
 
-export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange }: AvatarRuntimeSurfaceProps) {
+export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true, onSpeakingChange, onReadyChange }: AvatarRuntimeSurfaceProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<BrowserAvatarRuntime>()
   const spokenMessageRef = useRef<string>()
@@ -30,6 +31,7 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = 
     const params = session.clientParams
     if (!host || session.provider !== 'mofa' || params?.runtime !== 'mofa-web-sdk') {
       setStatus({ phase: 'error', message: '当前会话未提供可视化数字人 Runtime' })
+      onReadyChange?.(false)
       return
     }
     let active = true
@@ -42,18 +44,23 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = 
       if (!active) return
       setStatus(next)
       onSpeakingChange?.(next.phase === 'speaking')
+      onReadyChange?.(next.phase === 'ready' || next.phase === 'speaking')
       if (next.phase === 'ready') window.setTimeout(() => { if (active) saveAvatarPreview(host, session.provider) }, 3_000)
     }).catch(() => {
-      if (active) setStatus({ phase: 'error', message: '魔珐数字人连接失败，请检查网络和应用配置' })
+      if (active) {
+        setStatus({ phase: 'error', message: '魔珐数字人连接失败，请检查网络和应用配置' })
+        onReadyChange?.(false)
+      }
     })
     return () => {
       active = false
       onSpeakingChange?.(false)
+      onReadyChange?.(false)
       if (runtimeRef.current === runtime) runtimeRef.current = undefined
       void runtime.dispose()
       host.replaceChildren()
     }
-  }, [generation, session.sessionId])
+  }, [generation, onReadyChange, onSpeakingChange, session.sessionId])
 
   useEffect(() => {
     if (!interruptKey) return

@@ -9,12 +9,12 @@ interface HomeConversationBarProps {
   realtime: RealtimeController
   isSending: boolean
   isCreating?: boolean
+  avatarReady?: boolean
   avatarSpeaking?: boolean
   onSend: (message: string) => void
-  onCreateSession: (initialMessage?: string) => void
 }
 
-export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarSpeaking = false, onSend, onCreateSession }: HomeConversationBarProps) {
+export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarReady = false, avatarSpeaking = false, onSend }: HomeConversationBarProps) {
   const [draft, setDraft] = useState('')
   const [continuousVoiceActive, setContinuousVoiceActive] = useState(false)
   const [browserVoiceActive, setBrowserVoiceActive] = useState(false)
@@ -28,22 +28,21 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
   const sessionRef = useRef(session)
   const isCreatingRef = useRef(isCreating)
   const onSendRef = useRef(onSend)
-  const onCreateSessionRef = useRef(onCreateSession)
   const isSendingRef = useRef(isSending)
   const recording = realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'
   // 文本 SSE 与实时语音 WebSocket 是两条独立链路。文本不应等待语音通道。
   const ready = Boolean(session) && realtime.state.connection === 'connected'
   const browserVoiceAvailable = browserSpeechSupported()
   const backendVoiceAvailable = ready && realtime.state.audioSupported
-  const voiceAvailable = backendVoiceAvailable || browserVoiceAvailable
+  const interactionReady = Boolean(session && avatarReady)
+  const voiceAvailable = interactionReady && (backendVoiceAvailable || browserVoiceAvailable)
 
   useEffect(() => {
     sessionRef.current = session
     isCreatingRef.current = isCreating
     onSendRef.current = onSend
-    onCreateSessionRef.current = onCreateSession
     isSendingRef.current = isSending
-  }, [isCreating, isSending, onCreateSession, onSend, session])
+  }, [isCreating, isSending, onSend, session])
 
   useEffect(() => () => {
     browserVoiceStoppingRef.current = true
@@ -133,13 +132,8 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
   function submit(event: FormEvent) {
     event.preventDefault()
     const message = draft.trim()
-    if (!message) return
-    if (!session) {
-      if (isCreating) return
-      onCreateSession(message)
-    } else {
-      onSend(message)
-    }
+    if (!message || !interactionReady || isCreating) return
+    onSend(message)
     setDraft('')
   }
 
@@ -183,6 +177,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
       }
       return
     }
+    if (!interactionReady) return
     setContinuousVoiceActive(true)
     if (backendVoiceAvailable) return
     if (!browserVoiceAvailable) {
@@ -207,14 +202,12 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
       if (!finalText) return
       setDraft('')
       browserVoicePausedRef.current = true
-      if (!sessionRef.current) {
-        if (isCreatingRef.current) setDraft(finalText)
-        else {
-          isCreatingRef.current = true
-          onCreateSessionRef.current(finalText)
-        }
-      } else {
-        onSendRef.current(finalText)
+      if (sessionRef.current) {
+        // Browser recognition is the local ASR fallback. Prefer the same
+        // realtime WebSocket text boundary so the Agent and avatar keep one
+        // generation; use SSE only while that socket is still connecting.
+        const sent = realtime.sendText(finalText)
+        if (!sent) onSendRef.current(finalText)
       }
       if (browserRecognitionRunningRef.current) recognition.stop()
     }
@@ -249,7 +242,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
     }
   }
 
-  const placeholder = !session
+  const placeholder = !session || !avatarReady
     ? isCreating ? '正在创建数字人会话…' : '等待数字人连接…'
     : continuousVoiceActive
       ? recording || browserVoiceActive && !isSending ? '实时对话中 · 正在聆听…'
@@ -282,11 +275,12 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
         maxLength={4000}
         rows={1}
         aria-label="输入消息"
+        disabled={!interactionReady || isCreating}
       />
       <button
         className="home-send-button"
         type="submit"
-        disabled={!draft.trim() || (!session && isCreating)}
+        disabled={!draft.trim() || !interactionReady || isCreating}
         aria-label={isSending ? '发送新消息并切换当前回应' : '发送消息'}
         title={isSending ? '发送新消息并切换当前回应' : '发送消息'}
       >
