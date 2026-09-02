@@ -116,5 +116,5 @@ Set-Location ..\web
 npm run build
 ```
 
-本版本会话历史、HTTPS 公网入口与流式稳定性验收记录见 [`tmp-docs/digital-human-agent-v0.1.42-conversation-history-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.42-conversation-history-task-book-已完成.md)，上一版公网映射记录见 [`tmp-docs/digital-human-agent-v0.1.41-session-drawer-wireguard-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.41-session-drawer-wireguard-task-book-已完成.md)。
+本版本 HTTP 到 HTTPS 端口跳转验收记录见 [`tmp-docs/digital-human-agent-v0.1.43-http-to-https-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.43-http-to-https-task-book-已完成.md)；会话历史、HTTPS 公网入口与流式稳定性记录见 [`tmp-docs/digital-human-agent-v0.1.42-conversation-history-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.42-conversation-history-task-book-已完成.md)，上一版公网映射记录见 [`tmp-docs/digital-human-agent-v0.1.41-session-drawer-wireguard-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.41-session-drawer-wireguard-task-book-已完成.md)。
 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。
