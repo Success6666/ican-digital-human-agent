@@ -22,7 +22,9 @@ from app.rag import (  # noqa: E402
     MetadataLimitError,
     RagService,
     SearchRequest,
+    HierarchicalChunker,
 )
+from app.rag.embeddings import LocalSentenceTransformerEmbeddingProvider, build_embedding_provider  # noqa: E402
 
 
 class RagTests(unittest.IsolatedAsyncioTestCase):
@@ -199,6 +201,43 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
         chunks = chunker.split("one two three four five six seven eight nine ten eleven twelve")
         self.assertTrue(chunks)
         self.assertTrue(all(len(chunk) <= 64 for chunk in chunks))
+
+    def test_hierarchical_chunker_preserves_parent_context(self) -> None:
+        chunker = HierarchicalChunker(max_chars=64, overlap_chars=8, parent_max_chars=160, parent_overlap_chars=16)
+        drafts = chunker.split_with_metadata("# 语音设置\n\n数字人支持中文实时播报。" * 12 + "\n\n# 连接配置\n\n连接后才可以进入实时对话。" * 12)
+        self.assertGreaterEqual(len(drafts), 2)
+        self.assertTrue(all(len(item.text) <= 64 for item in drafts))
+        self.assertTrue(all(item.metadata.get("parent_text") for item in drafts))
+        self.assertTrue(any("语音设置" in str(item.metadata.get("section_path")) for item in drafts))
+
+    def test_local_embedding_provider_is_the_default_and_hash_is_explicit(self) -> None:
+        provider = build_embedding_provider(
+            provider="local",
+            base_url="",
+            api_key="",
+            model="BAAI/bge-small-zh-v1.5",
+            dimensions=512,
+        )
+        self.assertIsInstance(provider, LocalSentenceTransformerEmbeddingProvider)
+        with self.assertRaises(ValueError):
+            build_embedding_provider(
+                provider="unsupported",
+                base_url="",
+                api_key="",
+                model="",
+                dimensions=512,
+            )
+
+    async def test_search_cache_returns_copy_and_invalidates_after_ingest(self) -> None:
+        first = await self.service.ingest(IngestRequest(document_id="cached", source_name="a.md", content="旧答案"))
+        self.assertEqual(first.chunk_count, 1)
+        result = await self.service.search(SearchRequest(query="旧答案"))
+        result.hits.clear()
+        cached = await self.service.search(SearchRequest(query="旧答案"))
+        self.assertEqual(len(cached.hits), 1)
+        await self.service.ingest(IngestRequest(document_id="cached", source_name="a.md", content="新答案"))
+        refreshed = await self.service.search(SearchRequest(query="新答案"))
+        self.assertTrue(refreshed.hits)
 
 
 if __name__ == "__main__":

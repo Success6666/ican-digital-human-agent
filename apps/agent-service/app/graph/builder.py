@@ -203,12 +203,19 @@ def build_graph(
             context_texts.append(profile_context[:4000])
         if hits:
             references = []
+            seen_contexts: set[tuple[str, str]] = set()
             for item in hits[:3]:
                 chunk = item.get("chunk", {}) if isinstance(item, dict) else {}
-                text = str(chunk.get("text", "")).strip().replace("\n", " ")
+                metadata = chunk.get("metadata", {}) if isinstance(chunk, dict) else {}
+                parent_text = metadata.get("parent_text") if isinstance(metadata, dict) else None
+                context_key = (str(chunk.get("document_id", "")), str(metadata.get("parent_index", "") if isinstance(metadata, dict) else ""))
+                if context_key in seen_contexts:
+                    continue
+                seen_contexts.add(context_key)
+                text = str(parent_text or chunk.get("text", "")).strip().replace("\n", " ")
                 if text:
-                    references.append(f"- {text[:180]}")
-                    context_texts.append(text[:180])
+                    references.append(f"- {text[:500]}")
+                    context_texts.append(text[:500])
             if references:
                 context_texts = context_texts[:3]
         decision = _decision(state)

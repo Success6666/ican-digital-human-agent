@@ -1,0 +1,61 @@
+{
+  "version": "0.1.46",
+  "embedding": "hash-local-offline-comparison",
+  "note": "仅用于无模型环境的历史对照，不代表生产默认链路；生产使用 v0.1.46-local-bge-benchmark.json 中的本机 BGE 模型。",
+  "generatedAt": "2026-09-03T02:12:51+0800",
+  "documents": 5,
+  "chunks": 10,
+  "metrics": {
+    "recallAt5": 1.0,
+    "mrr": 1.0,
+    "coldP50Ms": 6.97,
+    "coldP95Ms": 7.098,
+    "warmCacheP50Ms": 0.239,
+    "warmCacheP95Ms": 0.25
+  },
+  "raw": {
+    "queries": [
+      [
+        "语音播报",
+        "doc-voice-0"
+      ],
+      [
+        "父子分块 FAISS",
+        "doc-rag-1"
+      ],
+      [
+        "租户隔离",
+        "doc-tenant-2"
+      ],
+      [
+        "缓存 TTL",
+        "doc-cache-3"
+      ],
+      [
+        "页面数字人会话",
+        "doc-avatar-4"
+      ]
+    ],
+    "coldMs": [
+      9.18160000583157,
+      7.097900001099333,
+      6.478700001025572,
+      6.970199989154935,
+      5.519300000742078
+    ],
+    "warmCacheMs": [
+      0.2361999941058457,
+      0.31770000350661576,
+      0.24980001035146415,
+      0.23940001847222447,
+      0.2229000092484057
+    ],
+    "hitRanks": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  }
+}

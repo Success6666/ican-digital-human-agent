@@ -171,6 +171,9 @@ class EmbeddingRuntimeConfiguration(BaseModel):
     api_key: str = Field(default="", max_length=512)
     model: str = Field(default="BAAI/bge-small-zh-v1.5", max_length=128)
     dimensions: int = Field(default=512, ge=16, le=4096)
+    device: str = Field(default="auto", max_length=16)
+    cache_dir: str = Field(default="/app/model-cache/sentence-transformers", max_length=512)
+    batch_size: int = Field(default=64, ge=1, le=256)
 
     @classmethod
     def from_env(cls) -> "EmbeddingRuntimeConfiguration":
@@ -181,6 +184,9 @@ class EmbeddingRuntimeConfiguration(BaseModel):
             api_key=os.getenv("EMBEDDING_API_KEY", "").strip(),
             model=os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5").strip(),
             dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "512")),
+            device=os.getenv("EMBEDDING_DEVICE", "auto").strip(),
+            cache_dir=os.getenv("EMBEDDING_CACHE_DIR", "/app/model-cache/sentence-transformers").strip(),
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "64")),
         )
 
 
@@ -257,6 +263,9 @@ def apply_embedding_environment(configuration: EmbeddingRuntimeConfiguration) ->
             "EMBEDDING_API_KEY": configuration.api_key,
             "EMBEDDING_MODEL": configuration.model,
             "EMBEDDING_DIMENSIONS": str(configuration.dimensions),
+            "EMBEDDING_DEVICE": configuration.device,
+            "EMBEDDING_CACHE_DIR": configuration.cache_dir,
+            "EMBEDDING_BATCH_SIZE": str(configuration.batch_size),
         },
     )
 

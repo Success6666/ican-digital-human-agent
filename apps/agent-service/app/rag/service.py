@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from dataclasses import replace
 import hashlib
 import inspect
@@ -11,7 +12,7 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from .chunker import CharacterChunker
+from .chunker import CharacterChunker, ChunkDraft, HierarchicalChunker
 from .docling_parser import DoclingParser
 from .docling_parser import DoclingRuntimeConfig
 from .embeddings import build_embedding_provider
@@ -48,6 +49,8 @@ class RagService:
         max_metadata_items: int = DEFAULT_MAX_METADATA_ITEMS,
         max_metadata_depth: int = DEFAULT_MAX_METADATA_DEPTH,
         parse_concurrency: int = 1,
+        search_cache_ttl_seconds: float = 30.0,
+        search_cache_max_entries: int = 2048,
     ) -> None:
         if max_document_bytes <= 0:
             raise ValueError("max_document_bytes must be positive")
@@ -65,6 +68,14 @@ class RagService:
         )
         self.parse_concurrency = parse_concurrency
         self._parse_slots = asyncio.Semaphore(parse_concurrency)
+        self.search_cache_ttl_seconds = max(0.0, search_cache_ttl_seconds)
+        self.search_cache_max_entries = max(1, search_cache_max_entries)
+        self._search_cache: OrderedDict[tuple[Any, ...], tuple[float, SearchResult]] = OrderedDict()
+        self._search_cache_lock = asyncio.Lock()
+
+    async def warmup_embedding(self) -> None:
+        """Load the configured local/remote embedder before first user query."""
+        await asyncio.to_thread(self.store.embedder.embed, "数字人知识库检索预热")
 
     async def ingest(self, request: IngestRequest, *, owner_id: str = "system") -> IngestResult:
         started = time.perf_counter()
@@ -89,7 +100,11 @@ class RagService:
                     document_id=document_id,
                     metadata={**request.metadata, "owner_id": owner_id, "collection": request.collection},
                 )
-                texts = await asyncio.to_thread(self.chunker.split, parsed.content, metadata=parsed.metadata)
+                split_with_metadata = getattr(self.chunker, "split_with_metadata", None)
+                if callable(split_with_metadata):
+                    drafts = await asyncio.to_thread(split_with_metadata, parsed.content, metadata=parsed.metadata)
+                else:
+                    drafts = [ChunkDraft(text=text, metadata={}) for text in await asyncio.to_thread(self.chunker.split, parsed.content, metadata=parsed.metadata)]
         except Exception as exc:
             await self._observe(
                 "rag.ingest",
@@ -106,21 +121,27 @@ class RagService:
             DocumentChunk(
                 chunk_id=f"{document_id}:{index}",
                 document_id=document_id,
-                text=text,
+                text=draft.text,
                 ordinal=index,
                 metadata={
                     **parsed.metadata,
+                    **draft.metadata,
                     "owner_id": owner_id,
                     "collection": request.collection,
                     "chunk_index": index,
                 },
             )
-            for index, text in enumerate(texts)
+            for index, draft in enumerate(drafts)
         ]
         if not chunks:
             raise ValueError("document produced no searchable chunks")
-        await self.store.delete_document(document_id, namespace=namespace)
-        await self.store.upsert(chunks, namespace=namespace)
+        replace_document = getattr(self.store, "replace_document", None)
+        if callable(replace_document):
+            await replace_document(document_id, chunks, namespace=namespace)
+        else:
+            await self.store.delete_document(document_id, namespace=namespace)
+            await self.store.upsert(chunks, namespace=namespace)
+        await self._invalidate_search_cache(namespace)
         await self._observe(
             "rag.ingest",
             {
@@ -144,6 +165,15 @@ class RagService:
         started = time.perf_counter()
         namespace = _namespace(owner_id, request.collection)
         request.validate_metadata(self.metadata_limits)
+        cache_key = (namespace, request.query.strip(), request.top_k, _freeze(request.metadata_filter))
+        if self.search_cache_ttl_seconds > 0:
+            async with self._search_cache_lock:
+                cached = self._search_cache.get(cache_key)
+                if cached and cached[0] > time.monotonic():
+                    self._search_cache.move_to_end(cache_key)
+                    return cached[1].model_copy(deep=True)
+                if cached:
+                    self._search_cache.pop(cache_key, None)
         try:
             hits = await self.store.search(
                 request.query,
@@ -174,10 +204,26 @@ class RagService:
                 "duration_ms": _elapsed_ms(started),
             },
         )
-        return SearchResult(query=request.query, collection=request.collection, hits=hits)
+        result = SearchResult(query=request.query, collection=request.collection, hits=hits)
+        if self.search_cache_ttl_seconds > 0:
+            async with self._search_cache_lock:
+                self._search_cache[cache_key] = (time.monotonic() + self.search_cache_ttl_seconds, result.model_copy(deep=True))
+                self._search_cache.move_to_end(cache_key)
+                while len(self._search_cache) > self.search_cache_max_entries:
+                    self._search_cache.popitem(last=False)
+        return result
 
     async def delete(self, document_id: str, *, owner_id: str = "system", collection: str = "default") -> int:
-        return await self.store.delete_document(document_id, namespace=_namespace(owner_id, collection))
+        namespace = _namespace(owner_id, collection)
+        deleted = await self.store.delete_document(document_id, namespace=namespace)
+        if deleted:
+            await self._invalidate_search_cache(namespace)
+        return deleted
+
+    async def _invalidate_search_cache(self, namespace: str) -> None:
+        async with self._search_cache_lock:
+            for key in [key for key in self._search_cache if key[0] == namespace]:
+                self._search_cache.pop(key, None)
 
     async def count(self, *, owner_id: str | None = None, collection: str = "default") -> int:
         namespace = _namespace(owner_id, collection) if owner_id is not None else None
@@ -226,8 +272,8 @@ def build_default_rag_service(
     embedding_model: str | None = None,
     embedding_dimensions: int | None = None,
 ) -> RagService:
-    max_chars = _positive_int(os.getenv("RAG_CHUNK_MAX_CHARS"), 1200)
-    overlap = _nonnegative_int(os.getenv("RAG_CHUNK_OVERLAP_CHARS"), 120)
+    max_chars = _positive_int(os.getenv("RAG_CHUNK_MAX_CHARS"), 720)
+    overlap = _nonnegative_int(os.getenv("RAG_CHUNK_OVERLAP_CHARS"), 80)
     if overlap >= max_chars:
         overlap = max(0, max_chars // 10)
     max_chunks = _positive_int(os.getenv("RAG_MAX_CHUNKS"), 10_000)
@@ -261,16 +307,29 @@ def build_default_rag_service(
         api_key=embedding_api_key or os.getenv("EMBEDDING_API_KEY", ""),
         model=embedding_model or os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"),
         dimensions=embedding_dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "512")),
+        device=os.getenv("EMBEDDING_DEVICE", "auto"),
+        cache_dir=os.getenv("EMBEDDING_CACHE_DIR", "/app/model-cache/sentence-transformers"),
+        batch_size=_positive_int(os.getenv("EMBEDDING_BATCH_SIZE"), 64),
     )
     vector_store = FaissVectorStore(
         store_path or os.getenv("RAG_STORE_PATH", "data/rag.sqlite3"),
         index_path=index_path or os.getenv("RAG_INDEX_PATH", "data/faiss"),
         embedder=embedder,
         max_chunks=max_chunks,
+        index_type=os.getenv("RAG_INDEX_TYPE", "auto"),
+        hnsw_min_chunks=_positive_int(os.getenv("RAG_HNSW_MIN_CHUNKS"), 256),
+        hnsw_m=_positive_int(os.getenv("RAG_HNSW_M"), 32),
+        hnsw_ef_search=_positive_int(os.getenv("RAG_HNSW_EF_SEARCH"), 64),
+        index_cache_namespaces=_positive_int(os.getenv("RAG_INDEX_CACHE_NAMESPACES"), 64),
     )
     return RagService(
         parser=DoclingParser(strict_binary=strict_binary, config=docling_config),
-        chunker=CharacterChunker(max_chars=max_chars, overlap_chars=overlap),
+        chunker=HierarchicalChunker(
+            max_chars=max_chars,
+            overlap_chars=overlap,
+            parent_max_chars=_positive_int(os.getenv("RAG_PARENT_MAX_CHARS"), 2400),
+            parent_overlap_chars=_nonnegative_int(os.getenv("RAG_PARENT_OVERLAP_CHARS"), 160),
+        ),
         store=vector_store,
         observer=observer,
         max_document_bytes=document_limit,
@@ -278,6 +337,8 @@ def build_default_rag_service(
         max_metadata_items=metadata_items_limit,
         max_metadata_depth=metadata_depth_limit,
         parse_concurrency=parse_concurrency_limit,
+        search_cache_ttl_seconds=_positive_float(os.getenv("RAG_SEARCH_CACHE_TTL_SECONDS"), 30.0),
+        search_cache_max_entries=_positive_int(os.getenv("RAG_SEARCH_CACHE_MAX_ENTRIES"), 2048),
     )
 
 
@@ -299,6 +360,24 @@ def _nonnegative_int(raw: str | None, default: int) -> int:
 
 def _truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _positive_float(raw: str | None, default: float) -> float:
+    try:
+        value = float(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        return default
+    return value if value >= 0 else default
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _freeze(item)) for key, item in value.items()))
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, set):
+        return tuple(sorted((_freeze(item) for item in value), key=repr))
+    return value
 
 
 def _elapsed_ms(started: float) -> float:

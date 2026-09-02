@@ -86,6 +86,17 @@ def build_router(service: RagService | None = None, *, prefix: str = "/internal/
             "docling_loaded": bool(getattr(selected.parser, "loaded", False)),
             "docling_load_error": getattr(selected.parser, "load_error", None),
             "parse_concurrency": selected.parse_concurrency,
+            "chunker": selected.chunker.__class__.__name__,
+            "chunk_max_chars": getattr(selected.chunker, "max_chars", None),
+            "chunk_overlap_chars": getattr(selected.chunker, "overlap_chars", None),
+            "parent_max_chars": getattr(selected.chunker, "parent_max_chars", None),
+            "embedding_dimensions": getattr(getattr(selected.store, "embedder", None), "dimensions", None),
+            "index_type": getattr(selected.store, "index_type", "unknown"),
+            "search_cache_ttl_seconds": selected.search_cache_ttl_seconds,
+            "search_cache_max_entries": selected.search_cache_max_entries,
+            "embedding_provider": selected.store.embedder.__class__.__name__,
+            "embedding_model": getattr(selected.store.embedder, "model_name", None),
+            "embedding_device": getattr(selected.store.embedder, "resolved_device", None),
         }
 
     @api.post("/ingest", response_model=IngestResult)

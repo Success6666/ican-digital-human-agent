@@ -5,7 +5,7 @@ Docling, chunking and storage are replaceable through the protocols exported
 here, while :class:`RagService` keeps the application-facing workflow stable.
 """
 
-from .chunker import CharacterChunker
+from .chunker import CharacterChunker, ChunkDraft, HierarchicalChunker
 from .docling_parser import DocumentParseError, DoclingParser, DoclingRuntimeConfig
 from .embeddings import HashEmbeddingProvider, LocalSentenceTransformerEmbeddingProvider
 from .faiss_store import FaissVectorStore
@@ -24,6 +24,8 @@ from .service import RagService, build_default_rag_service
 
 __all__ = [
     "CharacterChunker",
+    "ChunkDraft",
+    "HierarchicalChunker",
     "DocumentChunk",
     "DocumentParseError",
     "DoclingParser",

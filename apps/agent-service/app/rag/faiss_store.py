@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from collections import OrderedDict
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import time
 from typing import Any
@@ -36,6 +38,11 @@ class FaissVectorStore:
         index_path: str | None = None,
         embedder: EmbeddingProvider | None = None,
         max_chunks: int = 10_000,
+        index_type: str | None = None,
+        hnsw_min_chunks: int = 256,
+        hnsw_m: int = 32,
+        hnsw_ef_search: int = 64,
+        index_cache_namespaces: int = 64,
     ) -> None:
         if not path.strip():
             raise ValueError("path is required")
@@ -45,8 +52,14 @@ class FaissVectorStore:
         self.index_path = Path(index_path) if index_path else self.path.with_suffix(".faiss")
         self.embedder = embedder or HashEmbeddingProvider()
         self.max_chunks = max_chunks
+        self.index_type = (index_type or os.getenv("RAG_INDEX_TYPE", "auto")).strip().lower()
+        self.hnsw_min_chunks = max(1, hnsw_min_chunks)
+        self.hnsw_m = max(4, hnsw_m)
+        self.hnsw_ef_search = max(8, hnsw_ef_search)
+        self.index_cache_namespaces = max(1, index_cache_namespaces)
         self._write_lock = asyncio.Lock()
-        self._index_cache: dict[str, tuple[tuple[int, float, int], faiss.Index]] = {}
+        self._index_cache: OrderedDict[str, tuple[tuple[int, float, int], faiss.Index]] = OrderedDict()
+        self._rows_cache: OrderedDict[str, tuple[tuple[int, float, int], list[tuple[Any, ...]]]] = OrderedDict()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.index_path.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -54,12 +67,23 @@ class FaissVectorStore:
     async def upsert(self, chunks: Sequence[DocumentChunk], *, namespace: str) -> None:
         if not namespace:
             raise ValueError("namespace is required")
-        prepared = [
-            (namespace, chunk, await asyncio.to_thread(self.embedder.embed, chunk.text))
-            for chunk in chunks
-        ]
+        chunk_list = list(chunks)
+        vectors = await asyncio.to_thread(_embed_many, self.embedder, [chunk.text for chunk in chunk_list])
+        prepared = [(namespace, chunk, vector) for chunk, vector in zip(chunk_list, vectors, strict=True)]
         async with self._write_lock:
             await asyncio.to_thread(self._upsert_sync, prepared)
+            self._rows_cache.pop(namespace, None)
+            await asyncio.to_thread(self._rebuild_all_sync)
+
+    async def replace_document(self, document_id: str, chunks: Sequence[DocumentChunk], *, namespace: str) -> None:
+        """Atomically replace one document and rebuild indexes once."""
+        chunk_list = list(chunks)
+        vectors = await asyncio.to_thread(_embed_many, self.embedder, [chunk.text for chunk in chunk_list])
+        prepared = [(namespace, chunk, vector) for chunk, vector in zip(chunk_list, vectors, strict=True)]
+        async with self._write_lock:
+            await asyncio.to_thread(self._delete_sync, document_id, namespace)
+            await asyncio.to_thread(self._upsert_sync, prepared)
+            self._rows_cache.pop(namespace, None)
             await asyncio.to_thread(self._rebuild_all_sync)
 
     async def search(
@@ -77,6 +101,7 @@ class FaissVectorStore:
         return await asyncio.to_thread(
             self._search_sync,
             query_vector,
+            query,
             namespace,
             top_k,
             metadata_filter or {},
@@ -86,6 +111,7 @@ class FaissVectorStore:
         async with self._write_lock:
             deleted = await asyncio.to_thread(self._delete_sync, document_id, namespace)
             if deleted:
+                self._rows_cache.pop(namespace, None)
                 await asyncio.to_thread(self._rebuild_namespace_sync, namespace)
             return deleted
 
@@ -120,6 +146,7 @@ class FaissVectorStore:
         """Discard loaded indexes after an embedding configuration change."""
 
         self._index_cache.clear()
+        self._rows_cache.clear()
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -182,19 +209,38 @@ class FaissVectorStore:
     def _search_sync(
         self,
         query_vector: Sequence[float],
+        query_text: str,
         namespace: str,
         top_k: int,
         metadata_filter: dict[str, Any],
     ) -> list[SearchHit]:
-        rows = self._read_namespace(namespace)
+        signature = self._signature(namespace)
+        rows = self._read_namespace_cached(namespace, signature)
         if not rows:
             return []
         query = _normalized_matrix([query_vector])
-        index = self._load_index_sync(namespace, rows, expected_dimensions=query.shape[1])
-        search_count = len(rows) if metadata_filter else min(len(rows), max(top_k * 4, top_k))
+        index = self._load_index_sync(namespace, rows, expected_dimensions=query.shape[1], signature=signature)
+        search_count = len(rows) if metadata_filter else min(len(rows), max(top_k * 8, top_k))
         scores, positions = index.search(query, search_count)
+        lexical_tokens = _lexical_tokens(query_text)
+        candidate_positions = {int(position): float(score) for score, position in zip(scores[0].tolist(), positions[0].tolist(), strict=True) if position >= 0}
+        if lexical_tokens and len(rows) <= 20_000:
+            lexical_candidates = sorted(
+                ((index, _lexical_overlap(lexical_tokens, str(row[0]))) for index, row in enumerate(rows)),
+                key=lambda item: item[1],
+                reverse=True,
+            )[: max(top_k * 8, top_k)]
+            for position, _ in lexical_candidates:
+                candidate_positions.setdefault(position, 0.0)
         hits: list[SearchHit] = []
-        for score, position in zip(scores[0].tolist(), positions[0].tolist(), strict=True):
+        ranked_positions = sorted(
+            candidate_positions,
+            key=lambda position: (
+                -(0.75 * candidate_positions[position] + 0.25 * _lexical_overlap(lexical_tokens, str(rows[position][0])) if lexical_tokens else candidate_positions[position]),
+                position,
+            ),
+        )
+        for position in ranked_positions:
             if position < 0 or position >= len(rows):
                 continue
             text, document_id, chunk_id, ordinal, metadata_json, _ = rows[position]
@@ -213,7 +259,7 @@ class FaissVectorStore:
                         ordinal=ordinal,
                         metadata=metadata,
                     ),
-                    score=round(float(score), 8),
+                    score=round(float(candidate_positions[position]), 8),
                 )
             )
             if len(hits) >= top_k:
@@ -226,17 +272,19 @@ class FaissVectorStore:
         rows: list[tuple[Any, ...]],
         *,
         expected_dimensions: int,
+        signature: tuple[int, float, int] | None = None,
     ) -> faiss.Index:
-        signature = self._signature(namespace)
+        signature = signature or self._signature(namespace)
         cached = self._index_cache.get(namespace)
         if cached and cached[0] == signature and cached[1].d == expected_dimensions:
+            self._index_cache.move_to_end(namespace)
             return cached[1]
         index_file, signature_file = self._index_files(namespace)
         try:
             stored_signature = tuple(json.loads(signature_file.read_text(encoding="utf-8")))
             index = faiss.read_index(str(index_file))
             if stored_signature == signature and index.ntotal == len(rows) and index.d == expected_dimensions:
-                self._index_cache[namespace] = (signature, index)
+                self._cache_index(namespace, signature, index)
                 return index
         except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
             pass
@@ -276,14 +324,40 @@ class FaissVectorStore:
         if expected_dimensions is not None and matrix.shape[1] != expected_dimensions:
             matrix = _normalized_matrix([self.embedder.embed(str(row[0])) for row in rows])
             self._replace_vectors(namespace, rows, matrix)
-        index = faiss.IndexFlatIP(matrix.shape[1])
+        index = self._new_index(matrix.shape[1], len(rows))
         index.add(matrix)
         self._persist_index(namespace, index, self._signature(namespace))
-        self._index_cache[namespace] = (self._signature(namespace), index)
+        self._cache_index(namespace, self._signature(namespace), index)
         return index
+
+    def _new_index(self, dimensions: int, count: int) -> faiss.Index:
+        if self.index_type in {"hnsw", "auto"} and count >= self.hnsw_min_chunks:
+            index = faiss.IndexHNSWFlat(dimensions, self.hnsw_m, faiss.METRIC_INNER_PRODUCT)
+            index.hnsw.efSearch = self.hnsw_ef_search
+            return index
+        return faiss.IndexFlatIP(dimensions)
+
+    def _cache_index(self, namespace: str, signature: tuple[int, float, int], index: faiss.Index) -> None:
+        self._index_cache[namespace] = (signature, index)
+        self._index_cache.move_to_end(namespace)
+        while len(self._index_cache) > self.index_cache_namespaces:
+            self._index_cache.popitem(last=False)
+
+    def _read_namespace_cached(self, namespace: str, signature: tuple[int, float, int]) -> list[tuple[Any, ...]]:
+        cached = self._rows_cache.get(namespace)
+        if cached and cached[0] == signature:
+            self._rows_cache.move_to_end(namespace)
+            return cached[1]
+        rows = self._read_namespace(namespace)
+        self._rows_cache[namespace] = (signature, rows)
+        self._rows_cache.move_to_end(namespace)
+        while len(self._rows_cache) > self.index_cache_namespaces:
+            self._rows_cache.popitem(last=False)
+        return rows
 
     def _persist_index(self, namespace: str, index: faiss.Index, signature: tuple[int, float, int]) -> None:
         index_file, signature_file = self._index_files(namespace)
+        index_file.parent.mkdir(parents=True, exist_ok=True)
         temporary_index = index_file.with_suffix(index_file.suffix + ".tmp")
         temporary_signature = signature_file.with_suffix(signature_file.suffix + ".tmp")
         faiss.write_index(index, str(temporary_index))
@@ -342,6 +416,7 @@ class FaissVectorStore:
         with self._connect() as connection:
             connection.execute("DELETE FROM rag_chunks")
         self._index_cache.clear()
+        self._rows_cache.clear()
         for path in self.index_path.glob("*.faiss*"):
             path.unlink(missing_ok=True)
 
@@ -376,12 +451,33 @@ def _normalized_matrix(vectors: Sequence[Sequence[float]]) -> np.ndarray:
     return np.ascontiguousarray(matrix)
 
 
+def _embed_many(embedder: EmbeddingProvider, texts: Sequence[str]) -> list[Sequence[float]]:
+    batch_method = getattr(embedder, "embed_many", None)
+    if callable(batch_method):
+        return list(batch_method(texts))
+    return [embedder.embed(text) for text in texts]
+
+
 def _metadata_owner(metadata_json: str) -> str | None:
     try:
         metadata = json.loads(metadata_json)
     except (TypeError, ValueError, json.JSONDecodeError):
         return None
     return str(metadata.get("owner_id")) if isinstance(metadata, dict) and metadata.get("owner_id") is not None else None
+
+
+def _lexical_tokens(text: str) -> set[str]:
+    tokens = set(re.findall(r"[A-Za-z0-9_]+|[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", text.casefold()))
+    compact = re.sub(r"\s+", "", text.casefold())
+    tokens.update(compact[index : index + 2] for index in range(max(0, len(compact) - 1)))
+    return tokens
+
+
+def _lexical_overlap(query_tokens: set[str], text: str) -> float:
+    if not query_tokens:
+        return 0.0
+    text_tokens = _lexical_tokens(text)
+    return len(query_tokens & text_tokens) / len(query_tokens)
 
 
 __all__ = ["FaissVectorStore"]

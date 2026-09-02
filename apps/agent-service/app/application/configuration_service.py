@@ -303,7 +303,7 @@ def _embedding_view(configuration: EmbeddingRuntimeConfiguration) -> dict[str, A
     local = configuration.provider.casefold() in {"local", "sentence-transformers", "sentence_transformers", "bge"}
     configured = bool(configuration.enabled and ((remote and configuration.api_key) or (local and configuration.model) or configuration.provider == "hash-local"))
     detail = "OpenAI 兼容 Embedding" if remote else "本地中文模型 · BGE" if local else "本地特征哈希向量"
-    return {"enabled": configuration.enabled, "provider": configuration.provider, "configured": configured, "baseUrl": configuration.base_url, "apiKey": "已配置" if configuration.api_key else "未配置", "model": configuration.model, "dimensions": configuration.dimensions, "detail": detail}
+    return {"enabled": configuration.enabled, "provider": configuration.provider, "configured": configured, "baseUrl": configuration.base_url, "apiKey": "已配置" if configuration.api_key else "未配置", "model": configuration.model, "dimensions": configuration.dimensions, "device": configuration.device, "cacheDir": configuration.cache_dir, "batchSize": configuration.batch_size, "detail": detail}
 
 
 def _futureagi_view(configuration: FutureAGIRuntimeConfiguration) -> dict[str, Any]:
@@ -327,7 +327,7 @@ def _reconfigure_embedder(rag: RagService, configuration: EmbeddingRuntimeConfig
     if store is None or not hasattr(store, "embedder"):
         return
     from ..rag.embeddings import build_embedding_provider
-    store.embedder = build_embedding_provider(provider=configuration.provider, base_url=configuration.base_url, api_key=configuration.api_key, model=configuration.model, dimensions=configuration.dimensions)
+    store.embedder = build_embedding_provider(provider=configuration.provider, base_url=configuration.base_url, api_key=configuration.api_key, model=configuration.model, dimensions=configuration.dimensions, device=configuration.device, cache_dir=configuration.cache_dir, batch_size=configuration.batch_size)
     invalidate = getattr(store, "invalidate", None)
     if callable(invalidate):
         invalidate()

@@ -16,6 +16,9 @@ class _KeywordEmbedding:
             1.0 if any(term in text for term in ("FAISS", "项目")) else 0.0,
         ]
 
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed(text) for text in texts]
+
 
 def _chunk(document_id: str, ordinal: int, text: str, *, owner: str = "owner-1", collection: str = "default") -> DocumentChunk:
     return DocumentChunk(
@@ -81,5 +84,27 @@ def test_faiss_store_filters_deletes_and_rebuilds_capacity(tmp_path) -> None:
         assert await store.delete_document("doc-b", namespace="ns-project") == 1
         remaining = await store.search("FAISS 文档", namespace="ns-project")
         assert all(hit.chunk.document_id != "doc-b" for hit in remaining)
+
+    asyncio.run(scenario())
+
+
+def test_faiss_store_uses_hnsw_for_large_namespaces_and_keeps_results(tmp_path) -> None:
+    database = str(tmp_path / "rag.sqlite3")
+    indexes = str(tmp_path / "faiss")
+
+    async def scenario() -> None:
+        store = FaissVectorStore(
+            database,
+            index_path=indexes,
+            embedder=_KeywordEmbedding(),
+            max_chunks=400,
+            hnsw_min_chunks=2,
+        )
+        await store.upsert(
+            [_chunk("doc-a", index, "数字人语音播报" if index == 0 else "普通项目说明") for index in range(3)],
+            namespace="ns-hnsw",
+        )
+        hits = await store.search("数字人语音", namespace="ns-hnsw", top_k=1)
+        assert hits and hits[0].chunk.ordinal == 0
 
     asyncio.run(scenario())

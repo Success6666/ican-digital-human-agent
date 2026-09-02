@@ -1,0 +1,39 @@
+v0.1.46 RAG 本机 Embedding 与检索优化验收记录
+
+变更对象：apps/agent-service/app/rag/embeddings.py 及 RAG 切片、索引、缓存、配置、测试链路。
+派生文件：BASELINE_FILE 为提交前基线副本，MODIFIED_FILE 为修改副本，DIFF_FILE 为副本差异，ROLLBACK.sh 为回滚脚本。
+
+BASELINE
+命令：python -m py_compile apps/agent-service/app/rag/embeddings.py
+结果：基线文件来源于 HEAD，修改前代码可追溯。
+退出状态：0
+
+MODIFIED
+命令：python -m pytest apps/agent-service/tests/test_rag.py apps/agent-service/tests/test_rag_faiss_store.py -q
+结果：21 passed, 1 skipped。
+退出状态：0
+
+命令：python -m pytest apps/agent-service/tests -q
+结果：199 passed, 2 skipped, 1 warning。
+退出状态：0
+
+命令：python -m py_compile apps/agent-service/app/rag/embeddings.py apps/agent-service/app/rag/chunker.py apps/agent-service/app/rag/faiss_store.py apps/agent-service/app/rag/service.py
+结果：编译通过，无输出。
+退出状态：0
+
+命令：docker compose config --quiet
+结果：Compose 配置有效。
+退出状态：0
+
+命令：docker compose ps agent-service
+结果：agent-service Up (healthy)。
+退出状态：0
+
+真实模型评测：Agent 容器加载 BAAI/bge-small-zh-v1.5，512 维，CPU；Recall@5=1.0，MRR=1.0，冷检索 p50=30.354ms、p95=31.544ms，结果缓存命中 p50=0.792ms、p95=0.901ms。原始数据见 tmp-docs/rag-evaluations/v0.1.46-local-bge-benchmark.json。
+
+ROLLBACK
+命令：bash tmp-docs/v0.1.46-rag-artifacts/ROLLBACK.sh tmp-docs/v0.1.46-rag-artifacts/BASELINE_FILE tmp-docs/v0.1.46-rag-artifacts/ROLLBACK_TEST_FILE
+结果：回滚测试副本恢复到基线哈希，MODIFIED_FILE 保留修改状态。
+退出状态：0
+
+恢复状态：回滚测试副本已恢复；工作区源码仍保留 v0.1.46 修改。

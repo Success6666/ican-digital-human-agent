@@ -288,6 +288,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await app.state.container.cleanup.start()
+        warmup = getattr(app.state.container.rag, "warmup_embedding", None)
+        if callable(warmup):
+            import asyncio
+            asyncio.create_task(warmup())
         try:
             yield
         finally:
@@ -308,7 +312,7 @@ def create_app(
                 await app.state.container.response_cache.close()
             await app.state.container.observability.flush()
 
-    app = FastAPI(title="Digital Human Agent", version="0.1.45", lifespan=lifespan)
+    app = FastAPI(title="Digital Human Agent", version="0.1.46", lifespan=lifespan)
     app.state.container = service_container
     app.add_middleware(
         RequestBodyLimitMiddleware,

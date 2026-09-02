@@ -34,6 +34,8 @@ WireGuard 公网入口保留 `http://39.97.253.99:6666`；浏览器和手机使�
 
 本地中文 ASR 默认由 `asr-service` 提供，使用 `faster-whisper` tiny 模型并挂载 `asr-model-cache` 持久化模型。`ASR_DEVICE=auto` 会优先尝试 CUDA，容器缺少 CUDA 运行库时自动回退 CPU；当前主机可用 GPU 时，使用 `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build asr-service` 启用 GPU 资源。Agent 默认通过内部地址 `http://asr-service:7000/transcribe` 调用，服务不直接暴露公网；首次启动会后台下载并预热模型，后续请求复用常驻模型。
 
+RAG 默认使用本地 `BAAI/bge-small-zh-v1.5` 中文向量模型，不使用 Hash 向量。模型缓存位于 Agent 的 `agent-model-cache` 卷；`EMBEDDING_DEVICE=auto` 会按当前 PyTorch/CUDA 能力选择设备，`EMBEDDING_BATCH_SIZE` 控制入库批量编码。只有显式设置 `EMBEDDING_PROVIDER=hash-local` 时才启用特征哈希，适用于离线单元测试，不作为生产默认路径。
+
 首页麦克风是持续实时对话模式开关。进入后自动轮转“聆听、理解、数字人表达、继续聆听”，不需要逐轮重新点击；Agent 或数字人仍在表达时不会重开 PCM，浏览器识别回退也会暂停，避免扬声器回声形成自问自答。退出模式使用 `speech_end` 丢弃未完成音频，不触发一次残缺的 ASR 请求。
 
 默认 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期。配置 `SESSION_STORE_BACKEND=redis` 后会话与 cleanup 队列进入 Redis；配置 `HTTP_ASR_ENDPOINT`、`HTTP_TTS_ENDPOINT` 后启用真实媒体适配，适配器使用复用连接、超时和响应体上限，故障时保留协议连接并报告降级状态。

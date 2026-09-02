@@ -41,27 +41,18 @@ class HashEmbeddingProvider:
             vector = [value / norm for value in vector]
         return vector
 
-    def embed_many(self, texts: Sequence[str]) -> list[Sequence[float]]:
-        return [self.embed(text) for text in texts]
-
 
 class LocalSentenceTransformerEmbeddingProvider:
-    """Lazy local Chinese sentence embedding adapter."""
+    """Lazy local SentenceTransformers adapter."""
 
-    def __init__(self, *, model: str = "BAAI/bge-small-zh-v1.5", dimensions: int = 512,
-                 device: str = "auto", cache_dir: str | None = None, batch_size: int = 64) -> None:
+    def __init__(self, *, model: str, dimensions: int = 512) -> None:
         if not model:
             raise ValueError("local embedding model is required")
         if dimensions < 16:
             raise ValueError("dimensions must be at least 16")
         self.model_name = model
-        self.requested_dimensions = dimensions
         self.dimensions = dimensions
-        self.device = device.strip().lower() or "auto"
-        self.cache_dir = cache_dir.strip() if cache_dir else None
-        self.batch_size = max(1, min(batch_size, 256))
         self._model = None
-        self._resolved_device = "unloaded"
 
     def _load(self):
         if self._model is not None:
@@ -70,51 +61,15 @@ class LocalSentenceTransformerEmbeddingProvider:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
             raise RuntimeError("本地 Embedding 需要安装 sentence-transformers 依赖") from exc
-        resolved_device = self.device
-        if resolved_device in {"auto", "gpu", "cuda"}:
-            try:
-                import torch
-                resolved_device = "cuda" if torch.cuda.is_available() else "cpu"
-            except ImportError:
-                resolved_device = "cpu"
-        if resolved_device not in {"cpu", "cuda", "mps"}:
-            resolved_device = "cpu"
-        kwargs: dict[str, object] = {"device": resolved_device}
-        if self.cache_dir:
-            kwargs["cache_folder"] = self.cache_dir
-        self._model = SentenceTransformer(self.model_name, **kwargs)
-        dimension_getter = getattr(self._model, "get_embedding_dimension", None)
-        if dimension_getter is None:
-            dimension_getter = self._model.get_sentence_embedding_dimension
-        model_dimension = dimension_getter()
+        self._model = SentenceTransformer(self.model_name)
+        model_dimension = self._model.get_sentence_embedding_dimension()
         if model_dimension:
             self.dimensions = int(model_dimension)
-        if self.requested_dimensions and self.dimensions != self.requested_dimensions:
-            raise ValueError(
-                f"embedding dimensions mismatch: configured={self.requested_dimensions}, model={self.dimensions}"
-            )
-        self._resolved_device = resolved_device
         return self._model
-
-    @property
-    def resolved_device(self) -> str:
-        return self._resolved_device
 
     def embed(self, text: str) -> Sequence[float]:
         vector = self._load().encode(text, normalize_embeddings=True, convert_to_numpy=True)
         return [float(value) for value in vector.tolist()]
-
-    def embed_many(self, texts: Sequence[str]) -> list[Sequence[float]]:
-        if not texts:
-            return []
-        vectors = self._load().encode(
-            list(texts),
-            batch_size=min(self.batch_size, max(1, len(texts))),
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        )
-        return [[float(value) for value in row.tolist()] for row in vectors]
 
 
 class OpenAICompatibleEmbeddingProvider:
@@ -146,18 +101,9 @@ class OpenAICompatibleEmbeddingProvider:
         return [float(value) for value in values]
 
 
-def build_embedding_provider(*, provider: str, base_url: str, api_key: str, model: str, dimensions: int,
-                             device: str = "auto", cache_dir: str | None = None, batch_size: int = 64):
+def build_embedding_provider(*, provider: str, base_url: str, api_key: str, model: str, dimensions: int):
     if provider.casefold() in {"local", "sentence-transformers", "sentence_transformers", "bge"}:
-        return LocalSentenceTransformerEmbeddingProvider(
-            model=model or "BAAI/bge-small-zh-v1.5",
-            dimensions=dimensions or 512,
-            device=device,
-            cache_dir=cache_dir,
-            batch_size=batch_size,
-        )
+        return LocalSentenceTransformerEmbeddingProvider(model=model or "BAAI/bge-small-zh-v1.5", dimensions=dimensions or 512)
     if provider.casefold() in {"openai", "openai-compatible", "compatible"} and base_url and api_key and model:
         return OpenAICompatibleEmbeddingProvider(base_url=base_url, api_key=api_key, model=model, dimensions=dimensions)
-    if provider.casefold() in {"hash-local", "hash", "test"}:
-        return HashEmbeddingProvider(dimensions=dimensions or 256)
-    raise ValueError(f"unsupported embedding provider: {provider}")
+    return HashEmbeddingProvider(dimensions=dimensions)

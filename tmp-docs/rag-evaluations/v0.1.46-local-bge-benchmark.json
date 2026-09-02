@@ -1,0 +1,63 @@
+{
+  "version": "0.1.46",
+  "generatedAt": "2026-09-02T18:41:13+0800",
+  "embedding": "local",
+  "embeddingModel": "BAAI/bge-small-zh-v1.5",
+  "embeddingDimensions": 512,
+  "resolvedDevice": "cpu",
+  "documents": 5,
+  "chunks": 10,
+  "metrics": {
+    "recallAt5": 1.0,
+    "mrr": 1.0,
+    "coldP50Ms": 30.354,
+    "coldP95Ms": 31.544,
+    "warmCacheP50Ms": 0.792,
+    "warmCacheP95Ms": 0.901
+  },
+  "raw": {
+    "queries": [
+      [
+        "语音播报",
+        "doc-voice-0"
+      ],
+      [
+        "父子分块 FAISS",
+        "doc-rag-1"
+      ],
+      [
+        "租户隔离",
+        "doc-tenant-2"
+      ],
+      [
+        "缓存 TTL",
+        "doc-cache-3"
+      ],
+      [
+        "页面数字人会话",
+        "doc-avatar-4"
+      ]
+    ],
+    "coldMs": [
+      31.751899994560517,
+      31.54395399906207,
+      30.35408101277426,
+      22.417767002480105,
+      23.79803400253877
+    ],
+    "warmCacheMs": [
+      0.9073050023289397,
+      0.9005590109154582,
+      0.791769998613745,
+      0.698039002600126,
+      0.23509800666943192
+    ],
+    "hitRanks": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  }
+}

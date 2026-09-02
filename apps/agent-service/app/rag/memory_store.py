@@ -94,6 +94,10 @@ class InMemoryVectorStore:
                 del self._items[key]
             return len(keys)
 
+    async def replace_document(self, document_id: str, chunks: Sequence[DocumentChunk], *, namespace: str) -> None:
+        await self.delete_document(document_id, namespace=namespace)
+        await self.upsert(chunks, namespace=namespace)
+
     async def count(self, *, namespace: str | None = None) -> int:
         async with self._lock:
             if namespace is None:
