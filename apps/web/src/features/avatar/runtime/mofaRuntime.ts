@@ -10,6 +10,8 @@ interface XmovAvatarInstance {
   interrupt(type: string): number
   stop(): Promise<void> | void
   destroy(reason?: string): Promise<void> | void
+  switchInvisibleMode(): number | void
+  changeAvatarVisible(visible: boolean): void
 }
 
 interface XmovAvatarConstructor {
@@ -43,6 +45,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private speechWorker?: Promise<void>
   private speechGeneration = 0
   private speechWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
+  private invisible = false
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
     this.status = onStatus
@@ -157,6 +160,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     }))
     await withTimeout(Promise.race([initPromise, firstFrame]), 60_000)
     markReady()
+    if (this.invisible) this.applyVisibility()
+  }
+
+  setVisibility(visible: boolean): void {
+    const nextInvisible = !visible
+    if (this.invisible === nextInvisible) return
+    this.invisible = nextInvisible
+    this.applyVisibility()
   }
 
   async speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void> {
@@ -199,6 +210,17 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     if (!current) return
     try { await current.stop() } catch { /* SDK teardown remains best effort. */ }
     try { await current.destroy('component_unmounted') } catch { /* Host removal is the final cleanup boundary. */ }
+  }
+
+  private applyVisibility(): void {
+    if (!this.avatar) return
+    if (this.invisible) {
+      this.avatar.changeAvatarVisible(false)
+      this.avatar.switchInvisibleMode()
+      return
+    }
+    this.avatar.changeAvatarVisible(true)
+    this.avatar.switchInvisibleMode()
   }
 
   private async consumeSpeechQueue(): Promise<void> {

@@ -9,15 +9,20 @@ interface AvatarRuntimeSurfaceProps {
   session: AvatarSession
   speech?: { id: string; text: string; presentation?: AvatarPerformanceCue; pending?: boolean }
   interruptKey?: string
+  visible?: boolean
 }
 
-export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRuntimeSurfaceProps) {
+export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true }: AvatarRuntimeSurfaceProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<BrowserAvatarRuntime>()
   const spokenMessageRef = useRef<string>()
   const spokenTextRef = useRef('')
   const [generation, setGeneration] = useState(0)
   const [status, setStatus] = useState<AvatarRuntimeStatus>({ phase: 'loading', progress: 0 })
+
+  useEffect(() => {
+    runtimeRef.current?.setVisibility(visible)
+  }, [visible])
 
   useEffect(() => {
     const host = hostRef.current

@@ -1,0 +1,393 @@
+diff --git a/README.md b/README.md
+index bc7490a..8690bc0 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # ICAN 数字人 Agent
+
+-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.36）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
++ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.37）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+
+ ## 目录
+
+@@ -116,5 +116,5 @@ Set-Location ..\web
+ npm run build
+ ```
+
+-本版本用户体验锐评与评测图表验收记录见 [`tmp-docs/digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md)，上一版性能、评测数据与原始归档记录见 [`tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.35-performance-ux-evaluation-task-book-已完成.md)。
++本版本页面缓存与数字人运行时生命周期验收记录见 [`tmp-docs/digital-human-agent-v0.1.37-page-cache-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.37-page-cache-task-book-已完成.md)，上一版用户体验锐评与评测图表验收记录见 [`tmp-docs/digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.36-ux-critique-chart-task-book-已完成.md)。
+ 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。
+diff --git a/apps/agent-service/app/__init__.py b/apps/agent-service/app/__init__.py
+index 52af02a..6e87239 100644
+--- a/apps/agent-service/app/__init__.py
++++ b/apps/agent-service/app/__init__.py
+@@ -2,4 +2,4 @@
+
+ __all__ = ["__version__"]
+
+-__version__ = "0.1.36"
++__version__ = "0.1.37"
+diff --git a/apps/agent-service/app/api/routes.py b/apps/agent-service/app/api/routes.py
+index f893e38..60e5a8f 100644
+--- a/apps/agent-service/app/api/routes.py
++++ b/apps/agent-service/app/api/routes.py
+@@ -32,7 +32,7 @@ router = APIRouter()
+ @router.get("/health", response_model=HealthResponse, include_in_schema=False)
+ async def health(request: Request) -> HealthResponse:
+     container = get_container(request)
+-    return HealthResponse(service=container.settings.service_name, version="0.1.36")
++    return HealthResponse(service=container.settings.service_name, version="0.1.37")
+
+
+ @router.get("/internal/providers", response_model=list[ProviderResponse])
+diff --git a/apps/agent-service/app/main.py b/apps/agent-service/app/main.py
+index 24a36f9..329d23e 100644
+--- a/apps/agent-service/app/main.py
++++ b/apps/agent-service/app/main.py
+@@ -308,7 +308,7 @@ def create_app(
+                 await app.state.container.response_cache.close()
+             await app.state.container.observability.flush()
+
+-    app = FastAPI(title="Digital Human Agent", version="0.1.36", lifespan=lifespan)
++    app = FastAPI(title="Digital Human Agent", version="0.1.37", lifespan=lifespan)
+     app.state.container = service_container
+     app.add_middleware(
+         RequestBodyLimitMiddleware,
+diff --git a/apps/agent-service/pyproject.toml b/apps/agent-service/pyproject.toml
+index 312827d..b6d0ca6 100644
+--- a/apps/agent-service/pyproject.toml
++++ b/apps/agent-service/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "digital-human-agent-service"
+-version = "0.1.36"
++version = "0.1.37"
+ description = "FastAPI and LangGraph runtime for the digital human agent"
+ requires-python = ">=3.11"
+ dependencies = [
+diff --git a/apps/auth-service/pom.xml b/apps/auth-service/pom.xml
+index 613d398..ef024ef 100644
+--- a/apps/auth-service/pom.xml
++++ b/apps/auth-service/pom.xml
+@@ -13,7 +13,7 @@
+
+     <groupId>com.ican.digitalhuman</groupId>
+     <artifactId>auth-service</artifactId>
+-    <version>0.1.36</version>
++    <version>0.1.37</version>
+     <name>digital-human-auth-service</name>
+     <description>Authentication gateway for the digital human agent</description>
+
+diff --git a/apps/mcp-server/app/__init__.py b/apps/mcp-server/app/__init__.py
+index aab5bbe..f4f68b7 100644
+--- a/apps/mcp-server/app/__init__.py
++++ b/apps/mcp-server/app/__init__.py
+@@ -1,3 +1,3 @@
+ """MCP tool service."""
+
+-__version__ = "0.1.36"
++__version__ = "0.1.37"
+diff --git a/apps/mcp-server/app/server.py b/apps/mcp-server/app/server.py
+index 74aa5f1..c808564 100644
+--- a/apps/mcp-server/app/server.py
++++ b/apps/mcp-server/app/server.py
+@@ -16,7 +16,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
+     settings = settings or get_settings()
+     server = MCPServer(
+         name=settings.service_name,
+-        version="0.1.36",
++        version="0.1.37",
+         instructions="Deterministic chain-probe tools for the digital human agent.",
+         debug=False,
+     )
+@@ -24,7 +24,7 @@ def create_server(settings: Settings | None = None) -> MCPServer:
+
+     @server.custom_route("/health", methods=["GET"], include_in_schema=False)
+     async def health(_: Request) -> JSONResponse:
+-        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.36"})
++        return JSONResponse({"status": "ok", "service": settings.service_name, "version": "0.1.37"})
+
+     @server.custom_route("/ready", methods=["GET"], include_in_schema=False)
+     async def ready(_: Request) -> JSONResponse:
+diff --git a/apps/mcp-server/pyproject.toml b/apps/mcp-server/pyproject.toml
+index 2c75105..2581beb 100644
+--- a/apps/mcp-server/pyproject.toml
++++ b/apps/mcp-server/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "digital-human-mcp-server"
+-version = "0.1.36"
++version = "0.1.37"
+ description = "Internal MCP 2.x Streamable HTTP probe server"
+ requires-python = ">=3.11"
+ dependencies = [
+diff --git a/apps/web/package-lock.json b/apps/web/package-lock.json
+index aea5813..3faaa82 100644
+--- a/apps/web/package-lock.json
++++ b/apps/web/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "digital-human-agent-web",
+-  "version": "0.1.36",
++  "version": "0.1.37",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "digital-human-agent-web",
+-      "version": "0.1.36",
++      "version": "0.1.37",
+       "dependencies": {
+         "lucide-react": "^0.468.0",
+         "react": "^18.3.1",
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 8a2bf3c..12b66d7 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "digital-human-agent-web",
+   "private": true,
+-  "version": "0.1.36",
++  "version": "0.1.37",
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
+diff --git a/apps/web/src/app/AuthenticatedApp.tsx b/apps/web/src/app/AuthenticatedApp.tsx
+index 282e91f..14d60b5 100644
+--- a/apps/web/src/app/AuthenticatedApp.tsx
++++ b/apps/web/src/app/AuthenticatedApp.tsx
+@@ -40,6 +40,11 @@ export function AuthenticatedApp() {
+     await logout()
+   }
+
+-  const content = page === 'rag' ? <RagPage /> : page === 'evaluation' ? <EvaluationPage /> : page === 'audit' ? <AuditPage /> : page === 'settings' ? <SettingsPage avatar={avatar} canManage={user?.role === 'admin'} /> : <HomePage avatar={avatar} chat={chat} realtime={realtime} />
+-  return <ConsoleShell user={user} activePage={page} onNavigate={navigate} onLogout={handleLogout}>{content}</ConsoleShell>
++  const content = page === 'rag' ? <RagPage /> : page === 'evaluation' ? <EvaluationPage /> : page === 'audit' ? <AuditPage /> : page === 'settings' ? <SettingsPage avatar={avatar} canManage={user?.role === 'admin'} /> : null
++  return <ConsoleShell user={user} activePage={page} onNavigate={navigate} onLogout={handleLogout}>
++    <div className={`page-cache-layer ${page === 'home' ? 'page-cache-layer--active' : 'page-cache-layer--hidden'}`} aria-hidden={page !== 'home'}>
++      <HomePage avatar={avatar} chat={chat} realtime={realtime} visible={page === 'home'} />
++    </div>
++    {content && <div className="active-page-layer">{content}</div>}
++  </ConsoleShell>
+ }
+diff --git a/apps/web/src/features/avatar/components/AvatarStage.tsx b/apps/web/src/features/avatar/components/AvatarStage.tsx
+index a0afa9f..c8fd4f0 100644
+--- a/apps/web/src/features/avatar/components/AvatarStage.tsx
++++ b/apps/web/src/features/avatar/components/AvatarStage.tsx
+@@ -11,11 +11,12 @@ interface AvatarStageProps {
+   speech?: { id: string; text: string; presentation?: import('../../../shared/api/types').AvatarPerformanceCue; pending?: boolean }
+   interruptKey?: string
+   activate?: boolean
++  visible?: boolean
+   onCreate: () => void
+   onDisconnect: () => void
+ }
+
+-export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, onCreate, onDisconnect }: AvatarStageProps) {
++export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onCreate, onDisconnect }: AvatarStageProps) {
+   const [preview, setPreview] = useState<AvatarPreview | null>(() => readAvatarPreview())
+   const [runtimeActive, setRuntimeActive] = useState(() => !readAvatarPreview())
+   const activateRuntime = useCallback(() => {
+@@ -41,7 +42,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
+   return (
+     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
+       {session && shouldConnect ? (
+-        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} />
++        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} />
+       ) : preview ? (
+         <>
+           <AvatarPreviewSurface preview={preview} />
+diff --git a/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx b/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
+index 64c9912..745852b 100644
+--- a/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
++++ b/apps/web/src/features/avatar/runtime/AvatarRuntimeSurface.tsx
+@@ -9,9 +9,10 @@ interface AvatarRuntimeSurfaceProps {
+   session: AvatarSession
+   speech?: { id: string; text: string; presentation?: AvatarPerformanceCue; pending?: boolean }
+   interruptKey?: string
++  visible?: boolean
+ }
+
+-export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRuntimeSurfaceProps) {
++export function AvatarRuntimeSurface({ session, speech, interruptKey, visible = true }: AvatarRuntimeSurfaceProps) {
+   const hostRef = useRef<HTMLDivElement>(null)
+   const runtimeRef = useRef<BrowserAvatarRuntime>()
+   const spokenMessageRef = useRef<string>()
+@@ -19,6 +20,10 @@ export function AvatarRuntimeSurface({ session, speech, interruptKey }: AvatarRu
+   const [generation, setGeneration] = useState(0)
+   const [status, setStatus] = useState<AvatarRuntimeStatus>({ phase: 'loading', progress: 0 })
+
++  useEffect(() => {
++    runtimeRef.current?.setVisibility(visible)
++  }, [visible])
++
+   useEffect(() => {
+     const host = hostRef.current
+     const params = session.clientParams
+diff --git a/apps/web/src/features/avatar/runtime/browserRuntime.ts b/apps/web/src/features/avatar/runtime/browserRuntime.ts
+index fed7d32..fdbb16d 100644
+--- a/apps/web/src/features/avatar/runtime/browserRuntime.ts
++++ b/apps/web/src/features/avatar/runtime/browserRuntime.ts
+@@ -9,6 +9,7 @@ export interface AvatarRuntimeStatus {
+
+ export interface BrowserAvatarRuntime {
+   connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void>
++  setVisibility(visible: boolean): void
+   speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void>
+   interrupt(): Promise<void>
+   dispose(): Promise<void>
+diff --git a/apps/web/src/features/avatar/runtime/mofaRuntime.ts b/apps/web/src/features/avatar/runtime/mofaRuntime.ts
+index 1a05d5e..6fc29ae 100644
+--- a/apps/web/src/features/avatar/runtime/mofaRuntime.ts
++++ b/apps/web/src/features/avatar/runtime/mofaRuntime.ts
+@@ -10,6 +10,8 @@ interface XmovAvatarInstance {
+   interrupt(type: string): number
+   stop(): Promise<void> | void
+   destroy(reason?: string): Promise<void> | void
++  switchInvisibleMode(): number | void
++  changeAvatarVisible(visible: boolean): void
+ }
+
+ interface XmovAvatarConstructor {
+@@ -43,6 +45,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+   private speechWorker?: Promise<void>
+   private speechGeneration = 0
+   private speechWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
++  private invisible = false
+
+   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
+     this.status = onStatus
+@@ -157,6 +160,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     }))
+     await withTimeout(Promise.race([initPromise, firstFrame]), 60_000)
+     markReady()
++    if (this.invisible) this.applyVisibility()
++  }
++
++  setVisibility(visible: boolean): void {
++    const nextInvisible = !visible
++    if (this.invisible === nextInvisible) return
++    this.invisible = nextInvisible
++    this.applyVisibility()
+   }
+
+   async speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void> {
+@@ -201,6 +212,17 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
+     try { await current.destroy('component_unmounted') } catch { /* Host removal is the final cleanup boundary. */ }
+   }
+
++  private applyVisibility(): void {
++    if (!this.avatar) return
++    if (this.invisible) {
++      this.avatar.changeAvatarVisible(false)
++      this.avatar.switchInvisibleMode()
++      return
++    }
++    this.avatar.changeAvatarVisible(true)
++    this.avatar.switchInvisibleMode()
++  }
++
+   private async consumeSpeechQueue(): Promise<void> {
+     const generation = this.speechGeneration
+     while (this.speechQueue.length && this.avatar) {
+diff --git a/apps/web/src/pages/HomePage.tsx b/apps/web/src/pages/HomePage.tsx
+index e636dff..66f35ea 100644
+--- a/apps/web/src/pages/HomePage.tsx
++++ b/apps/web/src/pages/HomePage.tsx
+@@ -15,9 +15,10 @@ interface HomePageProps {
+   avatar: AvatarState
+   chat: ChatState
+   realtime: RealtimeState
++  visible?: boolean
+ }
+
+-export function HomePage({ avatar, chat, realtime }: HomePageProps) {
++export function HomePage({ avatar, chat, realtime, visible = true }: HomePageProps) {
+   const [drawerOpen, setDrawerOpen] = useState(false)
+   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
+   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
+@@ -49,6 +50,7 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
+       <main className="home-reference-stage">
+         <AvatarStage
+           session={avatar.session}
++          visible={visible}
+           isCreating={avatar.isCreating}
+           speech={latestAssistant ? {
+             id: `${latestAssistant.id}:${latestAssistant.content.length}:${latestAssistant.statusText?.length ?? 0}:${latestAssistant.pending ? 'streaming' : 'final'}`,
+diff --git a/apps/web/src/pages/pages.css b/apps/web/src/pages/pages.css
+index 2fe4ad6..ce0f3fb 100644
+--- a/apps/web/src/pages/pages.css
++++ b/apps/web/src/pages/pages.css
+@@ -68,10 +68,14 @@
+ .console-nav-account .icon-button { flex: none; width: 25px; height: 25px; }
+ .console-notification { position: relative; }
+ .console-notification i { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; border: 1px solid var(--surface); border-radius: 50%; background: var(--brand); }
+-.console-main { min-width: 0; max-width: 1480px; width: 100%; height: 100%; padding: 24px 28px 34px; overflow-x: hidden; overflow-y: auto; }
++.console-main { position: relative; min-width: 0; max-width: 1480px; width: 100%; height: 100%; padding: 24px 28px 34px; overflow-x: hidden; overflow-y: auto; }
+ .console-main--home { padding: 0; overflow: hidden; }
+-.console-main > .page-stack { animation: page-enter .24s cubic-bezier(.22, .61, .36, 1) both; }
+-.console-main--home > .page-stack { height: 100%; margin: 0; }
++.console-main > .page-cache-layer { min-width: 0; height: 100%; }
++.console-main > .page-cache-layer--active { visibility: visible; opacity: 1; pointer-events: auto; }
++.console-main > .page-cache-layer--hidden { position: absolute; inset: 0; visibility: hidden; opacity: 0; pointer-events: none; }
++.console-main > .page-cache-layer > .page-stack { height: 100%; margin: 0; }
++.console-main > .active-page-layer { min-width: 0; }
++.console-main > .active-page-layer > .page-stack { animation: page-enter .24s cubic-bezier(.22, .61, .36, 1) both; }
+ @keyframes page-enter {
+   from { opacity: 0; transform: translateY(5px); }
+   to { opacity: 1; transform: translateY(0); }
+diff --git a/apps/web/tests/layout-contract.test.mjs b/apps/web/tests/layout-contract.test.mjs
+index 2389c37..4f3df64 100644
+--- a/apps/web/tests/layout-contract.test.mjs
++++ b/apps/web/tests/layout-contract.test.mjs
+@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url'
+ const here = path.dirname(fileURLToPath(import.meta.url))
+ const css = fs.readFileSync(path.resolve(here, '../src/pages/pages.css'), 'utf8')
+ const homeCss = fs.readFileSync(path.resolve(here, '../src/pages/home-reference.css'), 'utf8')
++const app = fs.readFileSync(path.resolve(here, '../src/app/AuthenticatedApp.tsx'), 'utf8')
++const runtimeSurface = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/AvatarRuntimeSurface.tsx'), 'utf8')
++const mofaRuntime = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/mofaRuntime.ts'), 'utf8')
+
+ test('console keeps navigation fixed while main content owns scrolling', () => {
+   assert.match(css, /\.console-shell\s*\{[^}]*overflow:\s*hidden/)
+@@ -31,3 +34,16 @@ test('home workspace owns the full console viewport', () => {
+   assert.match(css, /\.console-main--home\s*\{[^}]*padding:\s*0[^}]*overflow:\s*hidden/)
+   assert.match(homeCss, /\.console-main--home\s+\.home-page\s*\{[^}]*height:\s*100%[^}]*margin:\s*0/)
+ })
++
++test('home workspace remains mounted while navigating between pages', () => {
++  assert.match(app, /page-cache-layer--hidden/)
++  assert.match(app, /<HomePage[\s\S]*visible=\{page === 'home'\}/)
++  assert.match(css, /\.page-cache-layer--hidden\s*\{[^}]*position:\s*absolute[^}]*visibility:\s*hidden[^}]*pointer-events:\s*none/)
++})
++
++test('avatar runtime uses invisible mode instead of rebuilding the SDK', () => {
++  assert.match(runtimeSurface, /runtimeRef\.current\?\.setVisibility\(visible\)/)
++  assert.match(mofaRuntime, /switchInvisibleMode\(\)/)
++  assert.match(mofaRuntime, /changeAvatarVisible\(visible: boolean\)/)
++  assert.match(mofaRuntime, /current\.destroy\('component_unmounted'\)/)
++})
+diff --git a/docs/api-contract.md b/docs/api-contract.md
+index e67b4cb..8f05c87 100644
+--- a/docs/api-contract.md
++++ b/docs/api-contract.md
+@@ -1,4 +1,4 @@
+-# API 契约（v0.1.36）
++# API 契约（v0.1.37）
+
+ ## 浏览器 API
+
+diff --git a/docs/runbook.md b/docs/runbook.md
+index 5c2854e..db3e929 100644
+--- a/docs/runbook.md
++++ b/docs/runbook.md
+@@ -23,6 +23,8 @@ docker compose up --build
+
+ 首页建立数字人会话后会自动挂载文本实时通道。浏览器使用同源登录 Cookie 访问 `/api/realtime`；麦克风按钮只在当前 Provider 声明语音输入能力且浏览器支持采集时启用。改口或停止表达会先清空本地播放队列，再发送当前运行的中断请求。
+
++首页工作区采用 Keep-Alive 缓存：切换到 RAG、评测、审计或设置页时不卸载数字人组件，当前星云 SDK 会话保持连接；页面隐藏期间调用 `switchInvisibleMode()` 与 `changeAvatarVisible(false)` 降低渲染和推送开销，返回首页后恢复可见状态，不重新创建会话或 SDK。显式断开、退出登录和更换会话仍会执行完整销毁。
++
+ 默认 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期。配置 `SESSION_STORE_BACKEND=redis` 后会话与 cleanup 队列进入 Redis；配置 `HTTP_ASR_ENDPOINT`、`HTTP_TTS_ENDPOINT` 后启用真实媒体适配，适配器使用复用连接、超时和响应体上限，故障时保留协议连接并报告降级状态。
+
+ ### 会话资源参数

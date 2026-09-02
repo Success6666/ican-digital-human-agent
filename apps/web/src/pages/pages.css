@@ -68,10 +68,14 @@
 .console-nav-account .icon-button { flex: none; width: 25px; height: 25px; }
 .console-notification { position: relative; }
 .console-notification i { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; border: 1px solid var(--surface); border-radius: 50%; background: var(--brand); }
-.console-main { min-width: 0; max-width: 1480px; width: 100%; height: 100%; padding: 24px 28px 34px; overflow-x: hidden; overflow-y: auto; }
+.console-main { position: relative; min-width: 0; max-width: 1480px; width: 100%; height: 100%; padding: 24px 28px 34px; overflow-x: hidden; overflow-y: auto; }
 .console-main--home { padding: 0; overflow: hidden; }
-.console-main > .page-stack { animation: page-enter .24s cubic-bezier(.22, .61, .36, 1) both; }
-.console-main--home > .page-stack { height: 100%; margin: 0; }
+.console-main > .page-cache-layer { min-width: 0; height: 100%; }
+.console-main > .page-cache-layer--active { visibility: visible; opacity: 1; pointer-events: auto; }
+.console-main > .page-cache-layer--hidden { position: absolute; inset: 0; visibility: hidden; opacity: 0; pointer-events: none; }
+.console-main > .page-cache-layer > .page-stack { height: 100%; margin: 0; }
+.console-main > .active-page-layer { min-width: 0; }
+.console-main > .active-page-layer > .page-stack { animation: page-enter .24s cubic-bezier(.22, .61, .36, 1) both; }
 @keyframes page-enter {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }

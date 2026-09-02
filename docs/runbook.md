@@ -23,6 +23,8 @@ docker compose up --build
 
 首页建立数字人会话后会自动挂载文本实时通道。浏览器使用同源登录 Cookie 访问 `/api/realtime`；麦克风按钮只在当前 Provider 声明语音输入能力且浏览器支持采集时启用。改口或停止表达会先清空本地播放队列，再发送当前运行的中断请求。
 
+首页工作区采用 Keep-Alive 缓存：切换到 RAG、评测、审计或设置页时不卸载数字人组件，当前星云 SDK 会话保持连接；页面隐藏期间调用 `switchInvisibleMode()` 与 `changeAvatarVisible(false)` 降低渲染和推送开销，返回首页后恢复可见状态，不重新创建会话或 SDK。显式断开、退出登录和更换会话仍会执行完整销毁。
+
 默认 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期。配置 `SESSION_STORE_BACKEND=redis` 后会话与 cleanup 队列进入 Redis；配置 `HTTP_ASR_ENDPOINT`、`HTTP_TTS_ENDPOINT` 后启用真实媒体适配，适配器使用复用连接、超时和响应体上限，故障时保留协议连接并报告降级状态。
 
 ### 会话资源参数

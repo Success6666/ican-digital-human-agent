@@ -15,9 +15,10 @@ interface HomePageProps {
   avatar: AvatarState
   chat: ChatState
   realtime: RealtimeState
+  visible?: boolean
 }
 
-export function HomePage({ avatar, chat, realtime }: HomePageProps) {
+export function HomePage({ avatar, chat, realtime, visible = true }: HomePageProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const latestAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.content.trim() || message.statusText?.trim()))
   const latestUser = [...chat.messages].reverse().find((message) => message.role === 'user')
@@ -49,6 +50,7 @@ export function HomePage({ avatar, chat, realtime }: HomePageProps) {
       <main className="home-reference-stage">
         <AvatarStage
           session={avatar.session}
+          visible={visible}
           isCreating={avatar.isCreating}
           speech={latestAssistant ? {
             id: `${latestAssistant.id}:${latestAssistant.content.length}:${latestAssistant.statusText?.length ?? 0}:${latestAssistant.pending ? 'streaming' : 'final'}`,

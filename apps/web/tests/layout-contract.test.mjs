@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const css = fs.readFileSync(path.resolve(here, '../src/pages/pages.css'), 'utf8')
 const homeCss = fs.readFileSync(path.resolve(here, '../src/pages/home-reference.css'), 'utf8')
+const app = fs.readFileSync(path.resolve(here, '../src/app/AuthenticatedApp.tsx'), 'utf8')
+const runtimeSurface = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/AvatarRuntimeSurface.tsx'), 'utf8')
+const mofaRuntime = fs.readFileSync(path.resolve(here, '../src/features/avatar/runtime/mofaRuntime.ts'), 'utf8')
 
 test('console keeps navigation fixed while main content owns scrolling', () => {
   assert.match(css, /\.console-shell\s*\{[^}]*overflow:\s*hidden/)
@@ -30,4 +33,17 @@ test('avatar rendering layer cannot intercept conversation controls', () => {
 test('home workspace owns the full console viewport', () => {
   assert.match(css, /\.console-main--home\s*\{[^}]*padding:\s*0[^}]*overflow:\s*hidden/)
   assert.match(homeCss, /\.console-main--home\s+\.home-page\s*\{[^}]*height:\s*100%[^}]*margin:\s*0/)
+})
+
+test('home workspace remains mounted while navigating between pages', () => {
+  assert.match(app, /page-cache-layer--hidden/)
+  assert.match(app, /<HomePage[\s\S]*visible=\{page === 'home'\}/)
+  assert.match(css, /\.page-cache-layer--hidden\s*\{[^}]*position:\s*absolute[^}]*visibility:\s*hidden[^}]*pointer-events:\s*none/)
+})
+
+test('avatar runtime uses invisible mode instead of rebuilding the SDK', () => {
+  assert.match(runtimeSurface, /runtimeRef\.current\?\.setVisibility\(visible\)/)
+  assert.match(mofaRuntime, /switchInvisibleMode\(\)/)
+  assert.match(mofaRuntime, /changeAvatarVisible\(visible: boolean\)/)
+  assert.match(mofaRuntime, /current\.destroy\('component_unmounted'\)/)
 })
