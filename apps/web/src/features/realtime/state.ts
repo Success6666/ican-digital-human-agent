@@ -100,6 +100,8 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
       }
     case 'buffer':
       return { ...state, bufferedBytes: Math.max(0, action.bytes), droppedFrames: state.droppedFrames + Math.max(0, action.dropped ?? 0), lastEventAt: new Date().toISOString() }
+    case 'audio_level':
+      return { ...state, audioLevel: Math.max(0, Math.min(1, action.level)), lastEventAt: new Date().toISOString() }
     case 'error':
       return { ...state, connection: action.fatal ? 'error' : state.connection, phase: 'error', statusText: sanitizeDisplayText(action.message, 180), error: sanitizeDisplayText(action.message, 180), lastEventAt: new Date().toISOString() }
     case 'event':

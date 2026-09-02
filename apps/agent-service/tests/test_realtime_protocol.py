@@ -258,6 +258,32 @@ class _AudioHarness(RealtimeAudioHandlersMixin):
         self.events.append({"type": "audio_queue", "revision": stats.revision})
 
 
+class _FinalIngress:
+    async def finish(self):
+        from app.realtime.audio import TranscriptResult
+        return TranscriptResult(status="final", text="帮我查一下今天的天气", utterance_id="utt-final", revision=2)
+
+    async def reset(self):
+        return None
+
+
+class _FinalAudioHarness(RealtimeAudioHandlersMixin):
+    def __init__(self) -> None:
+        self.state = ConnectionState(session_id="s1", hello_received=True)
+        self.ingress = _FinalIngress()
+        self.events: list[dict[str, object]] = []
+        self.limits = type("Limits", (), {"max_audio_buffer_bytes": 1024})()
+
+    async def _emit(self, event_type: str, **fields):
+        self.events.append({"type": event_type, **fields})
+
+    async def _reset_ingress_safely(self):
+        return None
+
+    async def _text(self, message):
+        self.events.append({"type": "agent_text", "text": message.text, "utterance_id": message.utterance_id, "revision": message.revision})
+
+
 @pytest.mark.asyncio
 async def test_audio_start_failure_rolls_back_revision_for_retry() -> None:
     harness = _AudioHarness()
@@ -266,6 +292,19 @@ async def test_audio_start_failure_rolls_back_revision_for_retry() -> None:
         await harness._audio_start(message)
     await harness._audio_start(message)
     assert harness.events[-2]["accepted"] is True
+
+
+@pytest.mark.asyncio
+async def test_final_asr_transcript_is_forwarded_into_agent_text_run() -> None:
+    harness = _FinalAudioHarness()
+    await harness.state.start_audio("utt-final", 2)
+    await harness._audio_end(RealtimeMessage(type="audio_end", requestId="a2", utteranceId="utt-final", revision=2))
+    assert harness.events[-1] == {
+        "type": "agent_text",
+        "text": "帮我查一下今天的天气",
+        "utterance_id": "utt-final",
+        "revision": 2,
+    }
 
 
 class _TextCapacityHarness(RealtimeHandlersMixin):

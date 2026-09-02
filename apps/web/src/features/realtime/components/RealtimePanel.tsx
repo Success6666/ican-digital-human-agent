@@ -1,4 +1,5 @@
 import { Mic, MicOff, Plug, Radio, RotateCcw, Square, Volume2, WifiOff } from 'lucide-react'
+import type { CSSProperties } from 'react'
 import { StatusPill } from '../../../shared/components/StatusPill'
 import type { RealtimeController } from '../model'
 
@@ -45,7 +46,7 @@ export function RealtimePanel({ realtime }: RealtimePanelProps) {
           </div>
           {state.audioSupported ? (
             <div className="realtime-controls">
-              <button className={`realtime-mic${recording ? ' realtime-mic--active' : ''}`} type="button" onClick={() => void realtime.toggleRecording()} disabled={connecting || state.connection !== 'connected'} aria-label={recording ? '结束录音' : '开始录音'} title={recording ? '结束录音' : '开始录音'}>
+              <button className={`realtime-mic${recording ? ' realtime-mic--active' : ''}`} style={{ '--voice-level': String(state.audioLevel) } as CSSProperties} type="button" onClick={() => void realtime.toggleRecording()} disabled={connecting || state.connection !== 'connected'} aria-label={recording ? '结束录音' : '开始录音'} title={recording ? '结束录音' : '开始录音'}>
                 {recording ? <Square size={16} /> : <Mic size={18} />}
                 <span>{recording ? '结束' : '说话'}</span>
               </button>

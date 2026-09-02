@@ -32,6 +32,9 @@ export class RealtimeRuntime {
   private audioStarted = false
   private operation = 0
   private disposed = false
+  private silenceTimer?: ReturnType<typeof setTimeout>
+  private maxRecordingTimer?: ReturnType<typeof setTimeout>
+  private speechDetected = false
 
   constructor(session: AvatarSession | null, dispatch: Dispatch, readOptions: OptionsReader) {
     this.sessionId = session?.sessionId
@@ -62,6 +65,8 @@ export class RealtimeRuntime {
     const recorder = this.recorder
     this.recorder = undefined
     if (recorder) await recorder.stop()
+    this.clearRecordingTimers()
+    this.dispatch({ type: 'audio_level', level: 0 })
     this.playback?.interrupt()
     if (this.playback) await this.playback.close()
     await this.transport?.dispose()
@@ -82,6 +87,8 @@ export class RealtimeRuntime {
     const previousRevision = this.revision
     this.recorder = undefined
     if (recorder) await recorder.stop()
+    this.clearRecordingTimers()
+    this.dispatch({ type: 'audio_level', level: 0 })
     if (this.audioStarted) this.sendAudioEnd(previousUtterance, previousRevision)
     this.playback?.interrupt()
     this.transport?.close()
@@ -115,6 +122,8 @@ export class RealtimeRuntime {
     this.utteranceOpen = true
     this.dispatch({ type: 'revision', utteranceId, revision })
     this.dispatch({ type: 'recording', state: 'requesting' })
+    this.speechDetected = false
+    this.clearRecordingTimers()
     const recorder = new Pcm16Recorder({
       sampleRate: config.sampleRate,
       channels: config.channels,
@@ -122,6 +131,7 @@ export class RealtimeRuntime {
       maxPendingBytes: config.maxAudioBufferBytes,
       onChunk: (frame) => this.sendAudioFrame(transport, config, operation, frame),
       onDrop: (count) => this.dispatch({ type: 'buffer', bytes: transport.bufferedAmount, dropped: count }),
+      onLevel: (level) => this.handleAudioLevel(level),
     })
     let audioStartSent = false
     try {
@@ -140,6 +150,7 @@ export class RealtimeRuntime {
       }
       this.recorder = recorder
       this.dispatch({ type: 'recording', state: 'recording' })
+      this.maxRecordingTimer = setTimeout(() => { void this.stopRecording() }, 15_000)
       return true
     } catch (cause) {
       await recorder.stop()
@@ -156,6 +167,8 @@ export class RealtimeRuntime {
     if (!recorder && !this.audioStarted) return
     this.dispatch({ type: 'recording', state: 'stopping' })
     if (recorder) await recorder.stop()
+    this.clearRecordingTimers()
+    this.dispatch({ type: 'audio_level', level: 0 })
     this.sendAudioEnd()
     this.utteranceOpen = false
     this.dispatch({ type: 'recording', state: 'idle' })
@@ -187,6 +200,8 @@ export class RealtimeRuntime {
     const previousRevision = this.revision
     this.recorder = undefined
     if (recorder) await recorder.stop()
+    this.clearRecordingTimers()
+    this.dispatch({ type: 'audio_level', level: 0 })
     if (this.audioStarted) this.sendAudioEnd(previousUtterance, previousRevision)
     this.utteranceOpen = false
     this.playback?.interrupt()
@@ -215,6 +230,29 @@ export class RealtimeRuntime {
     const sent = transport.send(frame)
     this.dispatch({ type: 'buffer', bytes: transport.bufferedAmount, dropped: sent ? 0 : 1 })
     return sent
+  }
+
+  private handleAudioLevel(level: number): void {
+    const normalized = Math.max(0, Math.min(1, level))
+    this.dispatch({ type: 'audio_level', level: normalized })
+    if (normalized >= 0.035) {
+      this.speechDetected = true
+      if (this.silenceTimer) clearTimeout(this.silenceTimer)
+      this.silenceTimer = undefined
+      return
+    }
+    if (!this.speechDetected || this.silenceTimer) return
+    this.silenceTimer = setTimeout(() => {
+      this.silenceTimer = undefined
+      if (this.recorder?.isRecording) void this.stopRecording()
+    }, 650)
+  }
+
+  private clearRecordingTimers(): void {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer)
+    if (this.maxRecordingTimer) clearTimeout(this.maxRecordingTimer)
+    this.silenceTimer = undefined
+    this.maxRecordingTimer = undefined
   }
   private sendAudioEnd(utteranceId = this.utteranceId, revision = this.revision): void {
     const decision = decideAudioEnd(

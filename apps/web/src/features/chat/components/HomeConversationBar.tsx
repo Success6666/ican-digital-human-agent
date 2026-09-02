@@ -1,5 +1,5 @@
 import { AudioLines, Mic, Send, Square } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 import type { AvatarSession } from '../../../shared/api/types'
 import type { RealtimeController } from '../../realtime/model'
 import { browserSpeechSupported, createBrowserSpeechRecognition, readBrowserSpeechResults, type BrowserSpeechRecognition } from '../../realtime/browserSpeech'
@@ -16,6 +16,7 @@ interface HomeConversationBarProps {
 export function HomeConversationBar({ session, realtime, isSending, isCreating = false, onSend, onCreateSession }: HomeConversationBarProps) {
   const [draft, setDraft] = useState('')
   const [browserVoiceActive, setBrowserVoiceActive] = useState(false)
+  const [browserVoiceLevel, setBrowserVoiceLevel] = useState(0)
   const browserRecognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const browserVoiceStoppingRef = useRef(false)
   const browserRestartTimerRef = useRef<number | null>(null)
@@ -43,6 +44,55 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
     browserRecognitionRef.current = null
   }, [])
 
+  useEffect(() => {
+    if (!browserVoiceActive || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setBrowserVoiceLevel(0)
+      return
+    }
+    let active = true
+    let frame = 0
+    let stream: MediaStream | undefined
+    let context: AudioContext | undefined
+    let source: MediaStreamAudioSourceNode | undefined
+    let analyser: AnalyserNode | undefined
+    void navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(async (nextStream) => {
+      if (!active) {
+        nextStream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      stream = nextStream
+      const Constructor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!Constructor) return
+      context = new Constructor()
+      await context.resume().catch(() => undefined)
+      source = context.createMediaStreamSource(nextStream)
+      analyser = context.createAnalyser()
+      analyser.fftSize = 512
+      source.connect(analyser)
+      const samples = new Uint8Array(analyser.fftSize)
+      const tick = () => {
+        if (!active || !analyser) return
+        analyser.getByteTimeDomainData(samples)
+        let energy = 0
+        for (const sample of samples) {
+          const centered = (sample - 128) / 128
+          energy += centered * centered
+        }
+        setBrowserVoiceLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4))
+        frame = window.requestAnimationFrame(tick)
+      }
+      tick()
+    }).catch(() => undefined)
+    return () => {
+      active = false
+      window.cancelAnimationFrame(frame)
+      source?.disconnect()
+      stream?.getTracks().forEach((track) => track.stop())
+      void context?.close()
+      setBrowserVoiceLevel(0)
+    }
+  }, [browserVoiceActive])
+
   function submit(event: FormEvent) {
     event.preventDefault()
     const message = draft.trim()
@@ -65,8 +115,11 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
   }
 
   async function toggleVoice() {
+    if (ready && realtime.state.audioSupported) {
+      await realtime.toggleRecording()
+      return
+    }
     if (!browserVoiceAvailable) {
-      if (ready && realtime.state.audioSupported) await realtime.toggleRecording()
       return
     }
     if (browserVoiceActive) {
@@ -136,6 +189,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
     <form className="home-conversation-bar" onSubmit={submit} aria-label="数字人对话输入">
       <button
         className={'home-voice-button' + (recording || browserVoiceActive ? ' home-voice-button--active' : '')}
+        style={{ '--voice-level': String(Math.max(0, Math.min(1, recording ? realtime.state.audioLevel : browserVoiceLevel))) } as CSSProperties}
         type="button"
         onClick={() => void toggleVoice()}
         disabled={!voiceAvailable}

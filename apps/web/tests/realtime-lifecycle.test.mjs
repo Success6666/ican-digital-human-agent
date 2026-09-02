@@ -30,3 +30,14 @@ test('continuous voice reads the latest session after asynchronous session creat
   assert.match(source, /if \(!sessionRef\.current\)/)
   assert.match(source, /onSendRef\.current\(finalText\)/)
 })
+
+test('microphone feedback exposes normalized level and silence auto-stop', async () => {
+  const pcm = await readFile(fileURLToPath(new URL('../src/features/realtime/pcm16.ts', import.meta.url)), 'utf8')
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/realtime/runtime.ts', import.meta.url)), 'utf8')
+  const button = await readFile(fileURLToPath(new URL('../src/features/chat/components/HomeConversationBar.tsx', import.meta.url)), 'utf8')
+  assert.match(pcm, /onLevel\?\.\(Math\.min\(1, Math\.sqrt\(energy \/ resampled\.length\) \* 4\)\)/)
+  assert.match(runtime, /this\.silenceTimer = setTimeout\(/)
+  assert.match(runtime, /this\.silenceTimer = undefined/)
+  assert.match(runtime, /void this\.stopRecording\(\)/)
+  assert.match(button, /--voice-level/)
+})

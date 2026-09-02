@@ -1,0 +1,38 @@
+TARGET: 实时语音最终识别自动触发 Agent、音量检测与动态波纹
+DATE: 2026-09-02
+BASELINE: v0.1.37 / SHA256 C5670D92665A01A12A7AD2C437FA5696E7DC9BEE45B958FB75C69378140B5C35 (audio_handlers.py)
+MODIFIED_FILE: tmp-docs/v0.1.38-realtime-voice-artifacts/MODIFIED_FILE-audio_handlers.py
+DIFF_FILE: tmp-docs/v0.1.38-realtime-voice-artifacts/DIFF_FILE.patch
+ROLLBACK: tmp-docs/v0.1.38-realtime-voice-artifacts/ROLLBACK.sh
+
+BASELINE_COMMAND
+git show HEAD:apps/agent-service/app/realtime/audio_handlers.py > tmp-docs/v0.1.38-realtime-voice-artifacts/baseline/audio_handlers.py
+BASELINE_RESULT
+audio_handlers.py SHA256 C5670D92665A01A12A7AD2C437FA5696E7DC9BEE45B958FB75C69378140B5C35; exit 0
+
+MODIFIED_COMMAND
+Copy-Item apps/agent-service/app/realtime/audio_handlers.py tmp-docs/v0.1.38-realtime-voice-artifacts/MODIFIED_FILE-audio_handlers.py
+MODIFIED_RESULT
+final transcript forwards to _text with same utterance/revision; exit 0
+
+TEST_COMMANDS
+cd apps/web; npm run test:realtime; npm run test:chat; npm run test:layout; npm run test:avatar; npm run build
+cd apps/agent-service; $env:PYTHONPATH='src'; python -m pytest -q
+cd apps/auth-service; .\mvnw.cmd -q test
+docker compose up -d --build
+docker compose ps
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/api/health
+
+TEST_RESULTS
+Web: realtime 6/6, chat 3/3, layout 6/6, avatar 3/3, build exit 0.
+Agent: 191 passed, 2 skipped, 1 warning, exit 0.
+Auth: Maven test exit 0.
+Compose: agent-service, auth-service, mcp-server, web, redis and rabbitmq healthy; /api/health HTTP=200.
+
+ROLLBACK_COMMAND
+wsl bash /mnt/e/ican数字人/tmp-docs/v0.1.38-realtime-voice-artifacts/ROLLBACK.sh /mnt/e/ican数字人/tmp-docs/v0.1.38-realtime-voice-artifacts/rollback-copy/audio_handlers.py
+ROLLBACK_RESULT
+rollback restored .../rollback-copy/audio_handlers.py; restored SHA256 C5670D92665A01A12A7AD2C437FA5696E7DC9BEE45B958FB75C69378140B5C35; exit 0
+
+RESTORED_STATUS
+验证副本恢复为 v0.1.37 基线；工作树 MODIFIED_FILE 保持 v0.1.38 实时语音实现。

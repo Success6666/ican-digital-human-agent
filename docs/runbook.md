@@ -25,6 +25,8 @@ docker compose up --build
 
 首页工作区采用 Keep-Alive 缓存：切换到 RAG、评测、审计或设置页时不卸载数字人组件，当前星云 SDK 会话保持连接；页面隐藏期间调用 `switchInvisibleMode()` 与 `changeAvatarVisible(false)` 降低渲染和推送开销，返回首页后恢复可见状态，不重新创建会话或 SDK。显式断开、退出登录和更换会话仍会执行完整销毁。
 
+实时语音在 ASR 返回 `final` transcript 后会自动进入 Agent run，不需要再次点击发送。浏览器端按 16 kHz PCM16 采集并计算归一化音量；检测到说话后连续静音约 650ms 自动发送 `audio_end`，最长录音 15 秒。麦克风按钮波纹半径随音量变化；若 ASR 未配置则回退到浏览器连续识别，识别权限或网络异常会保留可读状态并允许改用文本输入。
+
 默认 Mock Provider 只验证实时连接、PCM16 帧边界、心跳和中断生命周期。配置 `SESSION_STORE_BACKEND=redis` 后会话与 cleanup 队列进入 Redis；配置 `HTTP_ASR_ENDPOINT`、`HTTP_TTS_ENDPOINT` 后启用真实媒体适配，适配器使用复用连接、超时和响应体上限，故障时保留协议连接并报告降级状态。
 
 ### 会话资源参数

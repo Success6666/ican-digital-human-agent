@@ -145,6 +145,9 @@ export class Pcm16Recorder {
     }
     const resampled = this.resampler.push(downmixToMono(input, channels))
     if (!resampled.length) return
+    let energy = 0
+    for (const sample of resampled) energy += sample * sample
+    this.options.onLevel?.(Math.min(1, Math.sqrt(energy / resampled.length) * 4))
     this.appendPcm(floatToPcm16(resampled, this.channels))
   }
 

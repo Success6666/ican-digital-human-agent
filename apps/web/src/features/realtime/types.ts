@@ -50,6 +50,7 @@ export interface RealtimeState {
   error?: string
   droppedFrames: number
   bufferedBytes: number
+  audioLevel: number
   lastEventAt?: string
 }
 
@@ -70,6 +71,7 @@ export const initialRealtimeState: RealtimeState = {
   statusText: '当前仅支持文本实时链路',
   droppedFrames: 0,
   bufferedBytes: 0,
+  audioLevel: 0,
 }
 
 export type RealtimeAction =
@@ -84,6 +86,7 @@ export type RealtimeAction =
   | { type: 'transcript'; status: 'partial' | 'final' | 'unsupported'; text?: string }
   | { type: 'assistant'; text: string; append?: boolean }
   | { type: 'buffer'; bytes: number; dropped?: number }
+  | { type: 'audio_level'; level: number }
   | { type: 'error'; message: string; fatal?: boolean }
   | { type: 'event'; at?: string }
 
@@ -159,6 +162,7 @@ export interface PcmRecorderOptions {
   maxPendingBytes?: number
   onChunk: (frame: ArrayBuffer) => boolean | void
   onDrop?: (count: number) => void
+  onLevel?: (level: number) => void
 }
 
 export interface PcmPlaybackOptions {
@@ -173,6 +177,7 @@ export interface RealtimeSessionOptions {
   onTranscript?: (text: string) => void
   onAssistantText?: (text: string, append: boolean) => void
   onInterrupt?: () => void
+  onAudioLevel?: (level: number) => void
 }
 
 export function hasAudioInput(session?: { capabilities?: string[]; clientParams?: AvatarClientParams } | null): boolean {
