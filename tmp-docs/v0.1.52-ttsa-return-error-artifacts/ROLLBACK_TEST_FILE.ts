@@ -72,11 +72,9 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const firstFrame = new Promise<void>((resolve) => { signalFirstFrame = resolve })
     let initialized = false
     let rendered = false
-    let ttsaWarning = false
     const markReady = () => {
       signalFirstFrame()
       if (!initialized) return
-      if (ttsaWarning) return
       if (rendered) return
       rendered = true
       onStatus({ phase: 'ready', progress: 100, message: '数字人已连接' })
@@ -108,18 +106,12 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
           return
         }
         if (networkState === 'online') {
-          ttsaWarning = false
           markReady()
           return
         }
         if (isSpeechOverlapWarning(detail)) {
           console.warn('[Mofa Runtime] recovered overlapping speech boundary', message)
           onStatus({ phase: 'speaking', progress: 100, message: '数字人正在表达' })
-          return
-        }
-        if (isRecoverableTtsaError(message, detail)) {
-          ttsaWarning = true
-          onStatus({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
           return
         }
         if (detail) onStatus({ phase: 'error', message: `星云运行时：${detail}` })
@@ -134,11 +126,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
             // serialized worker continue instead of replacing it with an
             // error overlay.
             onStatus({ phase: 'ready', progress: 100, message: '数字人已连接，正在恢复表达' })
-            return
-          }
-          if (isRecoverableTtsaError(message, detail)) {
-            ttsaWarning = true
-            onStatus({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
             return
           }
           onStatus({ phase: 'loading', progress: 85, message: detail })
@@ -376,23 +363,6 @@ function sdkMessage(value: unknown): string {
     .map(([key, item]) => `${key}: ${String(item)}`)
     .join('；')
   return compact
-}
-
-function isRecoverableTtsaError(value: unknown, detail: string): boolean {
-  const code = typeof value === 'object' && value !== null ? Number((value as { code?: unknown }).code) : Number.NaN
-  const normalized = detail.toLowerCase()
-  return [1, 40006].includes(code)
-    || normalized.includes('ttsa 返回异常')
-    || normalized.includes('暂无空闲房间')
-    || normalized.includes('no idle room')
-}
-
-function formatTtsaError(value: unknown, detail: string): string {
-  const code = typeof value === 'object' && value !== null ? Number((value as { code?: unknown }).code) : Number.NaN
-  if (detail && !['ttsa 返回异常', 'ttsa error'].includes(detail.trim().toLowerCase())) {
-    return `TTSA 暂不可用：${detail}${Number.isFinite(code) ? `（错误码 ${code}）` : ''}`
-  }
-  return `TTSA 暂不可用${Number.isFinite(code) ? `（错误码 ${code}）` : ''}，请稍后重试`
 }
 
 function isSpeechOverlapWarning(value: string): boolean {

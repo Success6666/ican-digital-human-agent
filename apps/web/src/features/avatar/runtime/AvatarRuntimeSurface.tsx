@@ -95,11 +95,11 @@ export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session
     <div className="avatar-runtime-shell">
       <div ref={hostRef} className="avatar-runtime-host" aria-label="数字人展示画面" />
       {status.phase !== 'ready' && status.phase !== 'speaking' && (
-        <div className="avatar-runtime-overlay" role="status">
+        <div className={`avatar-runtime-overlay${status.phase === 'warning' ? ' avatar-runtime-overlay--warning' : ''}`} role="status">
           {status.phase === 'loading' ? <LoaderCircle size={22} className="avatar-waiting-spinner" /> : <AlertCircle size={22} />}
           <strong>{status.message ?? '正在连接数字人'}</strong>
           {status.phase === 'loading' && <span>{status.progress ?? 0}%</span>}
-          {status.phase === 'error' && <button className="avatar-stage-cta" type="button" onClick={() => setGeneration((value) => value + 1)}><RefreshCw size={14} />重新连接</button>}
+          {(status.phase === 'error' || status.phase === 'warning') && <button className="avatar-stage-cta" type="button" onClick={() => setGeneration((value) => value + 1)}><RefreshCw size={14} />重试连接</button>}
         </div>
       )}
     </div>

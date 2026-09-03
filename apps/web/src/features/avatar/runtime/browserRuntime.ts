@@ -2,7 +2,7 @@ import type { AvatarClientParams } from '../../../shared/api/types'
 import type { AvatarPerformanceCue } from '../../../shared/api/types'
 
 export interface AvatarRuntimeStatus {
-  phase: 'loading' | 'ready' | 'speaking' | 'error'
+  phase: 'loading' | 'ready' | 'speaking' | 'warning' | 'error'
   progress?: number
   message?: string
 }

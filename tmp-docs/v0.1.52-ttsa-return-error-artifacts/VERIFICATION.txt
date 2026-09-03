@@ -1,0 +1,24 @@
+版本：v0.1.52
+对象：TTSA 业务错误识别、可恢复告警和渲染画面保持
+原始文件：tmp-docs/v0.1.52-ttsa-return-error-artifacts/BASELINE_FILE.ts
+修改文件：tmp-docs/v0.1.52-ttsa-return-error-artifacts/MODIFIED_FILE.ts
+差异文件：tmp-docs/v0.1.52-ttsa-return-error-artifacts/DIFF_FILE.patch
+回滚脚本：tmp-docs/v0.1.52-ttsa-return-error-artifacts/ROLLBACK.sh
+
+BASELINE_COMMAND: git show HEAD:apps/web/src/features/avatar/runtime/mofaRuntime.ts > BASELINE_FILE.ts
+BASELINE_RESULT: exit 0; baseline source preserved
+MODIFIED_COMMAND: npm run test:avatar; npm run build (cwd=apps/web)
+MODIFIED_RESULT: exit 0; test:avatar 8 passed; Vite production build succeeded
+LIVE_REPRO_COMMAND: signed POST https://nebula-agent.xingyun3d.com/user/v1/ttsa/session
+LIVE_REPRO_RESULT: HTTP 200; error_code=1; error_reason=星云暂无空闲房间, 请稍后再试
+ROLLBACK_COMMAND: bash tmp-docs/v0.1.52-ttsa-return-error-artifacts/ROLLBACK.sh
+ROLLBACK_RESULT: exit 0; baseline source restored on copy
+LOCK_RESULT: ttsaWarning 锁存告警，ready 状态不会覆盖业务错误；网络恢复或用户重试后清除
+FINAL_HASHES:
+
+Algorithm       Hash                                                                   Path
+---------       ----                                                                   ----
+SHA256          554E0AB71B49DEBCE7FB19F15D88D27F3C2ACAD6EB233F634936976D0E05938C       E:\ican数字人\tmp-docs\v0.1.52-t…
+SHA256          0DC7FCDD73D7B2B863CC2D9241ECFE1C3BDE21E383E648B751C4360ACCD3FF60       E:\ican数字人\tmp-docs\v0.1.52-t…
+
+

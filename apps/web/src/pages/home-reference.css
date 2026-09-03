@@ -77,6 +77,8 @@
   pointer-events: none;
 }
 
+.avatar-runtime-overlay--warning { background: rgba(237, 244, 255, .62); }
+
 .avatar-runtime-overlay .avatar-stage-cta { pointer-events: auto; }
 
 .avatar-runtime-overlay strong {
