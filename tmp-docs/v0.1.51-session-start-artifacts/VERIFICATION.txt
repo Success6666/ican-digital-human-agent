@@ -1,0 +1,17 @@
+版本：v0.1.51
+对象：数字人会话启动链路、魔珐 SDK gatewayServer 协议和认证冒烟
+原始文件：tmp-docs/v0.1.51-session-start-artifacts/BASELINE_FILE.py
+修改文件：tmp-docs/v0.1.51-session-start-artifacts/MODIFIED_FILE.py
+差异文件：tmp-docs/v0.1.51-session-start-artifacts/DIFF_FILE.patch
+回滚脚本：tmp-docs/v0.1.51-session-start-artifacts/ROLLBACK.sh
+
+BASELINE_COMMAND: git show HEAD:apps/agent-service/app/avatar/adapters/mofa.py > tmp-docs/v0.1.51-session-start-artifacts/BASELINE_FILE.py
+BASELINE_RESULT: exit 0; baseline fixture contains wss://nebula-agent.xingyun3d.com/user/v1/ttsa/session
+MODIFIED_COMMAND: python -m pytest -q (cwd=apps/agent-service); npm run test:avatar (cwd=apps/web); npm run build (cwd=apps/web)
+MODIFIED_RESULT: exit 0; 207 passed, 2 skipped; 8 passed; Vite build succeeded with 1663 modules
+AUTH_COMMAND: docker run --rm -v "${PWD}/apps/auth-service:/workspace" -w /workspace maven:3.9.11-eclipse-temurin-17 mvn -B -DskipTests=false test
+AUTH_RESULT: exit 0; Tests run: 31, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS
+SMOKE_COMMAND: login demo/demo123; GET /api/auth/me; POST /api/sessions {provider:mofa}
+SMOKE_RESULT: anonymous_me=401; login=200; me=200; providers=200; mofa_status=200; returned gatewayServer=https://nebula-agent.xingyun3d.com/user/v1/ttsa/session
+ROLLBACK_COMMAND: bash tmp-docs/v0.1.51-session-start-artifacts/ROLLBACK.sh
+ROLLBACK_RESULT: exit 0; rollback source restored on copy; ROLLBACK_TEST_FILE.py contains original wss fixture

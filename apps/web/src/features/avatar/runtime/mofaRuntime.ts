@@ -343,9 +343,11 @@ function ensureContainerId(host: HTMLElement): string {
 
 function normalizeGatewayUrl(value: string): URL {
   const gateway = new URL(value)
-  if (gateway.protocol === 'https:') gateway.protocol = 'wss:'
-  if (gateway.protocol === 'http:') gateway.protocol = 'ws:'
-  if (gateway.protocol !== 'wss:' && gateway.protocol !== 'ws:') throw new Error('魔珐 TTSA 网关必须使用 ws 或 wss')
+  // SDK 2.1.3 starts the session with a signed HTTP POST/fetch. The
+  // response contains the WebSocket URL used internally for TTSA streaming.
+  if (gateway.protocol === 'wss:') gateway.protocol = 'https:'
+  if (gateway.protocol === 'ws:') gateway.protocol = 'http:'
+  if (gateway.protocol !== 'https:' && gateway.protocol !== 'http:') throw new Error('魔珐会话网关必须使用 http 或 https')
   return gateway
 }
 

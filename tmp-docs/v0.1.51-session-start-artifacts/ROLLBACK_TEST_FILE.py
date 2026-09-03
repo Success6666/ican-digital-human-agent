@@ -52,7 +52,7 @@ class MofaProvider(ConfigProvider):
                 ),
                 "gatewayServer": _env_or(
                     "MOFA_GATEWAY_URL",
-                    "https://nebula-agent.xingyun3d.com/user/v1/ttsa/session",
+                    "wss://nebula-agent.xingyun3d.com/user/v1/ttsa/session",
                 ),
                 "appId": os.environ["MOFA_APP_ID"],
                 "appSecret": os.environ["MOFA_APP_SECRET"],

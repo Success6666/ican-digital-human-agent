@@ -1,0 +1,13 @@
+diff --git a/tmp-docs/v0.1.51-session-start-artifacts/BASELINE_FILE.py b/tmp-docs/v0.1.51-session-start-artifacts/MODIFIED_FILE.py
+index 99866e2..e12d84f 100644
+--- a/tmp-docs/v0.1.51-session-start-artifacts/BASELINE_FILE.py
++++ b/tmp-docs/v0.1.51-session-start-artifacts/MODIFIED_FILE.py
+@@ -52,7 +52,7 @@ class MofaProvider(ConfigProvider):
+                 ),
+                 "gatewayServer": _env_or(
+                     "MOFA_GATEWAY_URL",
+-                    "wss://nebula-agent.xingyun3d.com/user/v1/ttsa/session",
++                    "https://nebula-agent.xingyun3d.com/user/v1/ttsa/session",
+                 ),
+                 "appId": os.environ["MOFA_APP_ID"],
+                 "appSecret": os.environ["MOFA_APP_SECRET"],
