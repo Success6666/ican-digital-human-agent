@@ -33,3 +33,11 @@ export async function interruptSession(sessionId: string, runId?: string): Promi
     runId ? { runId } : undefined,
   )
 }
+
+export async function resolveApproval(sessionId: string, approvalId: string, approved: boolean): Promise<boolean> {
+  const response = await api.post<{ accepted?: boolean }>(
+    `/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`,
+    { approved },
+  )
+  return response.accepted === true
+}

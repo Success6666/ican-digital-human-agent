@@ -28,6 +28,8 @@ export interface TimelineItem {
   detail?: string
   createdAt: string
   seq?: number
+  approvalId?: string
+  approvalStatus?: 'pending' | 'approved' | 'rejected' | 'failed'
 }
 
 export interface ChatConversation {
@@ -155,6 +157,26 @@ export function useChat(session: AvatarSession | null, accountId?: string) {
       return next.length > MAX_TIMELINE_ITEMS ? next.slice(-MAX_TIMELINE_ITEMS) : next
     })
   }, [])
+
+  const resolveApproval = useCallback(async (approvalId: string, approved: boolean) => {
+    if (!session) return
+    setTimeline((current) => current.map((item) => item.approvalId === approvalId
+      ? { ...item, approvalStatus: approved ? 'approved' : 'rejected', detail: approved ? '已批准，Agent 正在继续执行' : '已拒绝，Agent 将跳过该工具' }
+      : item))
+    try {
+      const accepted = await chatApi.resolveApproval(session.sessionId, approvalId, approved)
+      if (!accepted) {
+        setTimeline((current) => current.map((item) => item.approvalId === approvalId
+          ? { ...item, approvalStatus: 'failed', detail: '确认已过期或不属于当前会话' }
+          : item))
+      }
+    } catch (cause) {
+      const message = sanitizeDisplayText(cause instanceof Error ? cause.message : '确认请求失败')
+      setTimeline((current) => current.map((item) => item.approvalId === approvalId
+        ? { ...item, approvalStatus: 'failed', detail: message }
+        : item))
+    }
+  }, [session])
 
   const updateAssistant = useCallback((messageId: string, patch: Partial<ChatMessage>) => {
     setMessages((current) => current.map((message) => message.id === messageId ? { ...message, ...patch } : message))
@@ -382,5 +404,5 @@ export function useChat(session: AvatarSession | null, accountId?: string) {
     if (accountId) writeConversations(accountId, nextRecords)
   }, [accountId, conversations, stop])
 
-  return { messages, conversations, activeConversationId, timeline, isSending, error, sendMessage, stop, clear, newConversation, selectConversation, deleteConversation, formatTime }
+  return { messages, conversations, activeConversationId, timeline, isSending, error, sendMessage, resolveApproval, stop, clear, newConversation, selectConversation, deleteConversation, formatTime }
 }

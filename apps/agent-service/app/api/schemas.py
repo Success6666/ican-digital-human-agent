@@ -71,6 +71,12 @@ class InterruptRequest(BaseModel):
     run_id: str | None = Field(default=None, alias="runId", min_length=1, max_length=128)
 
 
+class ApprovalDecisionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    approved: bool
+
+
 class ChatResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

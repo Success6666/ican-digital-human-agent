@@ -163,6 +163,11 @@ export interface ChatStreamEvent {
   interrupted?: boolean
   hitCount?: number
   degraded?: boolean
+  approvalId?: string
+  toolCallId?: string
+  toolName?: string
+  arguments?: unknown
+  isError?: boolean
   message?: string
   [key: string]: unknown
 }

@@ -9,6 +9,7 @@ from typing import Any
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
 from ..agent.latency import AdaptiveFillerPolicy, FillerPolicy
+from ..agent.loop_engine import AgentLoopEngine, ApprovalStore
 from ..agent.models import FillerPhase, IntentDecision
 from ..agent.performance import PerformancePlanner
 from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan
@@ -59,6 +60,10 @@ class AgentGraphRuntime:
         self._filler = filler_policy or AdaptiveFillerPolicy(planner=performance)
         self._performance = performance or PerformancePlanner()
         self._cancel_grace_seconds = provider_cancel_grace_seconds
+        self._loop_engine = AgentLoopEngine(
+            max_parallel=max_parallel_tools,
+            approval_store=ApprovalStore(),
+        )
         self._graph = build_graph(
             tool_client=tool_client,
             providers=providers,
@@ -72,7 +77,16 @@ class AgentGraphRuntime:
             max_parallel_tools=max_parallel_tools,
             llm_client=llm_client,
             message_bus=message_bus,
+            loop_engine=self._loop_engine,
         )
+
+    def resolve_approval(self, session_id: str, approval_id: str, approved: bool) -> bool:
+        """Resolve a pending HITL approval without exposing the store."""
+        return self._loop_engine.approvals.resolve(approval_id, approved, scope_id=session_id)
+
+    def reject_session_approvals(self, session_id: str) -> int:
+        """Release pending tool gates when a session is interrupted or closed."""
+        return self._loop_engine.approvals.reject_scope(session_id)
 
     async def invoke(
         self,

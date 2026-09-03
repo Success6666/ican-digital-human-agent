@@ -1,0 +1,22 @@
+版本：v0.1.50
+对象：Pi 适配 loop engine、HITL 审批隔离、TTSA 网关和重连播报游标
+
+BASELINE：
+命令：python -m pytest -q tests/test_loop_engine.py tests/test_agent_api.py（修改前基线由上一轮 9 项专项回归记录）
+结果：9 项专项测试作为对照基线；原始文件保存在 BASELINE_FILE.py。基线文件对应 `apps/agent-service/app/avatar/adapters/mofa.py` 的 HEAD blob，SHA-256 与提交对象一致。
+
+MODIFIED：
+命令：python -m pytest -q（目录：apps/agent-service）
+结果：206 passed, 2 skipped, 1 warning；退出码 0。
+命令：npm run test:avatar; npm run test:realtime; npm run test:chat; npm run test:layout; npm run build（目录：apps/web）
+结果：8+8+5+8 项测试全部通过，Vite production build 成功；退出码 0。
+命令：docker compose build agent-service web auth-service && docker compose up -d agent-service web auth-service && docker compose ps
+结果：三个受影响服务重建成功；agent-service、auth-service、web 均为 healthy；Agent `/health` 返回 `{"status":"ok","service":"agent-service","version":"0.1.50"}`；宿主 `http://127.0.0.1:8088/` 返回 HTTP 200。
+命令：docker run --rm -v "${PWD}/apps/auth-service:/workspace" -w /workspace maven:3.9.11-eclipse-temurin-17 mvn -B -DskipTests=false test
+结果：31 tests, 0 failures, 0 errors, 0 skipped；BUILD SUCCESS；退出码 0。
+
+ROLLBACK：
+命令：bash tmp-docs/v0.1.50-pi-agent-artifacts/ROLLBACK.sh
+结果：rollback test passed；退出码 0；ROLLBACK_TEST_FILE.py 可在基线与修改版本间恢复。
+
+恢复状态：ROLLBACK_TEST_FILE.py 最终保持修改版本；仓库源文件保持修改版本。

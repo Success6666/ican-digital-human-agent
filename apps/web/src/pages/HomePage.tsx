@@ -39,6 +39,7 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
   const [avatarSpeaking, setAvatarSpeaking] = useState(false)
   const [avatarReady, setAvatarReady] = useState(false)
   const realtimeAssistant = realtime.state.assistantText.trim()
+  const pendingApproval = [...chat.timeline].reverse().find((item) => item.approvalId && item.approvalStatus === 'pending')
   const activeSpeech = realtimeAssistant ? {
     id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
     text: realtimeAssistant,
@@ -100,7 +101,7 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           onSpeakingChange={setAvatarSpeaking}
           onReadyChange={setAvatarReady}
         />
-        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarReady={avatarReady} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} />
+        <HomeConversationBar session={avatar.session} realtime={realtime} isSending={chat.isSending} isCreating={avatar.isCreating} avatarReady={avatarReady} avatarSpeaking={avatarSpeaking} onSend={(message) => void chat.sendMessage(message)} pendingApproval={pendingApproval?.approvalId ? { id: pendingApproval.approvalId, title: pendingApproval.title } : undefined} onApproval={(approvalId, approved) => void chat.resolveApproval(approvalId, approved)} />
         <button className="conversation-toggle" type="button" title="打开对话记录" aria-label="打开对话记录" aria-expanded={drawerOpen} onClick={openConversationDrawer}>
           <History size={18} />
         </button>

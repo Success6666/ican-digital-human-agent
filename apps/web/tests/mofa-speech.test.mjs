@@ -55,6 +55,16 @@ test('streams avatar sentence chunks without reopening every sentence', async ()
   assert.match(runtime, /return this\.speechFlushRequested \|\| this\.speechQueue\.length > 1 \|\| Boolean\(this\.speechBuffer\.trim\(\)\)/)
 })
 
+test('normalizes TTSA gateway URLs to websocket schemes and keeps reconnect cursor', async () => {
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
+  assert.match(runtime, /function normalizeGatewayUrl\(value: string\): URL/)
+  assert.match(runtime, /gateway\.protocol === 'https:'/)
+  assert.match(runtime, /gateway\.protocol = 'wss:'/)
+  const surface = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/AvatarRuntimeSurface.tsx', import.meta.url)), 'utf8')
+  assert.match(surface, /const currentSpeechMessageId = speech\?\.id\?\.split\(':', 1\)\[0\]/)
+  assert.match(surface, /spokenTextRef\.current = speech\?\.text \?\? ''/)
+})
+
 test('generates runtime ids when randomUUID is unavailable on public HTTP', async () => {
   const runtimeIdPath = fileURLToPath(new URL('../src/features/avatar/runtime/runtimeId.ts', import.meta.url))
   const runtimeIdSource = await readFile(runtimeIdPath, 'utf8')

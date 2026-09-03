@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.config import get_stream_writer
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
+from ..agent.loop_engine import AgentLoopEngine, LoopEvent, ToolInvocation
 from ..agent.models import FillerPhase, IntentDecision, PerformanceCue
 from ..agent.performance import PerformancePlanner
 from ..agent.response import build_agent_response
@@ -21,7 +22,6 @@ from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
 from ..llm.client import LlmClient, extract_reply_prefix, parse_generation
 from ..rag.models import SearchRequest
-from .concurrency import bounded_map
 from .builder_support import attrs as _attrs
 from .builder_support import decision_from_state as _decision
 from .builder_support import plan_from_state as _plan
@@ -48,6 +48,7 @@ def build_graph(
     max_parallel_tools: int = 4,
     llm_client: LlmClient | None = None,
     message_bus: ReliableMessageBus | None = None,
+    loop_engine: AgentLoopEngine | None = None,
 ):
     """Return a compiled graph with all external decisions injected.
 
@@ -59,6 +60,7 @@ def build_graph(
     router = tool_router or ProgressiveToolRouter()
     performer = performance or PerformancePlanner()
     presentation = PresentationLayer(message_bus)
+    tool_loop = loop_engine or AgentLoopEngine(max_parallel=max_parallel_tools)
 
     async def receive(state: AgentGraphState) -> dict[str, Any]:
         attrs = _attrs(state, {"message_length": len(state.get("message", ""))})
@@ -155,10 +157,11 @@ def build_graph(
         # greetings and acknowledgements.
         if _is_fast_path_message(state.get("message", ""), _decision(state)):
             return {"tool_calls": [], "tool_plan": plan.model_dump(mode="json")}
-        async def call_one(name: str) -> ToolCallRecord:
+        async def call_one(invocation: ToolInvocation) -> ToolCallRecord:
+            name = invocation.name
             if await _stopped(sessions, state):
                 return ToolCallRecord(name=name, error="run interrupted")
-            arguments = _tool_arguments(name, state["message"])
+            arguments = invocation.arguments
             attrs = _attrs(state, {"argument_keys": sorted(arguments), "category": plan.category})
             with _span(observer, "mcp_call", name, attrs):
                 try:
@@ -176,11 +179,42 @@ def build_graph(
                 except Exception as exc:  # defensive boundary for custom clients
                     return ToolCallRecord(name=name, arguments=arguments, error=_safe_error(exc))
 
-        # Independent MCP probes run concurrently, reducing latency without
-        # exposing more tools than the route plan selected. A bounded worker
-        # pool prevents a custom route plan from creating an unbounded task
-        # set, and retains deterministic input order for the stream.
-        calls = await bounded_map(plan.selected_tools, call_one, limit=max_parallel_tools)
+        async def emit_loop(event: LoopEvent) -> None:
+            try:
+                writer = get_stream_writer()
+            except (KeyError, RuntimeError):
+                writer = None
+            if not callable(writer):
+                return
+            data: dict[str, Any] = {
+                "traceId": state.get("trace_id"),
+                "runId": state.get("run_id"),
+                "toolCallId": event.tool_call_id,
+                "toolName": event.tool_name,
+                "arguments": event.arguments,
+                "approvalId": event.approval_id,
+                "isError": event.is_error,
+            }
+            if event.result is not None:
+                data["result"] = event.result.model_dump(mode="json")
+            writer({"event": event.type, "data": data})
+
+        invocations = [
+            ToolInvocation(name=name, arguments=_tool_arguments(name, state["message"]))
+            for name in plan.selected_tools
+        ]
+        specs = {
+            spec.name: spec
+            for spec in getattr(getattr(router, "catalog", None), "all", lambda: [])()
+        }
+        calls = await tool_loop.execute_tools(
+            run_id=state.get("run_id", ""),
+            scope_id=state.get("session_id"),
+            invocations=invocations,
+            execute=call_one,
+            specs=specs,
+            emit=emit_loop,
+        )
         if await _stopped(sessions, state):
             return {
                 "tool_calls": calls,

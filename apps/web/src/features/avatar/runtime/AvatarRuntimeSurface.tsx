@@ -37,8 +37,12 @@ export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session
     let active = true
     const runtime = new MofaBrowserRuntime()
     runtimeRef.current = runtime
-    spokenMessageRef.current = undefined
-    spokenTextRef.current = ''
+    // Reconnecting must not replay the persisted assistant message. Keep the
+    // current stream cursor and only send text that arrives after this runtime
+    // instance becomes active.
+    const currentSpeechMessageId = speech?.id?.split(':', 1)[0]
+    spokenMessageRef.current = currentSpeechMessageId
+    spokenTextRef.current = speech?.text ?? ''
     setStatus({ phase: 'loading', progress: 0, message: '正在连接数字人' })
     void runtime.connect(host, params, (next) => {
       if (!active) return

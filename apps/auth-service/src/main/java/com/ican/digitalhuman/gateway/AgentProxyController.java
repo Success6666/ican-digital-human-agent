@@ -57,6 +57,20 @@ public class AgentProxyController {
         );
     }
 
+    @PostMapping("/sessions/{sessionId}/approvals/{approvalId}")
+    public JsonNode resolveApproval(
+            @PathVariable String sessionId,
+            @PathVariable String approvalId,
+            @RequestBody JsonNode body) {
+        UserAccount current = user();
+        return agentGatewayClient.post(
+                "/internal/sessions/" + encodePath(sessionId) + "/approvals/" + encodePath(approvalId),
+                body,
+                current.id(),
+                current.username()
+        );
+    }
+
     @PostMapping("/chat")
     public JsonNode chat(@RequestBody JsonNode body) {
         UserAccount current = user();

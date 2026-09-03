@@ -60,7 +60,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     if (!window.XmovAvatar) throw new Error('魔珐数字人 SDK 不可用')
 
     const containerId = ensureContainerId(host)
-    const gateway = new URL(config.gatewayServer)
+    const gateway = normalizeGatewayUrl(config.gatewayServer)
     if (config.dataSource) gateway.searchParams.set('data_source', config.dataSource)
     if (config.customId) gateway.searchParams.set('custom_id', config.customId)
     const width = Math.max(320, Math.round(host.clientWidth || 960))
@@ -339,6 +339,14 @@ function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {
 function ensureContainerId(host: HTMLElement): string {
   if (!host.id) host.id = `mofa-avatar-${createRuntimeId()}`
   return host.id
+}
+
+function normalizeGatewayUrl(value: string): URL {
+  const gateway = new URL(value)
+  if (gateway.protocol === 'https:') gateway.protocol = 'wss:'
+  if (gateway.protocol === 'http:') gateway.protocol = 'ws:'
+  if (gateway.protocol !== 'wss:' && gateway.protocol !== 'ws:') throw new Error('魔珐 TTSA 网关必须使用 ws 或 wss')
+  return gateway
 }
 
 function sdkMessage(value: unknown): string {

@@ -18,6 +18,22 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 class AgentProxyControllerTest {
 
     @Test
+    void approvalDecisionIsScopedAndDelegatedToGateway() {
+        AuthService authService = mock(AuthService.class);
+        AgentGatewayClient gatewayClient = mock(AgentGatewayClient.class);
+        UserAccount account = new UserAccount("u-demo", "demo", "演示用户", "user", null);
+        when(authService.requireCurrentUser()).thenReturn(account);
+        ObjectNode body = new ObjectMapper().createObjectNode().put("approved", true);
+
+        new AgentProxyController(authService, gatewayClient)
+                .resolveApproval("session-1", "approval-1", body);
+
+        verify(gatewayClient).post(
+                "/internal/sessions/session-1/approvals/approval-1",
+                body, "u-demo", "demo");
+    }
+
+    @Test
     void chatStreamDeclaresSseRepresentationAndDelegatesToGateway() throws Exception {
         AuthService authService = mock(AuthService.class);
         AgentGatewayClient gatewayClient = mock(AgentGatewayClient.class);

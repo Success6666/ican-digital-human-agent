@@ -71,6 +71,12 @@ export function presentStreamEvent(
     appendToolTimeline(event, context)
     return
   }
+  if (kind === 'tool_approval_required' || kind === 'approval_required') {
+    const toolName = sanitizeDisplayText(String(event.toolName || '工具'), 64)
+    const approvalId = event.approvalId ? `（确认编号 ${sanitizeDisplayText(event.approvalId, 24)}）` : ''
+    context.addTimeline({ type: 'tool', title: `等待确认 · ${toolName}`, detail: `工具执行已暂停${approvalId}，确认后继续`, seq: event.seq, approvalId: typeof event.approvalId === 'string' ? event.approvalId : undefined, approvalStatus: 'pending' })
+    return
+  }
   if (kind === 'rag') {
     const hitCount = typeof event.hitCount === 'number' ? event.hitCount : 0
     const degraded = event.degraded === true

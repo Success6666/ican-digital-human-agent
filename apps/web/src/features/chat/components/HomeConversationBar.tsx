@@ -1,4 +1,4 @@
-import { AudioLines, Mic, Send } from 'lucide-react'
+import { AudioLines, Check, Mic, Send, X } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
 import type { AvatarSession } from '../../../shared/api/types'
 import type { RealtimeController } from '../../realtime/model'
@@ -12,9 +12,11 @@ interface HomeConversationBarProps {
   avatarReady?: boolean
   avatarSpeaking?: boolean
   onSend: (message: string) => void
+  pendingApproval?: { id: string; title: string }
+  onApproval?: (approvalId: string, approved: boolean) => void
 }
 
-export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarReady = false, avatarSpeaking = false, onSend }: HomeConversationBarProps) {
+export function HomeConversationBar({ session, realtime, isSending, isCreating = false, avatarReady = false, avatarSpeaking = false, onSend, pendingApproval, onApproval }: HomeConversationBarProps) {
   const [draft, setDraft] = useState('')
   const [continuousVoiceActive, setContinuousVoiceActive] = useState(false)
   const [browserVoiceActive, setBrowserVoiceActive] = useState(false)
@@ -255,6 +257,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
 
   return (
     <form className="home-conversation-bar" onSubmit={submit} aria-label="数字人对话输入">
+      {pendingApproval && onApproval && <div className="home-approval" role="status"><span>{pendingApproval.title}</span><button type="button" onClick={() => onApproval(pendingApproval.id, true)} title="批准工具执行" aria-label="批准工具执行"><Check size={15} /></button><button type="button" onClick={() => onApproval(pendingApproval.id, false)} title="拒绝工具执行" aria-label="拒绝工具执行"><X size={15} /></button></div>}
       <button
         className={'home-voice-button' + (continuousVoiceActive ? ' home-voice-button--active' : '')}
         style={{ '--voice-level': String(Math.max(0, Math.min(1, recording ? realtime.state.audioLevel : browserVoiceLevel))) } as CSSProperties}

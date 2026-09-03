@@ -34,3 +34,4 @@ Thumbs.db
 apps/agent-service/data/
 tmp-docs/*.json
 tmp-docs/*.png
+tmp-docs/pi-agent-reference/

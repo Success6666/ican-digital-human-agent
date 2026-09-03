@@ -1,4 +1,4 @@
-# API 契约（v0.1.49）
+# API 契约（v0.1.50）
 
 ## 浏览器 API
 
@@ -15,6 +15,7 @@
 | POST | `/api/chat` | 同步聊天，body `{sessionId,message}`，返回 `runId` |
 | POST | `/api/chat/stream` | SSE 聊天，body `{sessionId,message}` |
 | POST | `/api/sessions/{id}/interrupt` | 中断当前运行；可选 body `{runId}`，只中断指定 run |
+| POST | `/api/sessions/{id}/approvals/{approvalId}` | 处理当前会话工具审批，body `{approved}` |
 | GET | `/api/rag/health` | RAG 与 Docling 状态 |
 | POST | `/api/rag/ingest` | 文本或 Base64 文档入库 |
 | POST | `/api/rag/search` | 用户隔离的语义检索 |
@@ -51,7 +52,7 @@
 
 同步 `/api/chat` 与 SSE `done` 的 `agentResponse` 是 Agent Core 到展示层的稳定契约，包含 `text`、`emotion`、`gesture`、`performance`、`traceId`、`sessionId`、`runId` 和 `interruptible`。SSE 终态数据还可携带 `firstEventLatencyMs`、`firstVisibleLatencyMs`、`agentLatencyMs`、`digitalHumanLatencyMs` 和 `cancellationLatencyMs`，用于 Trace 回放与评测汇总；其中 `firstVisibleLatencyMs` 表示服务端写出首个可见 SSE 帧前的耗时，不等同于浏览器绘制完成时间；缺少某一阶段数据时保持为空，不伪造延迟。浏览器不依赖厂商 SDK 字段；数字人运行时由 Provider 适配器负责渲染。
 
-`packages/contracts/events.schema.json` 定义跨服务事件总线的 envelope（`schema_version/event_id/run_id/seq/ts/type/data`）；它与浏览器 SSE 的兼容 wire 层分开，后续事件桥接时再统一。
+`packages/contracts/events.schema.json` 定义跨服务事件总线的 envelope（`schema_version/event_id/run_id/seq/ts/type/data`）；它与浏览器 SSE 的兼容 wire 层分开，后续事件桥接时再统一。工具事件还可携带 `toolCallId`、`toolName`、`approvalId` 和 `isError`，并支持 `tool_approval_required` 生命周期事件，用于前端展示执行生命周期与人工确认状态。
 
 ## 内部 API
 

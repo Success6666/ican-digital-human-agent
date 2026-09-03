@@ -19,6 +19,7 @@ from .schemas import (
     CreateSessionRequest,
     HealthResponse,
     InterruptRequest,
+    ApprovalDecisionRequest,
     ProviderResponse,
     SessionResponse,
     ProfilePatch,
@@ -32,7 +33,7 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
 async def health(request: Request) -> HealthResponse:
     container = get_container(request)
-    return HealthResponse(service=container.settings.service_name, version="0.1.49")
+    return HealthResponse(service=container.settings.service_name, version="0.1.50")
 
 
 @router.get("/internal/providers", response_model=list[ProviderResponse])
@@ -99,6 +100,7 @@ async def close_session(session_id: str, context: InternalContext, request: Requ
         session = await container.session_service.close(user_id=context["user_id"], session_id=session_id)
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    container.graph.reject_session_approvals(session_id)
     return _session_response(session) if session else None
 
 
@@ -118,7 +120,27 @@ async def interrupt_session(
         )
     except ApplicationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    container.graph.reject_session_approvals(session_id)
     return _session_response(session)
+
+
+@router.post("/internal/sessions/{session_id}/approvals/{approval_id}")
+async def resolve_approval(
+    session_id: str,
+    approval_id: str,
+    payload: ApprovalDecisionRequest,
+    context: InternalContext,
+    request: Request,
+) -> dict[str, Any]:
+    container = get_container(request)
+    try:
+        await container.session_service.get_for_user(
+            user_id=context["user_id"], session_id=session_id,
+        )
+    except ApplicationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    accepted = container.graph.resolve_approval(session_id, approval_id, payload.approved)
+    return {"approvalId": approval_id, "accepted": accepted, "approved": payload.approved}
 
 
 @router.post("/internal/sessions/{session_id}/close", response_model=SessionResponse | None)
