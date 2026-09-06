@@ -1,0 +1,29 @@
+Verification: interview coach v0.2.0
+Branch: feature/interview-coach-agent-rag
+Changed field: interview training and webfetch capability
+
+Artifacts:
+- MODIFIED_FILE.txt
+- DIFF_FILE.patch
+- VERIFICATION.txt
+- ROLLBACK.sh
+
+BASELINE:
+Command: $env:PYTHONPATH='.'; pytest -q
+Result: 210 passed, 2 skipped
+Exit status: 0
+
+MODIFIED:
+Command: python -m compileall -q app; $env:PYTHONPATH='.'; pytest -q
+Result: 212 passed, 2 skipped
+Exit status: 0
+
+ROLLBACK:
+Command: bash tmp-docs/verification-v0.2.0/ROLLBACK.sh <copy> <baseline>
+Result: rollback restored: <copy>
+Exit status: 0
+
+Restored behavior/status:
+- rollback copy matched baseline byte-for-byte
+- working branch remained feature/interview-coach-agent-rag
+- MODIFIED_FILE.txt remained changed in the working tree

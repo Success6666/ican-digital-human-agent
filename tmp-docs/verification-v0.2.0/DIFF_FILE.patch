@@ -1,0 +1,5 @@
+--- baseline
++++ modified
+@@
+- interview training and webfetch capability absent
++ interview state machine, SSRF-protected Playwright fetch, RAG source ingestion

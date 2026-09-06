@@ -128,6 +128,8 @@ class Settings(BaseModel):
     rag_parse_concurrency: int = Field(default=1, alias="RAG_PARSE_CONCURRENCY", ge=1, le=8)
     rag_store_path: str = Field(default="data/rag.sqlite3", alias="RAG_STORE_PATH", min_length=1, max_length=512)
     docling_max_concurrency: int = Field(default=1, alias="DOCLING_MAX_CONCURRENCY", ge=1, le=8)
+    webfetch_timeout_ms: int = Field(default=15000, alias="WEBFETCH_TIMEOUT_MS", ge=1000, le=120000)
+    webfetch_max_text_chars: int = Field(default=120000, alias="WEBFETCH_MAX_TEXT_CHARS", ge=1000, le=500000)
     evaluation_buffer_size: int = Field(default=2000, alias="EVALUATION_BUFFER_SIZE")
     evaluation_raw_archive_path: str | None = Field(default=None, alias="EVALUATION_RAW_ARCHIVE_PATH", min_length=1, max_length=512)
     eval_input_price_per_1k: float = Field(default=0.003, alias="EVAL_INPUT_PRICE_PER_1K")

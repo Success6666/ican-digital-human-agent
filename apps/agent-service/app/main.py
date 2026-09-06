@@ -41,6 +41,9 @@ from .llm.client import OpenAICompatibleLlm
 from .messaging import ReliableMessageBus
 from .observability.service import ObservabilityService, build_default_observability
 from .rag.service import RagService, build_default_rag_service
+from .rag.models import SearchRequest
+from .interview.service import InterviewService
+from .webfetch.service import WebFetchService
 from .realtime.audio import MockPcmIngress
 from .realtime.limits import RealtimeLimits
 from .realtime.media import HttpAsrIngress, HttpTtsOutput, NullAudioOutput
@@ -71,6 +74,8 @@ class ServiceContainer:
     audio_output: Any
     profile_store: AccountPreferenceStore
     response_cache: ResponseCache | None
+    interview: InterviewService
+    webfetch: WebFetchService
 
 
 def build_container(
@@ -210,6 +215,18 @@ def build_container(
         lock_seconds=settings.response_cache_lock_seconds,
         timeout_seconds=settings.redis_operation_timeout_seconds,
     ) if settings.response_cache_enabled else None
+    webfetch = WebFetchService(
+        timeout_ms=settings.webfetch_timeout_ms,
+        max_text_chars=settings.webfetch_max_text_chars,
+    )
+    async def retrieve_interview_evidence(owner_id: str, job_title: str, answer: str) -> list[str]:
+        result = await rag.search(
+            SearchRequest(query=f"{job_title} {answer}", collection="interview", top_k=5),
+            owner_id=owner_id,
+        )
+        return [hit.chunk.text for hit in result.hits]
+
+    interview = InterviewService(retrieve=retrieve_interview_evidence)
     chat_service = ChatApplicationService(
         graph=graph,
         sessions=session_service,
@@ -275,6 +292,8 @@ def build_container(
         audio_output=audio_output,
         profile_store=profile_store,
         response_cache=response_cache,
+        interview=interview,
+        webfetch=webfetch,
     )
 
 
@@ -332,6 +351,12 @@ def create_app(
     app.include_router(router)
     app.include_router(realtime_router)
     _include_optional_routers(app, service_container)
+    from .interview.router import build_router as build_interview_router
+    app.include_router(build_interview_router(
+        interview=service_container.interview,
+        rag=service_container.rag,
+        webfetch=service_container.webfetch,
+    ))
     return app
 
 
