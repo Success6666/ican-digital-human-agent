@@ -100,6 +100,10 @@ class FillerPhase(StrEnum):
 
 
 class ExpressionName(StrEnum):
+    HAPPY = "happy"
+    SAD = "sad"
+    ANGRY = "angry"
+    SURPRISED = "surprised"
     LISTENING = "listening"
     THINKING = "thinking"
     SPEAKING = "speaking"

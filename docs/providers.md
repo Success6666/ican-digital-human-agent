@@ -20,7 +20,7 @@ Provider 返回的 `sdk_config` 只能包含短时会话参数、媒体地址和
 
 ## 魔珐星云
 
-适配器预留 XmovAvatar 的 session/gateway、流式文本、打断和销毁入口。生产必须通过 HTTPS/WSS 或受控网关，不能把长期 `appSecret` 下发浏览器。开启前配置 `MOFA_*`。
+适配器通过官方 XmovAvatar Web SDK 建立 TTSA 会话，支持连续文本、官方 70 个全局动作意图的严格发送、5 个官方情感值、打断、隐藏渲染和销毁；每个角色实际可执行的动作意图数量以星云资源为准。会话参数只经认证后的 Provider 会话接口下发；生产入口必须使用 HTTPS，并限制会话接口访问。开启前配置 `MOFA_APP_ID`、`MOFA_APP_SECRET`，角色已开通多情感能力时再设置 `MOFA_EMOTION_ENABLED=true`。
 
 ## 讯飞
 

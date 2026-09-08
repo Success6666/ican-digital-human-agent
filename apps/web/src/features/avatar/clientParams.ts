@@ -38,6 +38,7 @@ function pickParams(source: Record<string, unknown>): AvatarClientParams {
   const authorization = text(source.authorization, MAX_TEXT)
   const dataSource = text(source.dataSource ?? source.data_source, 128)
   const customId = text(source.customId ?? source.custom_id, 128)
+  const emotionEnabled = boolean(source.emotionEnabled ?? source.emotion_enabled)
   if (runtime) result.runtime = runtime
   if (endpoint) result.endpoint = endpoint
   if (wsUrl) result.wsUrl = wsUrl
@@ -56,6 +57,7 @@ function pickParams(source: Record<string, unknown>): AvatarClientParams {
   if (authorization) result.authorization = authorization
   if (dataSource) result.dataSource = dataSource
   if (customId) result.customId = customId
+  if (emotionEnabled !== undefined) result.emotionEnabled = emotionEnabled
   const sampleRate = boundedNumber(source.sampleRate ?? source.sample_rate, 8_000, 96_000)
   const channels = boundedInteger(source.channels, 1, 2)
   const frameMs = boundedNumber(source.frameMs ?? source.frame_ms, 10, 100)
@@ -83,6 +85,10 @@ function boundedNumber(value: unknown, min: number, max: number): number | undef
 function boundedInteger(value: unknown, min: number, max: number): number | undefined {
   const parsed = boundedNumber(value, min, max)
   return parsed !== undefined && Number.isInteger(parsed) ? parsed : undefined
+}
+
+function boolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

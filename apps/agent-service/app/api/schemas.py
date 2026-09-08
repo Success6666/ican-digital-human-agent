@@ -121,6 +121,7 @@ class MofaConfigurationPatch(BaseModel):
     gateway_url: str | None = Field(default=None, alias="gatewayUrl", max_length=512)
     sdk_url: str | None = Field(default=None, alias="sdkUrl", max_length=512)
     crypto_url: str | None = Field(default=None, alias="cryptoUrl", max_length=512)
+    emotion_enabled: bool | None = Field(default=None, alias="emotionEnabled")
 
 
 class AliyunConfigurationPatch(BaseModel):

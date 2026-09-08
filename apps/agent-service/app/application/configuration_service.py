@@ -112,6 +112,7 @@ class ConfigurationApplicationService:
                 "mofa.gatewayUrl",
                 "mofa.sdkUrl",
                 "mofa.cryptoUrl",
+                "mofa.emotionEnabled",
                 "aliyun.enabled",
                 "aliyun.baseUrl",
                 "aliyun.appId",
@@ -249,6 +250,7 @@ def _mofa_view(configuration: Any) -> dict[str, Any]:
         "gatewayUrl": configuration.gateway_url or "星云默认网关",
         "sdkUrl": configuration.sdk_url or "星云官方 SDK",
         "cryptoUrl": configuration.crypto_url or "CryptoJS 官方 CDN",
+        "emotionEnabled": configuration.emotion_enabled,
         "detail": "凭证由服务端托管，浏览器只接收短时会话参数",
     }
 

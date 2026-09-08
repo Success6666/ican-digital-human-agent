@@ -56,6 +56,7 @@ class MofaProvider(ConfigProvider):
                 ),
                 "appId": os.environ["MOFA_APP_ID"],
                 "appSecret": os.environ["MOFA_APP_SECRET"],
+                "emotionEnabled": _env_bool("MOFA_EMOTION_ENABLED"),
                 **_optional_browser_context(),
             },
         )
@@ -88,6 +89,10 @@ def _browser_user_id(user_id: str) -> str:
 
 def _env_or(name: str, default: str) -> str:
     return os.getenv(name, "").strip() or default
+
+
+def _env_bool(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _optional_browser_context() -> dict[str, str]:

@@ -108,17 +108,26 @@ def test_mofa_configuration_is_editable_and_persisted(tmp_path, monkeypatch) -> 
         response = client.patch(
             "/internal/configuration",
             headers=_headers(),
-            json={"mofa": {"enabled": True, "appId": "existing-app-id", "authorization": "888jn"}},
+            json={
+                "mofa": {
+                    "enabled": True,
+                    "appId": "existing-app-id",
+                    "authorization": "888jn",
+                    "emotionEnabled": True,
+                }
+            },
         )
         assert response.status_code == 200
         body = response.json()
         assert body["mofa"]["enabled"] is True
         assert body["mofa"]["configured"] is True
+        assert body["mofa"]["emotionEnabled"] is True
         assert "existing-app-secret" not in response.text
 
     restarted = build_container(_settings(configuration_path))
     assert restarted.settings.provider_enabled["mofa"] is True
     assert restarted.providers.get("mofa").enabled is True
+    assert restarted.configuration_service._configuration.mofa.emotion_enabled is True
 
 
 def test_vendor_configuration_is_editable_and_masked(tmp_path) -> None:

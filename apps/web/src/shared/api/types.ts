@@ -65,6 +65,7 @@ export interface AvatarClientParams {
   authorization?: string
   dataSource?: string
   customId?: string
+  emotionEnabled?: boolean
   realtime?: {
     endpoint?: string
     wsUrl?: string

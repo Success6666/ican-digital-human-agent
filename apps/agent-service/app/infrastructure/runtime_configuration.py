@@ -20,6 +20,7 @@ def apply_mofa_environment(configuration: "MofaRuntimeConfiguration") -> None:
         "MOFA_GATEWAY_URL": configuration.gateway_url,
         "MOFA_SDK_URL": configuration.sdk_url,
         "MOFA_CRYPTO_URL": configuration.crypto_url,
+        "MOFA_EMOTION_ENABLED": "true" if configuration.emotion_enabled else "false",
     }.items():
         if value:
             os.environ[key] = value
@@ -51,6 +52,7 @@ class MofaRuntimeConfiguration(BaseModel):
     gateway_url: str = Field(default="", max_length=512)
     sdk_url: str = Field(default="", max_length=512)
     crypto_url: str = Field(default="", max_length=512)
+    emotion_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "MofaRuntimeConfiguration":
@@ -62,6 +64,7 @@ class MofaRuntimeConfiguration(BaseModel):
             gateway_url=os.getenv("MOFA_GATEWAY_URL", "").strip(),
             sdk_url=os.getenv("MOFA_SDK_URL", "").strip(),
             crypto_url=os.getenv("MOFA_CRYPTO_URL", "").strip(),
+            emotion_enabled=_truthy(os.getenv("MOFA_EMOTION_ENABLED", "false")),
         )
 
 

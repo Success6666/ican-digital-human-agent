@@ -7,7 +7,7 @@ import { loadExternalScript } from './scriptLoader'
 
 interface XmovAvatarInstance {
   init(options?: Record<string, unknown>): Promise<void>
-  speak(text: string, isStart?: boolean, isEnd?: boolean, extra?: Record<string, unknown>): Promise<void> | void
+  speak(text: string, isStart?: boolean, isEnd?: boolean, extra?: Record<string, unknown>): string | number | undefined
   interrupt(type: string): number
   stop(): Promise<void> | void
   destroy(reason?: string): Promise<void> | void
@@ -36,6 +36,7 @@ interface MofaRuntimeConfig {
   authorization?: string
   dataSource?: string
   customId?: string
+  emotionEnabled: boolean
 }
 
 export class MofaBrowserRuntime implements BrowserAvatarRuntime {
@@ -49,10 +50,12 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private speechFlushRequested = false
   private streamStarted = false
   private invisible = false
+  private emotionEnabled = false
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
     this.status = onStatus
     const config = requiredConfig(params)
+    this.emotionEnabled = config.emotionEnabled
     onStatus({ phase: 'loading', progress: 0, message: '正在加载数字人运行时' })
     await loadExternalScript(config.cryptoUrl, () => Boolean(window.CryptoJS))
     window.CryptoJSTest = window.CryptoJS
@@ -144,15 +147,16 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
           onStatus({ phase: 'loading', progress: 85, message: detail })
         }
       },
-      onSpeakStateChange: (state: string, clientSpeakId?: string) => {
-        if (!clientSpeakId) return
-        const waiter = this.speechWaiters.get(clientSpeakId)
+      onSpeakStateChange: (state: string, clientSpeakId?: string | number) => {
+        if (clientSpeakId === undefined || clientSpeakId === null) return
+        const key = String(clientSpeakId)
+        const waiter = this.speechWaiters.get(key)
         if (!waiter) return
         if (state === 'speak_end') {
-          this.speechWaiters.delete(clientSpeakId)
+          this.speechWaiters.delete(key)
           waiter.resolve()
         } else if (state === 'speak_error') {
-          this.speechWaiters.delete(clientSpeakId)
+          this.speechWaiters.delete(key)
           waiter.reject(new Error('星云播报失败'))
         }
       },
@@ -240,6 +244,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const current = this.avatar
     this.avatar = undefined
     this.status = undefined
+    this.emotionEnabled = false
     if (!current) return
     try { await current.stop() } catch { /* SDK teardown remains best effort. */ }
     try { await current.destroy('component_unmounted') } catch { /* Host removal is the final cleanup boundary. */ }
@@ -301,9 +306,13 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
 
   private async speakChunk(text: string, presentation: AvatarPerformanceCue | undefined, generation: number, isStart: boolean, isEnd: boolean): Promise<void> {
     if (!this.avatar || generation !== this.speechGeneration) return
-    const request = buildMofaSpeechRequest(text, presentation)
-    const clientSpeakId = createRuntimeId()
-    const extra = { client_speak_id: clientSpeakId, ...request.extra }
+    const request = buildMofaSpeechRequest(text, presentation, { enableEmotion: this.emotionEnabled })
+    const extra = Object.keys(request.extra).length ? request.extra : undefined
+    const returnedSpeakId = this.avatar.speak(request.ssml, isStart, isEnd, extra)
+    if (returnedSpeakId === undefined || returnedSpeakId === null || returnedSpeakId === '') {
+      throw new Error('星云 SDK 未返回播报 ID')
+    }
+    const clientSpeakId = String(returnedSpeakId)
     let completion: Promise<void>
     let timer = 0
     // Every chunk must wait for its own speak_end. Sending the next chunk
@@ -318,7 +327,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       }, 15_000)
     })
     try {
-      await Promise.resolve(this.avatar.speak(request.ssml, isStart, isEnd, extra))
       await completion
     } finally {
       window.clearTimeout(timer)
@@ -340,10 +348,10 @@ function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {
   const values = {
     sdkUrl: params.sdkUrl, cryptoUrl: params.cryptoUrl, gatewayServer: params.gatewayServer,
     appId: params.appId, appSecret: params.appSecret, authorization: params.authorization,
-    dataSource: params.dataSource, customId: params.customId,
+    dataSource: params.dataSource, customId: params.customId, emotionEnabled: params.emotionEnabled === true,
   }
   for (const [name, value] of Object.entries(values)) {
-    if (name === 'authorization' || name === 'dataSource' || name === 'customId') continue
+    if (name === 'authorization' || name === 'dataSource' || name === 'customId' || name === 'emotionEnabled') continue
     if (!value) throw new Error(`魔珐数字人缺少 ${name} 配置`)
   }
   return values as MofaRuntimeConfig
@@ -356,7 +364,7 @@ function ensureContainerId(host: HTMLElement): string {
 
 function normalizeGatewayUrl(value: string): URL {
   const gateway = new URL(value)
-  // SDK 2.1.3 starts the session with a signed HTTP POST/fetch. The
+  // SDK 2.2.0 starts the session with a signed HTTP POST/fetch. The
   // response contains the WebSocket URL used internally for TTSA streaming.
   if (gateway.protocol === 'wss:') gateway.protocol = 'https:'
   if (gateway.protocol === 'ws:') gateway.protocol = 'http:'

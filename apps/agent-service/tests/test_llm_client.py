@@ -5,7 +5,14 @@ import json
 import httpx
 import pytest
 
-from app.llm.client import OpenAICompatibleLlm, extract_reply_prefix, parse_generation
+from app.agent.mofa_capabilities import (
+    MOFA_ACTION_INTENTS,
+    MOFA_ACTION_INTENT_OPTIONS,
+    MOFA_EMOTIONS,
+    normalize_mofa_action_intent,
+    normalize_mofa_emotion,
+)
+from app.llm.client import OpenAICompatibleLlm, _structured_system_prompt, extract_reply_prefix, parse_generation
 
 
 def test_completion_url_accepts_base_or_full_endpoint() -> None:
@@ -24,12 +31,32 @@ def test_parse_generation_keeps_reply_when_presentation_has_provider_specific_ty
     generated = parse_generation(
         '{"reply":"我是你的数字人助手。","presentation":'
         '{"expression":"speaking","intensity":0.6,"durationMs":3000,'
-        '"gaze":"camera","gesture":"wave_hand","action":"greet",'
+        '"gaze":"camera","gesture":"wave_hand","action":"Hello",'
         '"lipSync":"speaking","interruptible":true}}'
     )
     assert generated.reply == "我是你的数字人助手。"
     assert generated.presentation.lip_sync is True
-    assert generated.presentation.gesture == "wave_hand"
+    assert generated.presentation.expression.value == "neutral"
+    assert generated.presentation.gesture is None
+    assert generated.presentation.action == "Hello"
+
+
+def test_structured_prompt_and_normalizers_cover_only_official_mofa_catalogs() -> None:
+    prompt = _structured_system_prompt()
+    assert len(MOFA_ACTION_INTENTS) == 70
+    assert MOFA_EMOTIONS == ("happy", "sad", "angry", "surprised", "neutral")
+    for emotion in MOFA_EMOTIONS:
+        assert emotion in prompt
+        assert normalize_mofa_emotion(emotion.upper()) == emotion
+    for action in MOFA_ACTION_INTENTS:
+        assert action in prompt
+        assert normalize_mofa_action_intent(action.lower()) == action
+    for action, label in MOFA_ACTION_INTENT_OPTIONS:
+        assert f"{label}={action}" in prompt
+    assert normalize_mofa_emotion("serious") is None
+    assert normalize_mofa_emotion("excited") is None
+    assert normalize_mofa_action_intent("greet") is None
+    assert normalize_mofa_action_intent("RightSide02") is None
 
 
 def test_parse_generation_supports_fenced_and_prefixed_json() -> None:

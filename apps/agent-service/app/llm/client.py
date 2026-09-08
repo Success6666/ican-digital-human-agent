@@ -11,6 +11,12 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..agent.mofa_capabilities import (
+    MOFA_ACTION_INTENT_OPTIONS,
+    MOFA_EMOTIONS,
+    normalize_mofa_action_intent,
+    normalize_mofa_emotion,
+)
 from ..agent.models import ExpressionName, PerformanceCue
 
 
@@ -20,7 +26,7 @@ class LlmGeneration(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     reply: str = Field(min_length=1, max_length=20_000)
-    presentation: PerformanceCue = Field(default_factory=lambda: PerformanceCue(expression=ExpressionName.SPEAKING, lipSync=True))
+    presentation: PerformanceCue = Field(default_factory=lambda: PerformanceCue(expression=ExpressionName.NEUTRAL, lipSync=True))
 
 
 class LlmClient(Protocol):
@@ -186,13 +192,14 @@ class OpenAICompatibleLlm:
 
 
 def _structured_system_prompt() -> str:
+    emotions = "、".join(MOFA_EMOTIONS)
+    actions = "、".join(f"{label}={name}" for name, label in MOFA_ACTION_INTENT_OPTIONS)
     return (
         "你是数字人 Agent。只输出 JSON，不要 Markdown。字段为 reply 和 presentation。"
         "presentation 必须包含 expression、intensity、durationMs、gaze、gesture、action、lipSync、interruptible。"
-        "expression 只能是 listening、thinking、speaking、acknowledging、relieved、interrupted、neutral；"
+        f"expression 只能是 {emotions}；"
         "intensity 为 0 到 1，durationMs 为 0 到 120000，gaze 只能是 camera、user、away、none。"
-        "gesture 和 action 优先使用 Hello、Wave、Welcome、ThankYou、KeyPoints、Approve、Think、Pause、"
-        "Pointscreen、PointingSelf、PointAudience、Goodbye 等动作语义名，不支持的动作填 null；"
+        f"action 只能是以下动作意图之一或 null：{actions}；gesture 必须为 null；"
         "lipSync 和 interruptible 必须是 JSON 布尔值。"
         "先输出 reply，回答直接、自然、简洁。"
     )
@@ -250,17 +257,16 @@ def _coerce_reply(value: Any) -> str:
 
 def _normalize_presentation(value: Any) -> PerformanceCue:
     data = value if isinstance(value, dict) else {}
-    expression = str(data.get("expression", ExpressionName.SPEAKING)).casefold()
-    allowed_expressions = {item.value for item in ExpressionName}
+    expression = normalize_mofa_emotion(data.get("expression")) or ExpressionName.NEUTRAL
     gaze = str(data.get("gaze", "camera")).casefold()
     allowed_gaze = {"camera", "user", "away", "none"}
     return PerformanceCue(
-        expression=expression if expression in allowed_expressions else ExpressionName.SPEAKING,
+        expression=expression,
         intensity=_bounded_float(data.get("intensity", 0.6), default=0.6),
         durationMs=_bounded_int(data.get("durationMs", 3000), default=3000, upper=120_000),
         gaze=gaze if gaze in allowed_gaze else "camera",
-        gesture=_optional_text(data.get("gesture")),
-        action=_optional_text(data.get("action")),
+        gesture=normalize_mofa_action_intent(data.get("gesture")),
+        action=normalize_mofa_action_intent(data.get("action")),
         lipSync=_coerce_bool(data.get("lipSync", True), default=True),
         interruptible=_coerce_bool(data.get("interruptible", True), default=True),
     )

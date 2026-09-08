@@ -30,6 +30,7 @@ export function ConfigurationControls({
   const [mofaAppSecret, setMofaAppSecret] = useState('')
   const [mofaAuthorization, setMofaAuthorization] = useState('')
   const [mofaGatewayUrl, setMofaGatewayUrl] = useState('')
+  const [mofaEmotionEnabled, setMofaEmotionEnabled] = useState(false)
   const [aliyunEnabled, setAliyunEnabled] = useState(false)
   const [aliyunBaseUrl, setAliyunBaseUrl] = useState('')
   const [aliyunAppId, setAliyunAppId] = useState('')
@@ -52,6 +53,7 @@ export function ConfigurationControls({
     setMofaAppId(configuration.mofa?.appId ?? '')
     setMofaAuthorization(configuration.mofa?.authorization ?? '')
     setMofaGatewayUrl(configuration.mofa?.gatewayUrl === '星云默认网关' ? '' : configuration.mofa?.gatewayUrl ?? '')
+    setMofaEmotionEnabled(Boolean(configuration.mofa?.emotionEnabled))
     setAliyunEnabled(Boolean(configuration.aliyun?.enabled))
     setAliyunBaseUrl(configuration.aliyun?.baseUrl === '阿里云默认网关' ? '' : configuration.aliyun?.baseUrl ?? '')
     setAliyunAppId(configuration.aliyun?.appId ?? '')
@@ -97,6 +99,7 @@ export function ConfigurationControls({
           ...(mofaAppSecret.trim() ? { appSecret: mofaAppSecret.trim() } : {}),
           authorization: mofaAuthorization.trim(),
           gatewayUrl: mofaGatewayUrl.trim(),
+          emotionEnabled: mofaEmotionEnabled,
         },
       }
     }
@@ -194,6 +197,7 @@ export function ConfigurationControls({
               ) : dialog === 'mofa' ? (
                 <div className="configuration-mofa-form">
                   <label className="dialog-switch"><span><strong>启用魔珐星云</strong><small>新建会话时使用星云浏览器 SDK</small></span><input type="checkbox" checked={mofaEnabled} onChange={(event) => setMofaEnabled(event.target.checked)} disabled={isSaving} /></label>
+                  <label className="dialog-switch"><span><strong>显式多情感</strong><small>角色已开通多情感能力时启用</small></span><input type="checkbox" checked={mofaEmotionEnabled} onChange={(event) => setMofaEmotionEnabled(event.target.checked)} disabled={isSaving || !mofaEnabled} /></label>
                   <label className="dialog-input"><span>App ID</span><input value={mofaAppId} onChange={(event) => setMofaAppId(event.target.value)} placeholder="填写星云 App ID" disabled={isSaving} /></label>
                   <label className="dialog-input"><span>App Secret</span><input type="password" value={mofaAppSecret} onChange={(event) => setMofaAppSecret(event.target.value)} placeholder={configuration?.mofa?.configured ? '已配置，留空表示保持不变' : '填写星云 App Secret'} disabled={isSaving} /></label>
                   <label className="dialog-input"><span>Authorization（可选）</span><input value={mofaAuthorization} onChange={(event) => setMofaAuthorization(event.target.value)} placeholder="留空使用默认值" disabled={isSaving} /></label>

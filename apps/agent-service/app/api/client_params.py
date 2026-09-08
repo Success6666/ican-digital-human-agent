@@ -33,6 +33,7 @@ _NUMBER_LIMITS = {
     "maxFrameBytes": (320, 1_048_576),
     "heartbeatMs": (1_000, 300_000),
 }
+_BOOLEAN_KEYS = {"emotionEnabled"}
 _NESTED_KEYS = frozenset(_TEXT_LIMITS) | frozenset(_NUMBER_LIMITS)
 
 
@@ -40,9 +41,9 @@ def browser_safe_client_params(value: Mapping[str, Any] | None) -> dict[str, Any
     """Return only allowlisted parameters needed by a browser adapter.
 
     Some vendor Web SDKs require application credentials in the browser. Those
-    fields are returned only on an authenticated provider session; arbitrary
-    adapter metadata remains excluded. Frontend normalization is not a security
-    boundary.
+    allowlisted fields are returned only on an authenticated provider session;
+    arbitrary adapter metadata remains excluded. Frontend normalization is not
+    a security boundary.
     """
     if not isinstance(value, Mapping):
         return {}
@@ -84,6 +85,10 @@ def _filter(value: Mapping[str, Any]) -> dict[str, Any]:
         number = int(candidate)
         if minimum <= number <= maximum:
             result[key] = number
+    for key in _BOOLEAN_KEYS:
+        candidate = value.get(key)
+        if isinstance(candidate, bool):
+            result[key] = candidate
     return result
 
 

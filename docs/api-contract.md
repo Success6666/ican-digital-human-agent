@@ -1,4 +1,4 @@
-# API 契约（v0.1.52）
+# API 契约（v0.1.53）
 
 魔珐浏览器 SDK 的 `gatewayServer` 必须配置为 `http://` 或 `https://` 会话地址；SDK 先通过签名 HTTP POST 创建 TTSA 会话，再使用响应中的 WebSocket 地址进行实时播报。
 
@@ -80,6 +80,16 @@ Docling 解析和 FutureAGI 异步导出均有并发上限：`DOCLING_MAX_CONCUR
 
 错误响应不包含堆栈、密钥、上游完整响应或数据库连接信息。
 认证网关即使收到不匹配的 `Accept` 头，也会返回结构化 JSON 错误；成功的 `/api/chat/stream` 仍只返回 `text/event-stream`。Web 入口通过 Docker DNS 动态解析认证服务，容器滚动重建不会固定旧的上游地址。
+
+## 魔珐 TTSA 动作与情感
+
+当前浏览器运行时使用官方 `XmovAvatar` SDK 2.2.0 的 `speak(ssml, is_start, is_end, extra)`。业务层不构造 `client_speak_id`、`client_frame`、签名或会话请求字段；SDK 负责生成播报 ID，运行时只使用 `speak` 返回值关联 `speak_end` / `speak_error`。
+
+Agent 的全局动作目录严格使用官方“动作意图列表”公布的 70 个 `ka_intent`，提示词同时提供官方中文释义。前端转换格式固定为 `<ue4event><type>ka_intent</type><data><ka_intent>动作名</ka_intent></data></ue4event>`，不接受别名或未公布的值。官方页面说明每个角色实际支持的动作意图数量不同，当前暂不提供角色级支持列表；`ka/action_semantic` 也是角色资源中的具体关键动作，因此不混入全局目录或推测支持范围。
+
+官方情感目录固定为 `happy`、`sad`、`angry`、`surprised`、`neutral`，位置为 `extra.emotion`。该能力受角色和音色配置约束，`MOFA_EMOTION_ENABLED` 默认关闭；只有管理员确认角色已开通多情感能力后才发送，关闭时由服务端按文本推断。
+
+协议依据：[XmovAvatar API](https://xingyun3d.com/developers/60-514)、[SSML](https://xingyun3d.com/developers/61-505)、[动作意图列表](https://xingyun3d.com/developers/72-571)、[关键动作](https://xingyun3d.com/developers/61-508)、[情感](https://xingyun3d.com/developers/61-510)。核对日期：2026-09-08。
 
 ## 评测指标
 

@@ -1,0 +1,66 @@
+BRANCH=feature/interview-coach-agent-rag
+CHANGED_FIELDS=MOFA_ACTION_INTENTS(70),MOFA_EMOTIONS(5),MOFA_EMOTION_ENABLED,SDK_speak_return_id
+
+ARTIFACTS
+MODIFIED_FILE=tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-artifacts/MODIFIED_FILE.ts
+DIFF_FILE=tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-artifacts/DIFF_FILE.diff
+VERIFICATION_FILE=tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-artifacts/VERIFICATION.txt
+ROLLBACK_FILE=tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-artifacts/ROLLBACK.sh
+
+HASHES
+BASELINE_SHA256=a15276097bb64149a126b427eb918e7b75244424220241e75a7119c029b7039f
+MODIFIED_SHA256=4ae468f776edcabc03a0cb928a7d2d75da8b69f7c72dddc72151a86430b3f44b
+
+DIFF_TEST
+COMMAND: D:\Git\usr\bin\patch.exe -o PATCH_TEST_FILE.ts BASELINE_FILE.ts -i DIFF_FILE.diff
+WORKDIR: E:\ican数字人\tmp-docs\digital-human-agent-v0.1.53-official-avatar-capabilities-artifacts
+INPUT: BASELINE_FILE.ts
+OUTPUT:
+(Stripping trailing CRs from patch; use --binary to disable.)
+patching file PATCH_TEST_FILE.ts (read from BASELINE_FILE.ts)
+PATCHED_SHA256=4ae468f776edcabc03a0cb928a7d2d75da8b69f7c72dddc72151a86430b3f44b
+EXIT_STATUS=0
+
+BASELINE_TEST
+COMMAND: npm run test:avatar
+WORKDIR: E:\ican数字人-baseline-v0153\apps\web
+INPUT: checked-out HEAD a3b15ca
+OUTPUT:
+> digital-human-agent-web@0.1.52 test:avatar
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+EXIT_STATUS=0
+
+MODIFIED_TEST_WEB
+COMMAND: npm run test:avatar
+WORKDIR: E:\ican数字人\apps\web
+INPUT: current modified source and tests
+OUTPUT:
+> digital-human-agent-web@0.1.53 test:avatar
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+EXIT_STATUS=0
+
+MODIFIED_TEST_AGENT
+COMMAND: $env:PYTHONPATH='apps/agent-service'; python -m pytest apps/agent-service/tests -q
+WORKDIR: E:\ican数字人
+INPUT: current modified source and tests
+OUTPUT:
+........................................................................ [ 33%]
+........s.....
+.......................................................... [ 66%]
+.s...................................................................... [100%]
+214 passed, 2 skipped, 1 warning in 35.04s
+EXIT_STATUS=0
+
+ROLLBACK_TEST
+COMMAND: D:\Git\bin\bash.exe -lc "cd '/e/ican数字人/tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-artifacts' && ./ROLLBACK.sh ROLLBACK_TEST_FILE.ts"
+WORKDIR: E:\ican数字人
+INPUT: ROLLBACK_TEST_FILE.ts copied from MODIFIED_FILE.ts
+OUTPUT:
+ROLLBACK_OK sha256=a15276097bb64149a126b427eb918e7b75244424220241e75a7119c029b7039f
+EXIT=0
+RESTORED_SHA256=a15276097bb64149a126b427eb918e7b75244424220241e75a7119c029b7039f
+RESULT=rollback copy restored; MODIFIED_FILE remains at 4ae468f776edcabc03a0cb928a7d2d75da8b69f7c72dddc72151a86430b3f44b

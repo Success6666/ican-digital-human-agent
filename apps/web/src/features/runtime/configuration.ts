@@ -35,6 +35,7 @@ export interface RuntimeConfiguration {
     gatewayUrl?: string
     sdkUrl?: string
     cryptoUrl?: string
+    emotionEnabled?: boolean
     detail?: string
   }
   aliyun?: {
@@ -72,6 +73,7 @@ export interface RuntimeConfigurationPatch {
     gatewayUrl?: string
     sdkUrl?: string
     cryptoUrl?: string
+    emotionEnabled?: boolean
   }
   aliyun?: {
     enabled?: boolean

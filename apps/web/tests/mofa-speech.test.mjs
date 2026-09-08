@@ -11,36 +11,49 @@ const output = ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext },
 }).outputText
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(output).toString('base64')}`
-const { buildMofaSpeechRequest } = await import(moduleUrl)
+const { buildMofaSpeechRequest, MOFA_ACTION_INTENTS, MOFA_EMOTIONS } = await import(moduleUrl)
 
-test('builds valid SSML and maps the vendor emotion field', () => {
-  const request = buildMofaSpeechRequest(' 你好 <世界> ', { expression: 'happy' })
+test('builds valid SSML and emits all documented emotions only when enabled', () => {
+  const request = buildMofaSpeechRequest(' 你好 <世界> ', { expression: 'happy' }, { enableEmotion: true })
   assert.equal(request.ssml, '<speak>你好 &lt;世界&gt;</speak>')
   assert.deepEqual(request.extra, { emotion: 'happy' })
+  assert.deepEqual(MOFA_EMOTIONS, ['happy', 'sad', 'angry', 'surprised', 'neutral'])
+  for (const emotion of MOFA_EMOTIONS) {
+    assert.deepEqual(
+      buildMofaSpeechRequest('情感测试', { expression: emotion }, { enableEmotion: true }).extra,
+      { emotion },
+    )
+  }
+  assert.deepEqual(buildMofaSpeechRequest('普通角色', { expression: 'happy' }).extra, {})
+  assert.deepEqual(buildMofaSpeechRequest('未知情感', { expression: 'serious' }, { enableEmotion: true }).extra, {})
 })
 
-test('maps only documented actions so an unknown cue cannot break speech synthesis', () => {
-  const supported = buildMofaSpeechRequest('三个重点', { expression: 'speaking', action: 'KeyPoints' })
-  assert.match(supported.ssml, /<type>ka<\/type>/)
-  assert.match(supported.ssml, /<action_semantic>KeyPoints<\/action_semantic>/)
-
-  const unknown = buildMofaSpeechRequest('继续播报', { expression: 'speaking', gesture: 'small_nod' })
-  assert.equal(unknown.ssml, '<speak>继续播报</speak>')
+test('emits the complete documented action-intent catalog with exact names', () => {
+  assert.equal(MOFA_ACTION_INTENTS.length, 70)
+  for (const action of MOFA_ACTION_INTENTS) {
+    const request = buildMofaSpeechRequest('动作测试', { expression: 'neutral', action })
+    assert.equal(
+      request.ssml,
+      `<speak><ue4event><type>ka_intent</type><data><ka_intent>${action}</ka_intent></data></ue4event>动作测试</speak>`,
+    )
+  }
+  assert.match(buildMofaSpeechRequest('重点', { action: 'KeyPoints' }).ssml, /<type>ka_intent<\/type>/)
+  assert.match(buildMofaSpeechRequest('提高', { action: 'Elevate' }).ssml, /<ka_intent>Elevate<\/ka_intent>/)
 })
 
-test('maps agent semantic aliases to the documented action intent catalog', () => {
-  const greeting = buildMofaSpeechRequest('你好', { expression: 'happy', gesture: 'wave_hand', action: 'greet' })
-  assert.match(greeting.ssml, /<type>ka_intent<\/type>/)
-  assert.match(greeting.ssml, /<ka_intent>Hello<\/ka_intent>/)
-
-  const nod = buildMofaSpeechRequest('明白了', { expression: 'acknowledging', gesture: 'nod' })
-  assert.match(nod.ssml, /<ka_intent>Approve<\/ka_intent>/)
+test('rejects undocumented aliases and role-specific concrete key actions', () => {
+  for (const action of ['greet', 'wave_hand', 'nod', 'small_nod', 'RightSide02']) {
+    assert.equal(buildMofaSpeechRequest('继续播报', { expression: 'neutral', action }).ssml, '<speak>继续播报</speak>')
+  }
 })
 
 test('streams avatar sentence chunks without reopening every sentence', async () => {
   const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
   assert.match(runtime, /private streamStarted = false/)
   assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, isEnd, extra\)/)
+  assert.match(runtime, /const clientSpeakId = String\(returnedSpeakId\)/)
+  assert.match(runtime, /const key = String\(clientSpeakId\)/)
+  assert.doesNotMatch(runtime, /client_speak_id:/)
   assert.match(runtime, /const isEnd = this\.speechFlushRequested && this\.speechQueue\.length === 0/)
   assert.doesNotMatch(runtime, /Keep the last non-final sentence pending/)
   assert.match(runtime, /Every chunk must wait for its own speak_end/)
@@ -95,7 +108,9 @@ test('waits for each speak_end before dispatching the next fast stream segment',
   const calls = []
   runtime.avatar = {
     speak(ssml, isStart, isEnd, extra) {
-      calls.push({ ssml, isStart, isEnd, id: extra.client_speak_id })
+      const id = `sdk-speech-${calls.length + 1}`
+      calls.push({ ssml, isStart, isEnd, extra, id })
+      return id
     },
     interrupt() { return 0 },
   }
@@ -123,7 +138,9 @@ test('dispatches the first complete sentence immediately and closes an empty flu
   const calls = []
   runtime.avatar = {
     speak(ssml, isStart, isEnd, extra) {
-      calls.push({ ssml, isStart, isEnd, id: extra.client_speak_id })
+      const id = calls.length + 1
+      calls.push({ ssml, isStart, isEnd, extra, id: String(id) })
+      return id
     },
     interrupt() { return 0 },
   }

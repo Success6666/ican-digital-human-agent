@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .mofa_capabilities import mofa_emotion_for_expression
 from .models import PerformanceCue
 from ..domain.models import AgentResponse
 
@@ -25,7 +26,7 @@ def build_agent_response(
     cue = cue_model.model_dump(mode="json", by_alias=True)
     return AgentResponse(
         text=text,
-        emotion=str(cue.get("expression") or "neutral"),
+        emotion=mofa_emotion_for_expression(cue.get("expression")),
         gesture=str(cue["gesture"]) if cue.get("gesture") else None,
         presentation=cue,
         performance=cue,

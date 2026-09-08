@@ -5,6 +5,8 @@ import asyncio
 import time
 
 from app.avatar.presentation import PresentationLayer, ProviderRuntime
+from app.agent.models import PerformanceCue
+from app.agent.response import build_agent_response
 from app.domain.models import AgentResponse, AvatarCapabilities, ChatResult, ProviderResult
 
 
@@ -95,6 +97,23 @@ def test_agent_response_contract_is_vendor_neutral() -> None:
     assert response.run_id is None
     assert AvatarCapabilities(external_runtime=True).external_runtime is True
     assert AvatarCapabilities().interrupt_scope == "local"
+
+
+def test_agent_response_exposes_only_official_mofa_emotions() -> None:
+    official = build_agent_response(
+        text="完成",
+        trace_id="trace-official",
+        session_id="session-official",
+        presentation=PerformanceCue(expression="surprised"),
+    )
+    internal = build_agent_response(
+        text="处理中",
+        trace_id="trace-internal",
+        session_id="session-internal",
+        presentation=PerformanceCue(expression="speaking"),
+    )
+    assert official.emotion == "surprised"
+    assert internal.emotion == "neutral"
 
 
 def test_chat_result_populates_alias_fields_from_domain_names() -> None:

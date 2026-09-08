@@ -1,6 +1,6 @@
 # ICAN 数字人 Agent
 
-ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.52）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
+ICAN 是一个面向真实产品演进的数字人 Agent 底层骨架（当前版本 v0.1.53）。第一版先打通浏览器、认证网关、LangGraph 编排、MCP、RAG、数字人 Provider 和可观测性，不绑定具体行业人格或业务工具。
 
 ## 目录
 
@@ -118,5 +118,5 @@ npm run build
 
 本版本 RAG 全链路优化验收记录见 [`tmp-docs/digital-human-agent-v0.1.46-rag-optimization-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.46-rag-optimization-task-book-已完成.md)；本地中文 ASR 部署验收记录见 [`tmp-docs/digital-human-agent-v0.1.45-local-asr-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.45-local-asr-task-book-已完成.md)；流式语音顺序播报验收记录见 [`tmp-docs/digital-human-agent-v0.1.44-speech-sequence-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.44-speech-sequence-task-book-已完成.md)；HTTP 到 HTTPS 端口跳转记录见 [`tmp-docs/digital-human-agent-v0.1.43-http-to-https-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.43-http-to-https-task-book-已完成.md)；会话历史、HTTPS 公网入口与流式稳定性记录见 [`tmp-docs/digital-human-agent-v0.1.42-conversation-history-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.42-conversation-history-task-book-已完成.md)。
 本版本真实 LLM 与数字人 Provider 调优验收记录见 [`tmp-docs/digital-human-agent-v0.1.49-llm-avatar-tuning-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.49-llm-avatar-tuning-task-book-已完成.md)。
-本版本 Pi Agent 架构适配与 TTSA 修复验收记录见 [`tmp-docs/digital-human-agent-v0.1.50-pi-agent-adaptation-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.50-pi-agent-adaptation-task-book-已完成.md)；本次会话启动协议修复验收记录见 [`tmp-docs/digital-human-agent-v0.1.52-session-start-fix-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.52-session-start-fix-task-book-已完成.md)。
+本版本 Pi Agent 架构适配与 TTSA 修复验收记录见 [`tmp-docs/digital-human-agent-v0.1.50-pi-agent-adaptation-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.50-pi-agent-adaptation-task-book-已完成.md)；本次会话启动协议修复验收记录见 [`tmp-docs/digital-human-agent-v0.1.52-session-start-fix-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.52-session-start-fix-task-book-已完成.md)；本次官方动作与情感能力验收记录见 [`tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.53-official-avatar-capabilities-task-book-已完成.md)。
 控制台视觉与页面验收记录见 [`tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md`](tmp-docs/digital-human-agent-v0.1.3-console-reference-task-book-已完成.md)。
