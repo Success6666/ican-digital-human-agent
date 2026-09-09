@@ -23,8 +23,6 @@ _TEXT_LIMITS = {
     "appId": 512,
     "appSecret": 1024,
     "authorization": 512,
-    "dataSource": 128,
-    "customId": 128,
 }
 _NUMBER_LIMITS = {
     "sampleRate": (8_000, 96_000),

@@ -369,7 +369,6 @@ class RuntimeConfigurationRepository:
                 pass
             raise
 
-
 __all__ = [
     "AliyunRuntimeConfiguration",
     "IflytekRuntimeConfiguration",

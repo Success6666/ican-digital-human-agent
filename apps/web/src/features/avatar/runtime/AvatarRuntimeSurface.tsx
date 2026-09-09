@@ -51,12 +51,12 @@ export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session
       onReadyChange?.(next.phase === 'ready' || next.phase === 'speaking')
       if (next.phase === 'ready') window.setTimeout(() => { if (active) saveAvatarPreview(host, session.provider) }, 3_000)
     }).catch((cause) => {
-      if (active) {
-        const detail = cause instanceof Error ? cause.message : '未知初始化错误'
-        console.error('[Mofa Runtime] connect failed', cause)
-        setStatus({ phase: 'error', message: `魔珐数字人连接失败：${detail}` })
-        onReadyChange?.(false)
-      }
+      void runtime.dispose()
+      if (!active) return
+      const detail = cause instanceof Error ? cause.message : '未知初始化错误'
+      console.error('[Mofa Runtime] connect failed', cause instanceof Error ? cause.name : typeof cause)
+      setStatus({ phase: 'error', message: `魔珐数字人连接失败：${detail}` })
+      onReadyChange?.(false)
     })
     return () => {
       active = false

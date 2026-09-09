@@ -129,7 +129,6 @@ def test_mofa_configuration_is_editable_and_persisted(tmp_path, monkeypatch) -> 
     assert restarted.providers.get("mofa").enabled is True
     assert restarted.configuration_service._configuration.mofa.emotion_enabled is True
 
-
 def test_vendor_configuration_is_editable_and_masked(tmp_path) -> None:
     configuration_path = str(tmp_path / "runtime.json")
     container = build_container(_settings(configuration_path))

@@ -99,12 +99,6 @@ def _optional_browser_context() -> dict[str, str]:
     """Only add vendor-specific query/header context when explicitly configured."""
     result: dict[str, str] = {}
     authorization = os.getenv("MOFA_AUTHORIZATION", "").strip()
-    data_source = os.getenv("MOFA_DATA_SOURCE", "").strip()
-    custom_id = os.getenv("MOFA_CUSTOM_ID", "").strip()
     if authorization:
         result["authorization"] = authorization
-    if data_source:
-        result["dataSource"] = data_source
-    if custom_id:
-        result["customId"] = custom_id
     return result

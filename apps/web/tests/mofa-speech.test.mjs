@@ -47,25 +47,57 @@ test('rejects undocumented aliases and role-specific concrete key actions', () =
   }
 })
 
-test('streams avatar sentence chunks without reopening every sentence', async () => {
+test('uses the documented streaming contract without relying on speak return values', async () => {
   const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
   assert.match(runtime, /private streamStarted = false/)
-  assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, isEnd, extra\)/)
-  assert.match(runtime, /const clientSpeakId = String\(returnedSpeakId\)/)
-  assert.match(runtime, /const key = String\(clientSpeakId\)/)
+  assert.match(runtime, /speak\(text: string, isStart\?: boolean, isEnd\?: boolean, extra\?: Record<string, unknown>\): void/)
+  assert.match(runtime, /private pendingSpeech\?/)
+  assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, false, extra\)/)
+  assert.match(runtime, /this\.avatar\.speak\(request\.ssml, isStart, true, extra\)/)
+  assert.match(runtime, /private handleSpeakStateChange\(state: string, clientSpeakId\?: string \| number\)/)
+  assert.match(runtime, /await completion\.promise/)
+  assert.match(runtime, /this\.avatar\.interactiveidle\(\)/)
   assert.doesNotMatch(runtime, /client_speak_id:/)
-  assert.match(runtime, /const isEnd = this\.speechFlushRequested && this\.speechQueue\.length === 0/)
-  assert.doesNotMatch(runtime, /Keep the last non-final sentence pending/)
-  assert.match(runtime, /Every chunk must wait for its own speak_end/)
-  assert.match(runtime, /this\.speechWaiters\.set\(clientSpeakId/)
-  assert.match(runtime, /await completion/)
-  assert.match(runtime, /if \(this\.speechFlushRequested && !this\.speechQueue\.length && !this\.speechBuffer\.trim\(\)\)/)
+  assert.doesNotMatch(runtime, /returnedSpeakId/)
+  assert.doesNotMatch(runtime, /speechWaiters/)
   assert.match(runtime, /this\.streamStarted = false/)
   assert.match(runtime, /await withTimeout\(initPromise, 60_000\)/)
   assert.match(runtime, /await waitForStablePaint\(\)/)
   assert.doesNotMatch(runtime, /Promise\.race\(\[initPromise, firstFrame\]\)/)
-  assert.match(runtime, /this\.speechQueue\.length && this\.canDrainSpeechQueue\(\)/)
-  assert.match(runtime, /return this\.speechFlushRequested \|\| this\.speechQueue\.length > 1 \|\| Boolean\(this\.speechBuffer\.trim\(\)\)/)
+  assert.match(runtime, /this\.assertConnectionActive\(connectionGeneration\)/)
+})
+
+test('enables the official SDK logger and emits runtime diagnostics', async () => {
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
+  assert.match(runtime, /enableDebugger: false/)
+  assert.match(runtime, /enableLogger: true/)
+  assert.doesNotMatch(runtime, /enableDebugger: true/)
+  assert.match(runtime, /function debugMofa\(event: string, detail\?: unknown\)/)
+  assert.match(runtime, /debugMofa\('SDK init'/)
+  assert.match(runtime, /debugMofa\('SDK message', message\)/)
+  assert.match(runtime, /debugMofa\('SDK speak failed'/)
+  assert.match(runtime, /function sanitizeMofaDiagnostic\(/)
+  assert.match(runtime, /authorization\|secret\|token\|password\|cookie\|api\[-_\]\?key\|signature\|session/)
+  assert.match(runtime, /sanitizeMofaUrl/)
+  assert.match(runtime, /Bearer\\s\+/)
+  assert.match(runtime, /acquireMofaConsoleGuard/)
+  assert.match(runtime, /const safeDetail = sanitizeMofaString\(detail\)/)
+  assert.doesNotMatch(runtime, /walk_version: 3/)
+  assert.doesNotMatch(runtime, /framedata_proto_version: 2/)
+  assert.doesNotMatch(runtime, /raw_audio: false/)
+  assert.match(runtime, /avatar\.changeLayout\(/)
+  assert.match(runtime, /onVoiceStateChange/)
+  assert.match(runtime, /onNetworkInfo/)
+  assert.match(runtime, /onStateRenderChange/)
+})
+
+test('does not submit masked Mofa credentials when only context settings change', async () => {
+  const controls = await readFile(fileURLToPath(new URL('../src/features/runtime/components/ConfigurationControls.tsx', import.meta.url)), 'utf8')
+  assert.match(controls, /function editableMofaValue\(value\?: string\)/)
+  assert.match(controls, /const existingAppId = editableMofaValue\(configuration\?\.mofa\?\.appId\)/)
+  assert.match(controls, /appId !== existingAppId/)
+  assert.match(controls, /const existingAuthorization = editableMofaValue\(configuration\?\.mofa\?\.authorization\)/)
+  assert.match(controls, /authorization !== existingAuthorization/)
 })
 
 test('normalizes TTSA session gateway URLs to HTTP schemes and keeps reconnect cursor', async () => {
@@ -78,7 +110,8 @@ test('normalizes TTSA session gateway URLs to HTTP schemes and keeps reconnect c
   assert.match(runtime, /isRecoverableTtsaError/)
   assert.match(runtime, /暂无空闲房间/)
   assert.match(runtime, /phase: 'warning'/)
-  assert.match(runtime, /if \(ttsaWarning\) return/)
+  assert.match(runtime, /!initialized \|\| ttsaWarning \|\| rendered/)
+  assert.doesNotMatch(runtime, /walk_version|framedata_proto_version|raw_audio/)
   const surface = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/AvatarRuntimeSurface.tsx', import.meta.url)), 'utf8')
   assert.match(surface, /const currentSpeechMessageId = speech\?\.id\?\.split\(':', 1\)\[0\]/)
   assert.match(surface, /spokenTextRef\.current = speech\?\.text \?\? ''/)
@@ -102,57 +135,58 @@ test('generates runtime ids when randomUUID is unavailable on public HTTP', asyn
   assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/)
 })
 
-test('waits for each speak_end before dispatching the next fast stream segment', async () => {
+test('sends streaming segments with official start/end boundaries and waits only for the final callback', async () => {
   const Runtime = await loadRuntimeForTest()
   const runtime = new Runtime()
   const calls = []
+  let interactiveIdleCalls = 0
   runtime.avatar = {
     speak(ssml, isStart, isEnd, extra) {
-      const id = `sdk-speech-${calls.length + 1}`
-      calls.push({ ssml, isStart, isEnd, extra, id })
-      return id
+      calls.push({ ssml, isStart, isEnd, extra })
     },
     interrupt() { return 0 },
+    interactiveidle() { interactiveIdleCalls += 1 },
   }
 
   const pending = runtime.speak('第一段。第二段。', undefined, { flush: true })
   await nextTask()
-  assert.equal(calls.length, 1)
+  assert.equal(calls.length, 2)
   assert.equal(calls[0].isStart, true)
   assert.equal(calls[0].isEnd, false)
-
-  runtime.speechWaiters.get(calls[0].id).resolve()
-  await nextTask()
-  assert.equal(calls.length, 2)
   assert.equal(calls[1].isStart, false)
   assert.equal(calls[1].isEnd, true)
 
-  runtime.speechWaiters.get(calls[1].id).resolve()
+  runtime.handleSpeakStateChange('speak_start', 'sdk-speech-1')
+  runtime.handleSpeakStateChange('speak_end', 'sdk-speech-1')
   await pending
   assert.equal(runtime.streamStarted, false)
+  assert.equal(interactiveIdleCalls, 1)
 })
 
-test('dispatches the first complete sentence immediately and closes an empty flush', async () => {
+test('keeps the final segment until the stream closes so it can be marked is_end', async () => {
   const Runtime = await loadRuntimeForTest()
   const runtime = new Runtime()
   const calls = []
   runtime.avatar = {
     speak(ssml, isStart, isEnd, extra) {
-      const id = calls.length + 1
-      calls.push({ ssml, isStart, isEnd, extra, id: String(id) })
-      return id
+      calls.push({ ssml, isStart, isEnd, extra })
     },
     interrupt() { return 0 },
+    interactiveidle() {},
   }
 
-  const pending = runtime.speak('第一段。')
+  await runtime.speak('第一段。')
+  await nextTask()
+  assert.equal(calls.length, 0)
+
+  const pending = runtime.speak('', undefined, { flush: true })
   await nextTask()
   assert.equal(calls.length, 1)
-  runtime.speechWaiters.get(calls[0].id).resolve()
+  assert.equal(calls[0].isStart, true)
+  assert.equal(calls[0].isEnd, true)
+  runtime.handleSpeakStateChange('speak_start', 'sdk-speech-2')
+  runtime.handleSpeakStateChange('speak_end', 'sdk-speech-2')
   await pending
-  assert.equal(runtime.streamStarted, true)
-
-  await runtime.speak('', undefined, { flush: true })
   assert.equal(runtime.streamStarted, false)
 })
 

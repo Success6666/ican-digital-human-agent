@@ -63,8 +63,6 @@ export interface AvatarClientParams {
   appId?: string
   appSecret?: string
   authorization?: string
-  dataSource?: string
-  customId?: string
   emotionEnabled?: boolean
   realtime?: {
     endpoint?: string

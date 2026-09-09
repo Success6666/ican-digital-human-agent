@@ -26,6 +26,11 @@ test('session creation is guarded while the provider session is being created', 
   assert.match(avatarModelSource, /if \(createInFlightRef\.current\) return createInFlightRef\.current/)
 })
 
+test('home session creation uses the selected provider instead of the server fallback', () => {
+  assert.match(avatarModelSource, /const requestedProvider = provider \?\? selectedProvider/)
+  assert.match(avatarModelSource, /avatarApi\.createSession\(requestedProvider\)/)
+})
+
 test('assistant speech only uses real response text', () => {
   assert.equal(homeSource.includes('message.content.trim() || message.statusText?.trim()'), true)
   assert.equal(homeSource.includes("text: latestAssistant.content || latestAssistant.statusText || ''"), true)

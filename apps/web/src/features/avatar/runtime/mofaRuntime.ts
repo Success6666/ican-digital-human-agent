@@ -7,12 +7,14 @@ import { loadExternalScript } from './scriptLoader'
 
 interface XmovAvatarInstance {
   init(options?: Record<string, unknown>): Promise<void>
-  speak(text: string, isStart?: boolean, isEnd?: boolean, extra?: Record<string, unknown>): string | number | undefined
+  speak(text: string, isStart?: boolean, isEnd?: boolean, extra?: Record<string, unknown>): void
   interrupt(type: string): number
+  interactiveidle(): void
   stop(): Promise<void> | void
   destroy(reason?: string): Promise<void> | void
   switchInvisibleMode(): number | void
   changeAvatarVisible(visible: boolean): void
+  changeLayout(layout: Record<string, unknown>): void
 }
 
 interface XmovAvatarConstructor {
@@ -34,8 +36,6 @@ interface MofaRuntimeConfig {
   appId: string
   appSecret: string
   authorization?: string
-  dataSource?: string
-  customId?: string
   emotionEnabled: boolean
 }
 
@@ -43,149 +43,206 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private avatar?: XmovAvatarInstance
   private status?: (status: AvatarRuntimeStatus) => void
   private speechBuffer = ''
-  private speechQueue: Array<{ text: string; presentation?: AvatarPerformanceCue }> = []
-  private speechWorker?: Promise<void>
+  private pendingSpeech?: { text: string; presentation?: AvatarPerformanceCue }
   private speechGeneration = 0
-  private speechWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
-  private speechFlushRequested = false
+  private activeSpeechId?: string
+  private speechCompletion?: {
+    generation: number
+    clientSpeakId?: string
+    promise: Promise<void>
+    resolve: () => void
+    reject: (error: Error) => void
+    timer: number
+  }
   private streamStarted = false
   private invisible = false
   private emotionEnabled = false
+  private releaseConsoleGuard?: () => void
+  private connectionGeneration = 0
+  private disposed = false
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
+    const connectionGeneration = ++this.connectionGeneration
+    this.disposed = false
     this.status = onStatus
-    const config = requiredConfig(params)
-    this.emotionEnabled = config.emotionEnabled
-    onStatus({ phase: 'loading', progress: 0, message: '正在加载数字人运行时' })
-    await loadExternalScript(config.cryptoUrl, () => Boolean(window.CryptoJS))
-    window.CryptoJSTest = window.CryptoJS
-    await loadExternalScript(config.sdkUrl, () => Boolean(window.XmovAvatar))
-    if (!window.XmovAvatar) throw new Error('魔珐数字人 SDK 不可用')
+    try {
+      const config = requiredConfig(params)
+      this.emotionEnabled = config.emotionEnabled
+      onStatus({ phase: 'loading', progress: 0, message: '正在加载数字人运行时' })
+      await loadExternalScript(config.cryptoUrl, () => Boolean(window.CryptoJS))
+      this.assertConnectionActive(connectionGeneration)
+      window.CryptoJSTest = window.CryptoJS
+      await loadExternalScript(config.sdkUrl, () => Boolean(window.XmovAvatar))
+      this.assertConnectionActive(connectionGeneration)
+      if (!window.XmovAvatar) throw new Error('魔珐数字人 SDK 不可用')
 
-    const containerId = ensureContainerId(host)
-    const gateway = normalizeGatewayUrl(config.gatewayServer)
-    if (config.dataSource) gateway.searchParams.set('data_source', config.dataSource)
-    if (config.customId) gateway.searchParams.set('custom_id', config.customId)
-    const width = Math.max(320, Math.round(host.clientWidth || 960))
-    const height = Math.max(320, Math.round(host.clientHeight || 720))
-    // The SDK renders a 1080x1920 portrait canvas. Fit the complete avatar
-    // inside the conversation stage instead of clipping the head at the top.
-    const avatarScale = Math.min(0.36, Math.max(0.28, (height / 1920) * 0.98))
-    let signalFirstFrame!: () => void
-    const firstFrame = new Promise<void>((resolve) => { signalFirstFrame = resolve })
-    let initialized = false
-    let rendered = false
-    let ttsaWarning = false
-    const markReady = () => {
-      signalFirstFrame()
-      if (!initialized) return
-      if (ttsaWarning) return
-      if (rendered) return
-      rendered = true
-      onStatus({ phase: 'ready', progress: 100, message: '数字人已连接' })
-    }
+      const containerId = ensureContainerId(host)
+      const gateway = normalizeGatewayUrl(config.gatewayServer)
+      let signalFirstFrame!: () => void
+      const firstFrame = new Promise<void>((resolve) => { signalFirstFrame = resolve })
+      let initialized = false
+      let rendered = false
+      let ttsaWarning = false
+      const currentConnection = () => this.isConnectionActive(connectionGeneration)
+      const report = (status: AvatarRuntimeStatus) => {
+        if (currentConnection()) onStatus(status)
+      }
+      const markReady = () => {
+        signalFirstFrame()
+        if (!currentConnection() || !initialized || ttsaWarning || rendered) return
+        rendered = true
+        report({ phase: 'ready', progress: 100, message: '数字人已连接' })
+      }
 
-    const headers = config.authorization ? { Authorization: config.authorization } : undefined
-    this.avatar = new window.XmovAvatar({
-      containerId: `#${containerId}`,
-      appId: config.appId,
-      appSecret: config.appSecret,
-      ...(headers ? { headers } : {}),
-      enableDebugger: false,
-      enableClientInterrupt: true,
-      gatewayServer: gateway.toString(),
-      config: {
-        raw_audio: false,
-        walk_version: 3,
-        framedata_proto_version: 2,
-        layout: {
-          avatar: { h_align: 'center', v_align: 'bottom', scale: avatarScale },
-          container: { size: [width, height] },
-        },
-      },
-      onMessage: (message: { code?: string | number; message?: string }) => {
-        const detail = sdkMessage(message)
-        const networkState = sdkNetworkState(message)
-        if (networkState === 'reconnecting') {
-          onStatus({ phase: 'loading', progress: 90, message: '网络波动，正在自动重连' })
-          return
-        }
-        if (networkState === 'online') {
-          ttsaWarning = false
-          markReady()
-          return
-        }
-        if (isSpeechOverlapWarning(detail)) {
-          console.warn('[Mofa Runtime] recovered overlapping speech boundary', message)
-          onStatus({ phase: 'speaking', progress: 100, message: '数字人正在表达' })
-          return
-        }
-        if (isRecoverableTtsaError(message, detail)) {
-          ttsaWarning = true
-          onStatus({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
-          return
-        }
-        if (detail) onStatus({ phase: 'error', message: `星云运行时：${detail}` })
-      },
-      onStartSessionWarning: (message: unknown) => {
-        const detail = sdkMessage(message)
-        if (detail) {
-          console.warn('[Mofa Runtime] session warning', message)
+      const headers = config.authorization ? { Authorization: config.authorization } : undefined
+      this.releaseConsoleGuard?.()
+      this.releaseConsoleGuard = acquireMofaConsoleGuard()
+      debugMofa('SDK init', {
+        sdkUrl: config.sdkUrl,
+        gatewayOrigin: gateway.origin,
+        gatewayPath: gateway.pathname,
+        gatewayQueryKeys: [...gateway.searchParams.keys()],
+        hasAppId: Boolean(config.appId),
+        hasAppSecret: Boolean(config.appSecret),
+        hasAuthorization: Boolean(config.authorization),
+      })
+      const avatar = new window.XmovAvatar({
+        containerId: `#${containerId}`,
+        appId: config.appId,
+        appSecret: config.appSecret,
+        ...(headers ? { headers } : {}),
+        enableDebugger: false,
+        enableLogger: true,
+        enableClientInterrupt: true,
+        gatewayServer: gateway.toString(),
+        onMessage: (message: { code?: string | number; message?: string }) => {
+          if (!currentConnection()) return
+          debugMofa('SDK message', message)
+          const detail = sdkMessage(message)
+          const networkState = sdkNetworkState(message)
+          if (networkState === 'reconnecting') {
+            report({ phase: 'loading', progress: 90, message: '网络波动，正在自动重连' })
+            return
+          }
+          if (networkState === 'online') {
+            ttsaWarning = false
+            markReady()
+            return
+          }
           if (isSpeechOverlapWarning(detail)) {
-            // The SDK already performs a client-side fallback interrupt for
-            // an overlapping speak_start. Keep the canvas usable and let the
-            // serialized worker continue instead of replacing it with an
-            // error overlay.
-            onStatus({ phase: 'ready', progress: 100, message: '数字人已连接，正在恢复表达' })
+            console.warn('[Mofa Runtime] recovered overlapping speech boundary', sanitizeMofaDiagnostic(message))
+            report({ phase: 'speaking', progress: 100, message: '数字人正在表达' })
             return
           }
           if (isRecoverableTtsaError(message, detail)) {
             ttsaWarning = true
-            onStatus({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
+            report({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
             return
           }
-          onStatus({ phase: 'loading', progress: 85, message: detail })
-        }
-      },
-      onSpeakStateChange: (state: string, clientSpeakId?: string | number) => {
-        if (clientSpeakId === undefined || clientSpeakId === null) return
-        const key = String(clientSpeakId)
-        const waiter = this.speechWaiters.get(key)
-        if (!waiter) return
-        if (state === 'speak_end') {
-          this.speechWaiters.delete(key)
-          waiter.resolve()
-        } else if (state === 'speak_error') {
-          this.speechWaiters.delete(key)
-          waiter.reject(new Error('星云播报失败'))
-        }
-      },
-      onRenderChange: (state: unknown) => {
-        if (String(state).toLowerCase().includes('render')) markReady()
-      },
-      onStatusChange: (state: unknown) => {
-        const normalized = normalizeSdkStatus(state)
-        if (normalized === 'ready') markReady()
-        if (normalized === 'reconnecting') onStatus({ phase: 'loading', progress: 90, message: '数字人连接恢复中' })
-        if (normalized === 'closed') onStatus({ phase: 'error', message: '数字人连接已断开，请重新连接' })
-      },
-    })
+          if (detail) report({ phase: 'error', message: `星云运行时：${sanitizeMofaString(detail)}` })
+        },
+        onStartSessionWarning: (message: unknown) => {
+          if (!currentConnection()) return
+          debugMofa('SDK session warning', message)
+          const detail = sdkMessage(message)
+          if (detail) {
+            console.warn('[Mofa Runtime] session warning', sanitizeMofaDiagnostic(message))
+            if (isSpeechOverlapWarning(detail)) {
+              report({ phase: 'ready', progress: 100, message: '数字人已连接，正在恢复表达' })
+              return
+            }
+            if (isRecoverableTtsaError(message, detail)) {
+              ttsaWarning = true
+              report({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
+              return
+            }
+            report({ phase: 'loading', progress: 85, message: sanitizeMofaString(detail) })
+          }
+        },
+        onSpeakStateChange: (state: string, clientSpeakId?: string | number) => {
+          if (!currentConnection()) return
+          debugMofa('SDK speak state', { state, clientSpeakId })
+          this.handleSpeakStateChange(state, clientSpeakId)
+        },
+        onVoiceStateChange: (state: string, duration?: number) => {
+          if (currentConnection()) debugMofa('SDK voice state', { state, duration })
+        },
+        onNetworkInfo: (info: unknown) => {
+          if (currentConnection()) debugMofa('SDK network info', info)
+        },
+        onStateChange: (state: unknown) => {
+          if (currentConnection()) debugMofa('SDK state', state)
+        },
+        onStateRenderChange: (state: unknown) => {
+          if (!currentConnection()) return
+          debugMofa('SDK render state', state)
+          if (String(state).toLowerCase().includes('render')) markReady()
+        },
+        onStatusChange: (state: unknown) => {
+          if (!currentConnection()) return
+          debugMofa('SDK status state', state)
+          const normalized = normalizeSdkStatus(state)
+          if (normalized === 'ready') markReady()
+          if (normalized === 'reconnecting') report({ phase: 'loading', progress: 90, message: '数字人连接恢复中' })
+          if (normalized === 'closed') report({ phase: 'error', message: '数字人连接已断开，请重新连接' })
+        },
+      })
+      this.assertConnectionActive(connectionGeneration)
+      this.avatar = avatar
 
-    const initPromise = Promise.resolve(this.avatar.init({
-      onDownloadProgress: (progress: number) => {
-        const normalized = progress <= 1 ? progress * 100 : progress
-        const value = Math.max(0, Math.min(100, Math.round(normalized)))
-        if (rendered) return
-        onStatus({ phase: 'loading', progress: value, message: '正在加载数字人资源' })
-      },
-      onClose: () => onStatus({ phase: 'error', message: '数字人连接已断开，请重新连接' }),
-    }))
-    await withTimeout(initPromise, 60_000)
-    initialized = true
-    await Promise.race([firstFrame, delay(2_000)])
-    await waitForStablePaint()
-    markReady()
-    if (this.invisible) this.applyVisibility()
+      const initPromise = Promise.resolve(avatar.init({
+        onDownloadProgress: (progress: number) => {
+          if (!currentConnection() || rendered) return
+          const normalized = progress <= 1 ? progress * 100 : progress
+          const value = Math.max(0, Math.min(100, Math.round(normalized)))
+          report({ phase: 'loading', progress: value, message: '正在加载数字人资源' })
+        },
+      }))
+      await withTimeout(initPromise, 60_000)
+      this.assertConnectionActive(connectionGeneration)
+      initialized = true
+      await Promise.race([firstFrame, delay(2_000)])
+      this.assertConnectionActive(connectionGeneration)
+      await waitForStablePaint()
+      this.assertConnectionActive(connectionGeneration)
+      const width = Math.max(320, Math.round(host.clientWidth || 960))
+      const height = Math.max(320, Math.round(host.clientHeight || 720))
+      avatar.changeLayout({
+        container: { size: [width, height] },
+        avatar: { h_align: 'center', v_align: 'bottom', scale: Math.min(0.36, Math.max(0.28, (height / 1920) * 0.98)) },
+      })
+      markReady()
+      if (this.invisible) this.applyVisibility()
+    } catch (cause) {
+      if (this.isConnectionActive(connectionGeneration)) await this.dispose()
+      throw new Error(sanitizeMofaString(cause instanceof Error ? cause.message : String(cause)))
+    }
+  }
+
+  private isConnectionActive(generation: number): boolean {
+    return !this.disposed && this.connectionGeneration === generation
+  }
+
+  private assertConnectionActive(generation: number): void {
+    if (!this.isConnectionActive(generation)) throw new Error('数字人连接已取消')
+  }
+
+  private handleSpeakStateChange(state: string, clientSpeakId?: string | number): void {
+    const key = clientSpeakId === undefined || clientSpeakId === null ? undefined : String(clientSpeakId)
+    if (state === 'speak_start') {
+      if (key) this.activeSpeechId = key
+      if (this.speechCompletion && !this.speechCompletion.clientSpeakId && key) this.speechCompletion.clientSpeakId = key
+      return
+    }
+    const completion = this.speechCompletion
+    if (!completion || completion.generation !== this.speechGeneration) return
+    if (completion.clientSpeakId && key && completion.clientSpeakId !== key) return
+    if (state === 'speak_end' || state === 'end') {
+      this.finishSpeechCompletion()
+      this.activeSpeechId = undefined
+    } else if (state === 'speak_error' || state === 'error') {
+      this.failSpeechCompletion(new Error('星云播报失败'))
+    }
   }
 
   setVisibility(visible: boolean): void {
@@ -199,7 +256,6 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     const clean = text.trim()
     const flush = Boolean(options?.flush)
     if (!this.avatar || (!clean && !flush)) return
-    if (flush) this.speechFlushRequested = true
     if (clean) this.speechBuffer += clean
     while (true) {
       if (!this.speechBuffer.trim()) break
@@ -207,44 +263,53 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       if (boundary < 0) break
       const segment = this.speechBuffer.slice(0, boundary).trim()
       this.speechBuffer = this.speechBuffer.slice(boundary).trimStart()
-      if (segment) this.speechQueue.push({ text: segment, presentation })
-    }
-    if (!this.speechQueue.length) {
-      if (flush && !this.speechWorker) {
-        this.speechFlushRequested = false
-        this.streamStarted = false
-        this.status?.({ phase: 'ready', message: '数字人已连接' })
+      if (!segment) continue
+      if (this.pendingSpeech) {
+        void this.dispatchSpeechSegment(this.pendingSpeech, false).catch((cause) => {
+          debugMofa('SDK non-final speak failed', cause)
+          this.status?.({ phase: 'error', message: cause instanceof Error ? cause.message : '数字人播报失败' })
+        })
       }
+      this.pendingSpeech = { text: segment, presentation }
+    }
+    if (!flush) return
+
+    const finalSegment = this.pendingSpeech
+    this.pendingSpeech = undefined
+    if (!finalSegment) {
+      if (!this.streamStarted) this.status?.({ phase: 'ready', message: '数字人已连接' })
       return
     }
-    await this.ensureSpeechWorker()
+    await this.dispatchSpeechSegment(finalSegment, true)
   }
 
   async interrupt(): Promise<void> {
     if (!this.avatar) return
     this.speechBuffer = ''
-    this.speechQueue = []
-    this.speechFlushRequested = false
+    this.pendingSpeech = undefined
     this.streamStarted = false
     this.speechGeneration += 1
-    for (const waiter of this.speechWaiters.values()) waiter.resolve()
-    this.speechWaiters.clear()
+    this.activeSpeechId = undefined
+    this.finishSpeechCompletion()
     this.avatar.interrupt('user_speaking')
     this.status?.({ phase: 'ready', message: '已停止上一轮表达' })
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true
+    this.connectionGeneration += 1
     this.speechBuffer = ''
-    this.speechQueue = []
-    this.speechFlushRequested = false
+    this.pendingSpeech = undefined
     this.streamStarted = false
     this.speechGeneration += 1
-    for (const waiter of this.speechWaiters.values()) waiter.resolve()
-    this.speechWaiters.clear()
+    this.activeSpeechId = undefined
+    this.finishSpeechCompletion()
     const current = this.avatar
     this.avatar = undefined
     this.status = undefined
     this.emotionEnabled = false
+    this.releaseConsoleGuard?.()
+    this.releaseConsoleGuard = undefined
     if (!current) return
     try { await current.stop() } catch { /* SDK teardown remains best effort. */ }
     try { await current.destroy('component_unmounted') } catch { /* Host removal is the final cleanup boundary. */ }
@@ -261,79 +326,173 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     this.avatar.switchInvisibleMode()
   }
 
-  private async consumeSpeechQueue(): Promise<void> {
+  private async dispatchSpeechSegment(segment: { text: string; presentation?: AvatarPerformanceCue }, isEnd: boolean): Promise<void> {
     const generation = this.speechGeneration
-    while (this.speechQueue.length && this.avatar) {
-      if (generation !== this.speechGeneration) return
-      const next = this.speechQueue.shift()
-      if (!next) continue
-      const isEnd = this.speechFlushRequested && this.speechQueue.length === 0 && !this.speechBuffer.trim()
-      const isStart = !this.streamStarted
-      this.status?.({ phase: 'speaking', message: '数字人正在表达' })
-      await this.speakChunk(next.text, next.presentation, generation, isStart, isEnd)
-      this.streamStarted = !isEnd
-      if (isEnd) this.speechFlushRequested = false
-    }
-    // A flush may arrive while the last non-final chunk is already playing.
-    // That chunk cannot be retroactively marked isEnd=true; once its own
-    // speak_end arrives, close the local turn so the next response starts a
-    // fresh SDK stream instead of inheriting stale state.
-    if (this.speechFlushRequested && !this.speechQueue.length && !this.speechBuffer.trim()) {
-      this.speechFlushRequested = false
-      this.streamStarted = false
-    }
-    if (!this.streamStarted) this.status?.({ phase: 'ready', message: '数字人已连接' })
-  }
-
-  private ensureSpeechWorker(): Promise<void> {
-    if (this.speechWorker) return this.speechWorker
-    const worker = this.consumeSpeechQueue()
-      .catch((cause) => {
-        this.speechQueue = []
-        this.status?.({ phase: 'error', message: cause instanceof Error ? cause.message : '数字人播报失败' })
-      })
-      .finally(() => {
-        if (this.speechWorker === worker) this.speechWorker = undefined
-        if (this.avatar && this.speechQueue.length && this.canDrainSpeechQueue()) void this.ensureSpeechWorker()
-      })
-    this.speechWorker = worker
-    return worker
-  }
-
-  private canDrainSpeechQueue(): boolean {
-    return this.speechFlushRequested || this.speechQueue.length > 1 || Boolean(this.speechBuffer.trim())
-  }
-
-  private async speakChunk(text: string, presentation: AvatarPerformanceCue | undefined, generation: number, isStart: boolean, isEnd: boolean): Promise<void> {
     if (!this.avatar || generation !== this.speechGeneration) return
-    const request = buildMofaSpeechRequest(text, presentation, { enableEmotion: this.emotionEnabled })
+    const request = buildMofaSpeechRequest(segment.text, segment.presentation, { enableEmotion: this.emotionEnabled })
     const extra = Object.keys(request.extra).length ? request.extra : undefined
-    const returnedSpeakId = this.avatar.speak(request.ssml, isStart, isEnd, extra)
-    if (returnedSpeakId === undefined || returnedSpeakId === null || returnedSpeakId === '') {
-      throw new Error('星云 SDK 未返回播报 ID')
-    }
-    const clientSpeakId = String(returnedSpeakId)
-    let completion: Promise<void>
-    let timer = 0
-    // Every chunk must wait for its own speak_end. Sending the next chunk
-    // before that callback lets the SDK issue a new speak_start and replace
-    // audio that is still playing, which causes fast streams to skip text.
-    completion = new Promise<void>((resolve, reject) => {
-      this.speechWaiters.set(clientSpeakId, { resolve, reject })
-      timer = window.setTimeout(() => {
-        this.speechWaiters.delete(clientSpeakId)
-        if (generation === this.speechGeneration) this.avatar?.interrupt('speak_timeout')
-        reject(new Error(`星云播报超时${isEnd ? '' : '，已停止后续分段'}`))
-      }, 15_000)
+    const isStart = !this.streamStarted
+    debugMofa('SDK speak dispatched', {
+      isStart,
+      isEnd,
+      textLength: segment.text.length,
+      hasExtra: Boolean(extra),
     })
-    try {
-      await completion
-    } finally {
-      window.clearTimeout(timer)
-      this.speechWaiters.delete(clientSpeakId)
+    if (!isEnd) {
+      this.avatar.speak(request.ssml, isStart, false, extra)
+      this.streamStarted = true
+      this.status?.({ phase: 'speaking', message: '数字人正在表达' })
+      return
     }
+
+    const completion = this.createSpeechCompletion(generation)
+    this.speechCompletion = completion
+    this.avatar.speak(request.ssml, isStart, true, extra)
+    this.streamStarted = true
+    this.status?.({ phase: 'speaking', message: '数字人正在表达' })
+    try {
+      await completion.promise
+    } catch (cause) {
+      if (generation === this.speechGeneration) {
+        this.streamStarted = false
+        this.activeSpeechId = undefined
+      }
+      debugMofa('SDK speak failed', { clientSpeakId: completion.clientSpeakId, cause })
+      throw cause
+    } finally {
+      if (this.speechCompletion === completion) this.speechCompletion = undefined
+      window.clearTimeout(completion.timer)
+    }
+    if (generation !== this.speechGeneration || !this.avatar) return
+    this.avatar.interactiveidle()
+    this.streamStarted = false
+    this.activeSpeechId = undefined
+    this.status?.({ phase: 'ready', progress: 100, message: '数字人已连接' })
   }
 
+  private createSpeechCompletion(generation: number): {
+    generation: number
+    clientSpeakId?: string
+    promise: Promise<void>
+    resolve: () => void
+    reject: (error: Error) => void
+    timer: number
+  } {
+    let resolvePromise!: () => void
+    let rejectPromise!: (error: Error) => void
+    const promise = new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve
+      rejectPromise = reject
+    })
+    const completion = {
+      generation,
+      clientSpeakId: this.activeSpeechId,
+      promise,
+      resolve: resolvePromise,
+      reject: rejectPromise,
+      timer: 0,
+    }
+    completion.timer = window.setTimeout(() => {
+      if (this.speechCompletion !== completion || generation !== this.speechGeneration) return
+      this.speechCompletion = undefined
+      this.avatar?.interrupt('speak_timeout')
+      completion.reject(new Error('星云播报超时'))
+    }, 15_000)
+    return completion
+  }
+
+  private finishSpeechCompletion(): void {
+    const completion = this.speechCompletion
+    if (!completion) return
+    this.speechCompletion = undefined
+    window.clearTimeout(completion.timer)
+    completion.resolve()
+  }
+
+  private failSpeechCompletion(error: Error): void {
+    const completion = this.speechCompletion
+    if (!completion) return
+    this.speechCompletion = undefined
+    window.clearTimeout(completion.timer)
+    completion.reject(error)
+  }
+
+}
+
+function debugMofa(event: string, detail?: unknown): void {
+  if (detail === undefined) {
+    console.info(`[Mofa Runtime] ${event}`)
+    return
+  }
+  console.info(`[Mofa Runtime] ${event}`, sanitizeMofaDiagnostic(detail))
+}
+
+type MofaConsoleMethod = 'debug' | 'info' | 'log' | 'warn' | 'error'
+const MOFA_CONSOLE_METHODS: MofaConsoleMethod[] = ['debug', 'info', 'log', 'warn', 'error']
+let mofaConsoleGuardUsers = 0
+let mofaConsoleOriginals: Partial<Record<MofaConsoleMethod, (...args: unknown[]) => void>> | undefined
+
+function acquireMofaConsoleGuard(): () => void {
+  if (mofaConsoleGuardUsers === 0) {
+    mofaConsoleOriginals = {}
+    for (const method of MOFA_CONSOLE_METHODS) {
+      const original = console[method].bind(console) as (...args: unknown[]) => void
+      mofaConsoleOriginals[method] = original
+      console[method] = (...args: unknown[]) => original(...args.map((value) => sanitizeMofaDiagnostic(value)))
+    }
+  }
+  mofaConsoleGuardUsers += 1
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    mofaConsoleGuardUsers -= 1
+    if (mofaConsoleGuardUsers > 0 || !mofaConsoleOriginals) return
+    for (const method of MOFA_CONSOLE_METHODS) {
+      const original = mofaConsoleOriginals[method]
+      if (original) console[method] = original
+    }
+    mofaConsoleOriginals = undefined
+  }
+}
+
+function sanitizeMofaDiagnostic(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value instanceof Error) return { name: value.name, message: sanitizeMofaString(value.message) }
+  if (typeof value === 'string') return sanitizeMofaString(value)
+  if (value === null || typeof value !== 'object') return value
+  if (seen.has(value)) return '[circular]'
+  seen.add(value)
+  if (Array.isArray(value)) return value.slice(0, 32).map((item) => sanitizeMofaDiagnostic(item, seen))
+  const output: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 64)) {
+    if (/authorization|secret|token|password|cookie|api[-_]?key|signature|session(?:[_-]?id)?/i.test(key)) {
+      output[key] = '<redacted>'
+    } else if (/(?:url|uri|gateway(?:[_-]?server)?)$/i.test(key) && typeof item === 'string') {
+      output[key] = sanitizeMofaUrl(item)
+    } else {
+      output[key] = sanitizeMofaDiagnostic(item, seen)
+    }
+  }
+  return output
+}
+
+function sanitizeMofaString(value: string): string {
+  return value
+    .replace(/(["']?(?:authorization|app[_-]?secret|token|password|api[-_]?key|signature|session(?:[_-]?id)?)["']?\s*[:=]\s*["']?)(?:Bearer\s+)?([^"'\s,}&]+)(["']?)/gi, '$1<redacted>$3')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>')
+    .slice(0, 2000)
+}
+
+function sanitizeMofaUrl(value: string): string {
+  try {
+    const url = new URL(value)
+    for (const key of [...url.searchParams.keys()]) {
+      if (/authorization|secret|token|password|api[_-]?key|signature|session(?:[_-]?id)?/i.test(key)) url.searchParams.set(key, '<redacted>')
+    }
+    return url.toString()
+  } catch {
+    return sanitizeMofaString(value)
+  }
 }
 
 function findSpeechBoundary(value: string, flush: boolean): number {
@@ -348,10 +507,10 @@ function requiredConfig(params: AvatarClientParams): MofaRuntimeConfig {
   const values = {
     sdkUrl: params.sdkUrl, cryptoUrl: params.cryptoUrl, gatewayServer: params.gatewayServer,
     appId: params.appId, appSecret: params.appSecret, authorization: params.authorization,
-    dataSource: params.dataSource, customId: params.customId, emotionEnabled: params.emotionEnabled === true,
+    emotionEnabled: params.emotionEnabled === true,
   }
   for (const [name, value] of Object.entries(values)) {
-    if (name === 'authorization' || name === 'dataSource' || name === 'customId' || name === 'emotionEnabled') continue
+    if (name === 'authorization' || name === 'emotionEnabled') continue
     if (!value) throw new Error(`魔珐数字人缺少 ${name} 配置`)
   }
   return values as MofaRuntimeConfig
@@ -364,7 +523,7 @@ function ensureContainerId(host: HTMLElement): string {
 
 function normalizeGatewayUrl(value: string): URL {
   const gateway = new URL(value)
-  // SDK 2.2.0 starts the session with a signed HTTP POST/fetch. The
+  // The SDK starts the session with a signed HTTP POST/fetch. The
   // response contains the WebSocket URL used internally for TTSA streaming.
   if (gateway.protocol === 'wss:') gateway.protocol = 'https:'
   if (gateway.protocol === 'ws:') gateway.protocol = 'http:'
@@ -397,8 +556,9 @@ function isRecoverableTtsaError(value: unknown, detail: string): boolean {
 
 function formatTtsaError(value: unknown, detail: string): string {
   const code = typeof value === 'object' && value !== null ? Number((value as { code?: unknown }).code) : Number.NaN
-  if (detail && !['ttsa 返回异常', 'ttsa error'].includes(detail.trim().toLowerCase())) {
-    return `TTSA 暂不可用：${detail}${Number.isFinite(code) ? `（错误码 ${code}）` : ''}`
+  const safeDetail = sanitizeMofaString(detail)
+  if (safeDetail && !['ttsa 返回异常', 'ttsa error'].includes(safeDetail.trim().toLowerCase())) {
+    return `TTSA 暂不可用：${safeDetail}${Number.isFinite(code) ? `（错误码 ${code}）` : ''}`
   }
   return `TTSA 暂不可用${Number.isFinite(code) ? `（错误码 ${code}）` : ''}，请稍后重试`
 }

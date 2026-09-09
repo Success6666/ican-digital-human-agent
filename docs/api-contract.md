@@ -83,7 +83,7 @@ Docling 解析和 FutureAGI 异步导出均有并发上限：`DOCLING_MAX_CONCUR
 
 ## 魔珐 TTSA 动作与情感
 
-当前浏览器运行时使用官方 `XmovAvatar` SDK 2.2.0 的 `speak(ssml, is_start, is_end, extra)`。业务层不构造 `client_speak_id`、`client_frame`、签名或会话请求字段；SDK 负责生成播报 ID，运行时只使用 `speak` 返回值关联 `speak_end` / `speak_error`。
+当前浏览器运行时使用官方 `XmovAvatar` SDK 2.3.0 的 `speak(ssml, is_start, is_end, extra)`。业务层不构造 `client_speak_id`、`client_frame`、签名或会话请求字段；SDK 负责生成播报 ID，运行时通过官方 `onSpeakStateChange(state, client_speak_id)` 关联 `speak_end` / `speak_error`。SDK 会自行合入会话协议版本和 walk 版本；业务层只发送已核验的 `config.raw_audio`，不重复拼接 SDK 内部会话字段。
 
 Agent 的全局动作目录严格使用官方“动作意图列表”公布的 70 个 `ka_intent`，提示词同时提供官方中文释义。前端转换格式固定为 `<ue4event><type>ka_intent</type><data><ka_intent>动作名</ka_intent></data></ue4event>`，不接受别名或未公布的值。官方页面说明每个角色实际支持的动作意图数量不同，当前暂不提供角色级支持列表；`ka/action_semantic` 也是角色资源中的具体关键动作，因此不混入全局目录或推测支持范围。
 

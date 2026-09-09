@@ -164,7 +164,7 @@ def test_mofa_session_returns_only_browser_runtime_parameters(monkeypatch) -> No
     monkeypatch.setenv("MOFA_APP_ID", "browser-app")
     monkeypatch.setenv("MOFA_APP_SECRET", "browser-secret")
     monkeypatch.setenv("MOFA_EMOTION_ENABLED", "true")
-    for name in ("MOFA_AUTHORIZATION", "MOFA_CUSTOM_ID", "MOFA_DATA_SOURCE"):
+    for name in ("MOFA_AUTHORIZATION",):
         monkeypatch.delenv(name, raising=False)
     provider = MofaProvider(enabled=True)
 
@@ -180,5 +180,3 @@ def test_mofa_session_returns_only_browser_runtime_parameters(monkeypatch) -> No
     assert response.client_params["gatewayServer"].startswith("https://")
     assert response.client_params["emotionEnabled"] is True
     assert "authorization" not in response.client_params
-    assert "customId" not in response.client_params
-    assert "dataSource" not in response.client_params

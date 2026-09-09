@@ -18,6 +18,10 @@ function providerLabel(providers: ProviderStatus[], providerName?: string) {
   return providers.find((provider) => provider.name === providerName)?.label ?? providerName ?? '读取中'
 }
 
+function editableMofaValue(value?: string): string {
+  return !value || value === '未配置' ? '' : value
+}
+
 export function ConfigurationControls({
   configuration, providers, canManage, isLoading, isSaving, onSave,
 }: ConfigurationControlsProps) {
@@ -50,8 +54,8 @@ export function ConfigurationControls({
     setTtlSeconds(String(configuration.session?.ttlSeconds ?? 1800))
     setCleanupSeconds(String(configuration.session?.cleanupIntervalSeconds ?? 30))
     setMofaEnabled(Boolean(configuration.mofa?.enabled))
-    setMofaAppId(configuration.mofa?.appId ?? '')
-    setMofaAuthorization(configuration.mofa?.authorization ?? '')
+    setMofaAppId(editableMofaValue(configuration.mofa?.appId))
+    setMofaAuthorization(editableMofaValue(configuration.mofa?.authorization))
     setMofaGatewayUrl(configuration.mofa?.gatewayUrl === '星云默认网关' ? '' : configuration.mofa?.gatewayUrl ?? '')
     setMofaEmotionEnabled(Boolean(configuration.mofa?.emotionEnabled))
     setAliyunEnabled(Boolean(configuration.aliyun?.enabled))
@@ -92,12 +96,16 @@ export function ConfigurationControls({
         setFormError('启用星云前必须填写 App ID 和 App Secret')
         return
       }
+      const appId = mofaAppId.trim()
+      const authorization = mofaAuthorization.trim()
+      const existingAppId = editableMofaValue(configuration?.mofa?.appId)
+      const existingAuthorization = editableMofaValue(configuration?.mofa?.authorization)
       payload = {
         mofa: {
           enabled: mofaEnabled,
-          appId: mofaAppId.trim(),
+          ...(appId !== existingAppId ? { appId } : {}),
           ...(mofaAppSecret.trim() ? { appSecret: mofaAppSecret.trim() } : {}),
-          authorization: mofaAuthorization.trim(),
+          ...(authorization !== existingAuthorization ? { authorization } : {}),
           gatewayUrl: mofaGatewayUrl.trim(),
           emotionEnabled: mofaEmotionEnabled,
         },

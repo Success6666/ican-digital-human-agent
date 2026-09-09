@@ -36,8 +36,6 @@ function pickParams(source: Record<string, unknown>): AvatarClientParams {
   const appId = text(source.appId ?? source.app_id, MAX_TEXT)
   const appSecret = text(source.appSecret ?? source.app_secret, MAX_TEXT)
   const authorization = text(source.authorization, MAX_TEXT)
-  const dataSource = text(source.dataSource ?? source.data_source, 128)
-  const customId = text(source.customId ?? source.custom_id, 128)
   const emotionEnabled = boolean(source.emotionEnabled ?? source.emotion_enabled)
   if (runtime) result.runtime = runtime
   if (endpoint) result.endpoint = endpoint
@@ -55,8 +53,6 @@ function pickParams(source: Record<string, unknown>): AvatarClientParams {
   if (appId) result.appId = appId
   if (appSecret) result.appSecret = appSecret
   if (authorization) result.authorization = authorization
-  if (dataSource) result.dataSource = dataSource
-  if (customId) result.customId = customId
   if (emotionEnabled !== undefined) result.emotionEnabled = emotionEnabled
   const sampleRate = boundedNumber(source.sampleRate ?? source.sample_rate, 8_000, 96_000)
   const channels = boundedInteger(source.channels, 1, 2)

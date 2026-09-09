@@ -81,11 +81,12 @@ export function useAvatar() {
     if (createInFlightRef.current) return createInFlightRef.current
     setCreating(true)
     setError(null)
+    const requestedProvider = provider ?? selectedProvider
     const request = (async () => {
       try {
         const current = sessionRef.current
         if (current) await avatarApi.closeSession(current.sessionId).catch(() => undefined)
-        const next = await avatarApi.createSession(provider)
+        const next = await avatarApi.createSession(requestedProvider)
         sessionRef.current = next
         setSession(next)
         selectionInitializedRef.current = true
@@ -109,7 +110,7 @@ export function useAvatar() {
       },
     )
     return request
-  }, [])
+  }, [selectedProvider])
 
   const close = useCallback(async () => {
     if (!session) return
