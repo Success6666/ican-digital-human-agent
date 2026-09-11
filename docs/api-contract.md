@@ -1,4 +1,4 @@
-# API 契约（v0.1.53）
+# API 契约（v0.1.54）
 
 魔珐浏览器 SDK 的 `gatewayServer` 必须配置为 `http://` 或 `https://` 会话地址；SDK 先通过签名 HTTP POST 创建 TTSA 会话，再使用响应中的 WebSocket 地址进行实时播报。
 

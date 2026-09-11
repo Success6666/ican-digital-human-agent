@@ -7,7 +7,12 @@ import httpx
 import pytest
 
 from app.realtime.audio import AudioFormat
-from app.realtime.media import HttpAsrIngress, HttpTtsOutput
+from app.realtime.media import HttpAsrIngress, HttpTtsOutput, _should_trust_environment_proxy
+
+
+def test_http_asr_bypasses_environment_proxy_for_compose_service() -> None:
+    assert _should_trust_environment_proxy("http://asr-service:7000/transcribe") is False
+    assert _should_trust_environment_proxy("https://asr.example/transcribe") is True
 
 
 @pytest.mark.asyncio

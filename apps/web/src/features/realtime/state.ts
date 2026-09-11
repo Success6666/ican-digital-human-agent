@@ -86,6 +86,10 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
       if (action.status === 'unsupported') {
         return { ...state, phase: 'degraded', statusText: '当前未配置语音识别，请使用文本输入', error: undefined, lastEventAt: new Date().toISOString() }
       }
+      if (action.status === 'error') {
+        const message = transcriptErrorText(action.reason)
+        return { ...state, phase: 'error', interimTranscript: '', statusText: message, error: message, lastEventAt: new Date().toISOString() }
+      }
       if (action.status === 'partial') {
         return { ...state, interimTranscript: sanitizeDisplayText(action.text ?? '', 400), phase: 'listening', statusText: '正在聆听', lastEventAt: new Date().toISOString() }
       }
@@ -146,6 +150,14 @@ function recordingText(state: RealtimeState['recording']): string {
   if (state === 'unsupported') return '当前浏览器不支持实时录音'
   if (state === 'error') return '麦克风暂不可用'
   return phaseLabels.idle
+}
+
+function transcriptErrorText(reason?: string): string {
+  if (reason === 'asr_timeout') return '语音识别超时，请重试'
+  if (reason === 'asr_unavailable') return '语音识别服务暂不可用，请重试'
+  if (reason === 'asr_response_too_large') return '语音识别响应异常，请重试'
+  if (/^asr_http_\d{3}$/.test(reason ?? '')) return '语音识别服务返回异常，请重试'
+  return '语音识别失败，请重试'
 }
 
 function playbackText(state: RealtimeState['playback']): string {

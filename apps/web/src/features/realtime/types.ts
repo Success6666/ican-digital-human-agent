@@ -83,7 +83,7 @@ export type RealtimeAction =
   | { type: 'phase'; phase: RealtimePhase; message?: string }
   | { type: 'revision'; utteranceId?: string; revision: number }
   | { type: 'run'; runId?: string }
-  | { type: 'transcript'; status: 'partial' | 'final' | 'unsupported'; text?: string }
+  | { type: 'transcript'; status: 'partial' | 'final' | 'unsupported' | 'error'; text?: string; reason?: string }
   | { type: 'assistant'; text: string; append?: boolean }
   | { type: 'buffer'; bytes: number; dropped?: number }
   | { type: 'audio_level'; level: number }

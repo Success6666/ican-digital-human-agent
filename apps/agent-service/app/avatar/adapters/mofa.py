@@ -16,6 +16,7 @@ class MofaProvider(ConfigProvider):
     required_env = ()
     capability_defaults = AvatarCapabilities(
         text_input=True,
+        audio_input=True,
         interrupt=True,
         interrupt_scope="run",
         streaming=True,

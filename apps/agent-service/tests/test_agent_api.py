@@ -180,3 +180,4 @@ def test_mofa_session_returns_only_browser_runtime_parameters(monkeypatch) -> No
     assert response.client_params["gatewayServer"].startswith("https://")
     assert response.client_params["emotionEnabled"] is True
     assert "authorization" not in response.client_params
+    assert response.capabilities["audio_input"] is True

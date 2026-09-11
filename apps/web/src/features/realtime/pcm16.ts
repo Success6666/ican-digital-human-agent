@@ -68,6 +68,8 @@ export class Pcm16Recorder {
   private pending = new Uint8Array(0)
   private resampler: StreamingResampler | undefined
   private started = false
+  private lifecycle = 0
+  private startPromise: Promise<void> | undefined
 
   constructor(options: PcmRecorderOptions) {
     this.options = options
@@ -85,15 +87,44 @@ export class Pcm16Recorder {
 
   async start(): Promise<void> {
     if (this.started) return
+    if (this.startPromise) return this.startPromise
+    const start = this.open()
+    this.startPromise = start
+    try {
+      await start
+    } finally {
+      if (this.startPromise === start) this.startPromise = undefined
+    }
+  }
+
+  private async open(): Promise<void> {
     if (!Pcm16Recorder.supported) throw new Error('当前浏览器不支持实时录音')
+    if ((this.context || this.stream) && !this.hasReusableSession()) await this.stop()
+    const lifecycle = ++this.lifecycle
+    if (this.hasReusableSession() && this.context) {
+      try {
+        await this.context.resume()
+        this.assertStartActive(lifecycle, this.context)
+        this.pending = new Uint8Array(0)
+        this.resampler = new StreamingResampler(this.context.sampleRate, this.sampleRate)
+        this.started = true
+        return
+      } catch (cause) {
+        await this.stop()
+        if (cause instanceof Error && cause.message) throw cause
+        throw new Error('音频上下文未启动，请重新点击语音按钮')
+      }
+    }
     let stream: MediaStream | undefined
     let context: AudioContext | undefined
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: this.channels, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
+      this.assertStartActive(lifecycle)
       const Constructor = getAudioContextConstructor()
       if (!Constructor) throw new Error('当前浏览器不支持音频采集')
       context = new Constructor({ sampleRate: this.sampleRate })
-      await context.resume().catch(() => undefined)
+      await context.resume()
+      this.assertStartActive(lifecycle, context)
       const source = context.createMediaStreamSource(stream)
       const processor = context.createScriptProcessor(2048, 1, 1)
       const sink = context.createGain()
@@ -109,6 +140,7 @@ export class Pcm16Recorder {
       this.sink = sink
       this.resampler = new StreamingResampler(context.sampleRate, this.sampleRate)
       this.pending = new Uint8Array(0)
+      this.assertStartActive(lifecycle, context)
       this.started = true
     } catch (cause) {
       stream?.getTracks().forEach((track) => track.stop())
@@ -118,8 +150,18 @@ export class Pcm16Recorder {
     }
   }
 
-  async stop(): Promise<void> {
+  /** Stop forwarding one utterance while retaining the granted microphone session. */
+  pause(): void {
+    ++this.lifecycle
     this.started = false
+    this.pending = new Uint8Array(0)
+    if (this.context && this.context.state !== 'closed') {
+      this.resampler = new StreamingResampler(this.context.sampleRate, this.sampleRate)
+    }
+  }
+
+  async stop(): Promise<void> {
+    this.pause()
     if (this.processor) this.processor.onaudioprocess = null
     this.source?.disconnect()
     this.processor?.disconnect()
@@ -133,6 +175,24 @@ export class Pcm16Recorder {
     this.sink = undefined
     this.resampler = undefined
     this.pending = new Uint8Array(0)
+  }
+
+  private assertContextRunning(context: AudioContext): void {
+    if (context.state !== 'running') throw new Error('音频上下文未启动，请重新点击语音按钮')
+  }
+
+  private assertStartActive(lifecycle: number, context?: AudioContext): void {
+    if (lifecycle !== this.lifecycle) throw new Error('录音已取消')
+    if (context) this.assertContextRunning(context)
+  }
+
+  private hasReusableSession(): boolean {
+    return Boolean(
+      this.context
+      && this.context.state !== 'closed'
+      && this.stream?.active
+      && this.stream.getAudioTracks().some((track) => track.readyState === 'live'),
+    )
   }
 
   private handleInput(buffer: AudioBuffer): void {

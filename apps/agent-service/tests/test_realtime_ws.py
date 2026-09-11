@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+
+import httpx
 import pytest
 from starlette.testclient import TestClient, WebSocketDisconnect
 
 from app.main import build_container, create_app
 from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.realtime.audio import AudioFormat
+from app.realtime.media import HttpAsrIngress
 from app.settings import Settings
 
 
@@ -158,6 +163,69 @@ def test_realtime_audio_lifecycle_is_bounded_and_explicitly_unsupported() -> Non
             assert transcript["status"] == "unsupported"
             assert transcript["reason"] == "asr_unconfigured"
             assert websocket.receive_json()["type"] == "ack"
+
+
+def test_realtime_audio_final_forwards_asr_text_to_agent_run() -> None:
+    settings = Settings(
+        internal_token="test-token",
+        mcp_allow_local_fallback=False,
+        asr_endpoint="https://asr.test/transcribe",
+        asr_api_key="test-asr-token",
+    )
+    tools = CompositeToolClient(
+        StreamableHttpToolClient("http://127.0.0.1:1/mcp", internal_token="test-token", timeout_seconds=0.1),
+        LocalToolClient(),
+        allow_fallback=False,
+    )
+    container = build_container(settings, tool_client=tools)
+    assert isinstance(container.audio_ingress, HttpAsrIngress)
+    asyncio.run(container.audio_ingress._client.aclose())
+    container.audio_ingress._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"text": "语音转写文本"}))
+    )
+    messages: list[str] = []
+    original_stream = container.chat_service.stream
+
+    async def recording_stream(**kwargs):
+        messages.append(kwargs["message"])
+        return await original_stream(**kwargs)
+
+    container.chat_service.stream = recording_stream
+    with TestClient(create_app(container=container)) as client:
+        session_id = _session(client)
+        with client.websocket_connect("/internal/realtime", headers=HEADERS) as websocket:
+            websocket.send_json({"type": "hello", "requestId": "h1", "sessionId": session_id})
+            ready = websocket.receive_json()
+            assert ready["type"] == "ready"
+            assert ready["capabilities"]["audioInput"] is True
+            assert ready["capabilities"]["asr"] == "supported"
+
+            websocket.send_json({"type": "audio_start", "requestId": "a1", "utteranceId": "audio-1", "revision": 1})
+            assert websocket.receive_json()["type"] == "ack"
+            assert websocket.receive_json()["type"] == "audio_queue"
+            websocket.send_bytes(b"\x00" * AudioFormat().frame_bytes)
+            assert websocket.receive_json()["type"] == "audio_queue"
+            websocket.send_json({"type": "audio_end", "requestId": "a2", "utteranceId": "audio-1", "revision": 1})
+
+            events: list[dict[str, object]] = []
+            for _ in range(128):
+                event = websocket.receive_json()
+                events.append(event)
+                if event.get("type") == "run_done":
+                    break
+            else:
+                raise AssertionError("realtime ASR run did not terminate")
+
+    transcript = next(event for event in events if event.get("type") == "transcript")
+    assert transcript["status"] == "final"
+    assert transcript["source"] == "asr"
+    assert transcript["text"] == "语音转写文本"
+    assert any(event.get("type") == "ack" and event.get("action") == "audio_end" and event.get("accepted") is True for event in events)
+    started = next(event for event in events if event.get("type") == "run_started")
+    assert started["runId"]
+    assert events[-1]["type"] == "run_done"
+    assert events[-1]["runId"] == started["runId"]
+    assert messages == ["语音转写文本"]
 
 
 def test_realtime_speech_end_discards_active_audio_without_transcription() -> None:

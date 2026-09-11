@@ -13,6 +13,14 @@ import { hasAudioInput } from './types'
 type Dispatch = (action: RealtimeAction) => void
 type OptionsReader = () => RealtimeSessionOptions
 
+type ActiveCapture = {
+  transport: RealtimeTransport
+  config: RealtimeClientConfig
+  operation: number
+}
+
+type RecorderConfig = Pick<RealtimeClientConfig, 'sampleRate' | 'channels' | 'frameMs' | 'maxAudioBufferBytes'>
+
 /** Agent-facing runtime: owns utterance generations, audio and presentation state. */
 export class RealtimeRuntime {
   readonly textSupported: boolean
@@ -24,6 +32,8 @@ export class RealtimeRuntime {
   private config?: RealtimeClientConfig
   private transport?: RealtimeTransport
   private recorder?: Pcm16Recorder
+  private recorderConfig?: RecorderConfig
+  private activeCapture?: ActiveCapture
   private playback?: Pcm16PlaybackQueue
   private revision = 0
   private utteranceId?: string
@@ -62,9 +72,7 @@ export class RealtimeRuntime {
     if (this.disposed) return
     this.disposed = true
     ++this.operation
-    const recorder = this.recorder
-    this.recorder = undefined
-    if (recorder) await recorder.stop()
+    await this.releaseRecorder()
     this.clearRecordingTimers()
     this.dispatch({ type: 'audio_level', level: 0 })
     this.playback?.interrupt()
@@ -82,11 +90,9 @@ export class RealtimeRuntime {
   }
   async disconnect(): Promise<void> {
     ++this.operation
-    const recorder = this.recorder
     const previousUtterance = this.utteranceId
     const previousRevision = this.revision
-    this.recorder = undefined
-    if (recorder) await recorder.stop()
+    await this.releaseRecorder()
     this.clearRecordingTimers()
     this.dispatch({ type: 'audio_level', level: 0 })
     if (this.audioStarted) this.sendAudioEnd(previousUtterance, previousRevision)
@@ -124,17 +130,11 @@ export class RealtimeRuntime {
     this.dispatch({ type: 'recording', state: 'requesting' })
     this.speechDetected = false
     this.clearRecordingTimers()
-    const recorder = new Pcm16Recorder({
-      sampleRate: config.sampleRate,
-      channels: config.channels,
-      frameMs: config.frameMs,
-      maxPendingBytes: config.maxAudioBufferBytes,
-      onChunk: (frame) => this.sendAudioFrame(transport, config, operation, frame),
-      onDrop: (count) => this.dispatch({ type: 'buffer', bytes: transport.bufferedAmount, dropped: count }),
-      onLevel: (level) => this.handleAudioLevel(level),
-    })
     let audioStartSent = false
+    let recorder: Pcm16Recorder | undefined
     try {
+      recorder = await this.getRecorder(config)
+      this.activeCapture = { transport, config, operation }
       audioStartSent = transport.send(controlFrame('audio_start', {
         requestId: nextId('audio-start'), sessionId: this.sessionId, utteranceId, revision,
         codec: config.codec, sampleRate: config.sampleRate, channels: config.channels, frameMs: config.frameMs,
@@ -144,17 +144,18 @@ export class RealtimeRuntime {
       this.utteranceOpen = true
       await recorder.start()
       if (this.disposed || this.operation !== operation) {
-        await recorder.stop()
+        await this.discardRecorder(recorder)
         this.sendAudioEnd(utteranceId, revision)
         return false
       }
-      this.recorder = recorder
       this.dispatch({ type: 'recording', state: 'recording' })
       this.maxRecordingTimer = setTimeout(() => { void this.stopRecording() }, 15_000)
       return true
     } catch (cause) {
-      await recorder.stop()
+      if (recorder) await this.discardRecorder(recorder)
+      else this.pauseRecorder()
       if (audioStartSent) this.sendAudioEnd(utteranceId, revision)
+      if (this.disposed || this.operation !== operation) return false
       this.dispatch({ type: 'recording', state: Pcm16Recorder.supported ? 'error' : 'unsupported', message: cause instanceof Error ? cause.message : '麦克风暂不可用' })
       return false
     }
@@ -163,10 +164,9 @@ export class RealtimeRuntime {
   async stopRecording(): Promise<void> {
     ++this.operation
     const recorder = this.recorder
-    this.recorder = undefined
     if (!recorder && !this.audioStarted) return
     this.dispatch({ type: 'recording', state: 'stopping' })
-    if (recorder) await recorder.stop()
+    this.pauseRecorder()
     this.clearRecordingTimers()
     this.dispatch({ type: 'audio_level', level: 0 })
     this.sendAudioEnd()
@@ -177,11 +177,9 @@ export class RealtimeRuntime {
 
   async cancelRecording(): Promise<void> {
     ++this.operation
-    const recorder = this.recorder
     const utteranceId = this.utteranceId
     const revision = this.revision
-    this.recorder = undefined
-    if (recorder) await recorder.stop()
+    await this.releaseRecorder()
     this.clearRecordingTimers()
     this.dispatch({ type: 'audio_level', level: 0 })
     if (this.audioStarted && this.transport?.isReady && this.sessionId) {
@@ -216,11 +214,9 @@ export class RealtimeRuntime {
 
   private async cancelCurrent(reason: string, notify: boolean): Promise<void> {
     ++this.operation
-    const recorder = this.recorder
     const previousUtterance = this.utteranceId
     const previousRevision = this.revision
-    this.recorder = undefined
-    if (recorder) await recorder.stop()
+    this.pauseRecorder()
     this.clearRecordingTimers()
     this.dispatch({ type: 'audio_level', level: 0 })
     if (this.audioStarted) this.sendAudioEnd(previousUtterance, previousRevision)
@@ -235,6 +231,58 @@ export class RealtimeRuntime {
     this.dispatch({ type: 'recording', state: 'idle' })
     this.dispatch({ type: 'phase', phase: 'interrupting', message: '正在停止上一轮' })
     if (notify) this.readOptions().onInterrupt?.()
+  }
+
+  private async getRecorder(config: RealtimeClientConfig): Promise<Pcm16Recorder> {
+    if (this.recorder && this.recorderConfig
+      && this.recorderConfig.sampleRate === config.sampleRate
+      && this.recorderConfig.channels === config.channels
+      && this.recorderConfig.frameMs === config.frameMs
+      && this.recorderConfig.maxAudioBufferBytes === config.maxAudioBufferBytes) {
+      return this.recorder
+    }
+    await this.releaseRecorder()
+    this.recorderConfig = {
+      sampleRate: config.sampleRate,
+      channels: config.channels,
+      frameMs: config.frameMs,
+      maxAudioBufferBytes: config.maxAudioBufferBytes,
+    }
+    this.recorder = new Pcm16Recorder({
+      sampleRate: config.sampleRate,
+      channels: config.channels,
+      frameMs: config.frameMs,
+      maxPendingBytes: config.maxAudioBufferBytes,
+      onChunk: (frame) => {
+        const capture = this.activeCapture
+        return capture ? this.sendAudioFrame(capture.transport, capture.config, capture.operation, frame) : false
+      },
+      onDrop: (count) => this.dispatch({ type: 'buffer', bytes: this.activeCapture?.transport.bufferedAmount ?? 0, dropped: count }),
+      onLevel: (level) => this.handleAudioLevel(level),
+    })
+    return this.recorder
+  }
+
+  private pauseRecorder(): void {
+    this.activeCapture = undefined
+    this.recorder?.pause()
+  }
+
+  private async releaseRecorder(): Promise<void> {
+    const recorder = this.recorder
+    this.recorder = undefined
+    this.recorderConfig = undefined
+    this.activeCapture = undefined
+    if (recorder) await recorder.stop()
+  }
+
+  private async discardRecorder(recorder: Pcm16Recorder): Promise<void> {
+    if (this.recorder === recorder) {
+      this.recorder = undefined
+      this.recorderConfig = undefined
+      this.activeCapture = undefined
+    }
+    await recorder.stop()
   }
 
   private sendAudioFrame(transport: RealtimeTransport, config: RealtimeClientConfig, operation: number, frame: ArrayBuffer): boolean {
@@ -298,8 +346,7 @@ export class RealtimeRuntime {
       this.playback?.interrupt()
       this.dispatch({ type: 'run', runId: undefined })
       if (this.recorder) {
-        void this.recorder.stop()
-        this.recorder = undefined
+        void this.releaseRecorder()
         this.dispatch({ type: 'recording', state: 'idle', message: '实时通道已断开，录音已停止' })
       }
     }

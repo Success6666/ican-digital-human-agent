@@ -53,6 +53,8 @@ test('voice mode automatically resumes listening after a completed turn', async 
   assert.match(source, /continuousVoiceActive/)
   assert.match(source, /realtime\.state\.phase !== 'idle'/)
   assert.match(source, /realtime\.startRecording\(\)/)
+  assert.match(source, /const started = await realtime\.startRecording\(\)/)
+  assert.match(source, /backendRecordingStartRef/)
   assert.match(source, /realtime\.cancelRecording\(\)/)
   assert.match(source, /aria-pressed=\{continuousVoiceActive\}/)
   assert.match(source, /avatarSpeaking \|\| realtime\.state\.phase !== 'idle'/)

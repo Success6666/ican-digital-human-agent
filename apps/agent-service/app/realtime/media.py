@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -25,7 +26,10 @@ class HttpAsrIngress(MockPcmIngress):
         self.timeout_seconds = max(0.1, timeout_seconds)
         self.max_response_bytes = max(1024, max_response_bytes)
         self._buffer = bytearray()
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds, connect=min(2.0, self.timeout_seconds)))
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(self.timeout_seconds, connect=min(2.0, self.timeout_seconds)),
+            trust_env=_should_trust_environment_proxy(self.endpoint),
+        )
 
     async def start(self, utterance_id: str, revision: int) -> AudioIngressStats:
         await super().start(utterance_id, revision)
@@ -142,6 +146,15 @@ def _extract_text(response: httpx.Response) -> str | None:
             if isinstance(value, str) and value.strip():
                 return value.strip()
     return None
+
+
+def _should_trust_environment_proxy(endpoint: str) -> bool:
+    """Keep Compose-internal ASR traffic off a host-configured proxy."""
+    try:
+        host = urlparse(endpoint).hostname
+    except ValueError:
+        return True
+    return host != "asr-service"
 
 
 __all__ = ["HttpAsrIngress", "HttpTtsOutput", "NullAudioOutput"]

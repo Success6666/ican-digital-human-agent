@@ -27,6 +27,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
   const browserRecognitionRunningRef = useRef(false)
   const browserRestartTimerRef = useRef<number | null>(null)
   const realtimeRestartTimerRef = useRef<number | null>(null)
+  const backendRecordingStartRef = useRef(false)
   const sessionRef = useRef(session)
   const isCreatingRef = useRef(isCreating)
   const onSendRef = useRef(onSend)
@@ -55,7 +56,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
   }, [])
 
   useEffect(() => {
-    if (!continuousVoiceActive || !backendVoiceAvailable || recording) return
+    if (!continuousVoiceActive || !backendVoiceAvailable || recording || backendRecordingStartRef.current) return
     if (avatarSpeaking || realtime.state.phase !== 'idle' || realtime.state.playback === 'playing' || realtime.state.runId) return
     realtimeRestartTimerRef.current = window.setTimeout(() => {
       realtimeRestartTimerRef.current = null
@@ -166,6 +167,7 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
     if (continuousVoiceActive) {
       setContinuousVoiceActive(false)
       if (backendVoiceAvailable) {
+        backendRecordingStartRef.current = false
         await realtime.cancelRecording()
       } else {
         browserVoiceStoppingRef.current = true
@@ -181,7 +183,16 @@ export function HomeConversationBar({ session, realtime, isSending, isCreating =
     }
     if (!interactionReady) return
     setContinuousVoiceActive(true)
-    if (backendVoiceAvailable) return
+    if (backendVoiceAvailable) {
+      backendRecordingStartRef.current = true
+      try {
+        const started = await realtime.startRecording()
+        if (!started) setContinuousVoiceActive(false)
+      } finally {
+        backendRecordingStartRef.current = false
+      }
+      return
+    }
     if (!browserVoiceAvailable) {
       setContinuousVoiceActive(false)
       return

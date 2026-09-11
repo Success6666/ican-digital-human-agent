@@ -41,8 +41,8 @@ export function handleRealtimeEvent(event: RealtimeInboundEvent, context: Realti
     context.setRunId(event.runId)
     context.gate.setRun(event.runId)
   } else if (kind === 'transcript') {
-    const status = event.status === 'partial' || event.status === 'unsupported' ? event.status : 'final'
-    context.dispatch({ type: 'transcript', status, text: event.text })
+    const status = event.status === 'partial' || event.status === 'unsupported' || event.status === 'error' ? event.status : 'final'
+    context.dispatch({ type: 'transcript', status, text: event.text, reason: event.reason })
     context.setUtteranceOpen(status === 'partial')
     if (status === 'final' && event.text) context.readTranscript(event.text)
   } else if (kind === 'delta' || kind === 'message' || kind === 'assistant') {
