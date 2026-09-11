@@ -11,6 +11,14 @@ export function RagOverview({ health, onIngest }: RagOverviewProps) {
   const documents = health?.documents
   const collections = health?.collections ?? []
   const parserReady = health?.docling_available ?? health?.doclingAvailable
+  // A usable Docling import is not enough: PDF/image ingest also needs the OCR
+  // runtime, and that failure only surfaces mid-conversion without this check.
+  const ocrBlocked = health?.docling_ocr_ready === false
+  const parserNote = ocrBlocked
+    ? (health?.docling_ocr_error || 'OCR 引擎不可用，扫描件与图片将解析失败')
+    : parserReady === false
+      ? '当前使用文本回退解析'
+      : 'Docling 解析状态将随入库任务更新'
   return (
     <div className="rag-tab-panel" aria-labelledby="rag-overview-title">
       <div className="rag-overview-grid">
@@ -43,7 +51,7 @@ export function RagOverview({ health, onIngest }: RagOverviewProps) {
               <div className="rag-chart-empty">接入数据后更新趋势</div>
             </div>
           </div>
-          <p className="chart-note"><span className={'health-dot' + (parserReady === false ? ' health-dot--warning' : '')} />{parserReady === false ? '当前使用文本回退解析' : 'Docling 解析状态将随入库任务更新'}</p>
+          <p className="chart-note"><span className={'health-dot' + (ocrBlocked || parserReady === false ? ' health-dot--warning' : '')} />{parserNote}</p>
         </section>
       </div>
     </div>

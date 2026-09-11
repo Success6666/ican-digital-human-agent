@@ -110,7 +110,9 @@ test('normalizes TTSA session gateway URLs to HTTP schemes and keeps reconnect c
   assert.match(runtime, /isRecoverableTtsaError/)
   assert.match(runtime, /暂无空闲房间/)
   assert.match(runtime, /phase: 'warning'/)
-  assert.match(runtime, /!initialized \|\| ttsaWarning \|\| rendered/)
+  assert.match(runtime, /!initialized/)
+  assert.match(runtime, /ttsaWarning/)
+  assert.match(runtime, /rendered = true/)
   assert.doesNotMatch(runtime, /walk_version|framedata_proto_version|raw_audio/)
   const surface = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/AvatarRuntimeSurface.tsx', import.meta.url)), 'utf8')
   assert.match(surface, /const currentSpeechMessageId = speech\?\.id\?\.split\(':', 1\)\[0\]/)
@@ -136,7 +138,7 @@ test('generates runtime ids when randomUUID is unavailable on public HTTP', asyn
 })
 
 test('sends streaming segments with official start/end boundaries and waits only for the final callback', async () => {
-  const Runtime = await loadRuntimeForTest()
+  const { Runtime } = await loadRuntimeForTest()
   const runtime = new Runtime()
   const calls = []
   let interactiveIdleCalls = 0
@@ -150,21 +152,210 @@ test('sends streaming segments with official start/end boundaries and waits only
 
   const pending = runtime.speak('第一段。第二段。', undefined, { flush: true })
   await nextTask()
-  assert.equal(calls.length, 2)
+  // Only the first clause is handed over: the second waits for the SDK to
+  // acknowledge it, instead of both racing and one being dropped.
+  assert.equal(calls.length, 1)
   assert.equal(calls[0].isStart, true)
   assert.equal(calls[0].isEnd, false)
-  assert.equal(calls[1].isStart, false)
-  assert.equal(calls[1].isEnd, true)
+  // The stream is parked on the SDK acknowledging this clause, and only then
+  // hands over the next one.
+  assert.ok(runtime.segmentAck)
 
   runtime.handleSpeakStateChange('speak_start', 'sdk-speech-1')
+  await nextTask()
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].isStart, false)
+  assert.equal(calls[1].isEnd, true)
+  // The final segment never waits on an acknowledgement: it is already
+  // awaited through the completion promise.
+  assert.equal(runtime.segmentAck, undefined)
+
   runtime.handleSpeakStateChange('speak_end', 'sdk-speech-1')
   await pending
   assert.equal(runtime.streamStarted, false)
   assert.equal(interactiveIdleCalls, 1)
 })
 
+test('releases the next segment after an ack timeout when the SDK stays silent', async () => {
+  const { Runtime, reported } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd) { calls.push({ ssml, isStart, isEnd }) },
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+  runtime.setTraceContext({ traceId: () => 'trace-ack', runId: () => undefined, utteranceId: () => undefined, revision: () => undefined })
+
+  const pending = runtime.speak('第一段。第二段。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 1)
+  // No `speak_start` ever arrives; the timeout must still let the tail out.
+  await new Promise((resolve) => setTimeout(resolve, 1_300))
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].isEnd, true)
+  const timeout = reported.find((event) => event.name === 'speech.ack_timeout')
+  assert.ok(timeout)
+  assert.equal(timeout.status, 'error')
+  runtime.handleSpeakStateChange('speak_end', 'sdk-ack')
+  await pending
+})
+
+test('merges text still buffered at flush time instead of dropping it', async () => {
+  const { Runtime } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd) { calls.push({ ssml, isStart, isEnd }) },
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+
+  // "好的" is under the opening threshold, so it stays buffered.
+  await runtime.speak('好的')
+  await nextTask()
+  assert.equal(calls.length, 0)
+  assert.equal(runtime.speechBuffer, '好的')
+
+  const pending = runtime.speak('没问题。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].isStart, true)
+  assert.equal(calls[0].isEnd, true)
+  // The short fragment must ride along with the final clause.
+  assert.match(calls[0].ssml, /好的/)
+  assert.match(calls[0].ssml, /没问题/)
+  assert.equal(runtime.speechBuffer, '')
+  runtime.handleSpeakStateChange('speak_start', 'sdk-merge')
+  runtime.handleSpeakStateChange('speak_end', 'sdk-merge')
+  await pending
+})
+
+test('serializes concurrent speak calls so no segment is overwritten', async () => {
+  const { Runtime } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd) { calls.push({ ssml, isStart, isEnd }) },
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+
+  // React re-runs the speech effect on every delta without awaiting. These
+  // four overlapping calls must still arrive in order.
+  const first = runtime.speak('第一句。')
+  const second = runtime.speak('第二句。')
+  const third = runtime.speak('第三句。')
+  const fourth = runtime.speak('', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 1)
+  assert.match(calls[0].ssml, /第一句/)
+
+  runtime.handleSpeakStateChange('speak_start', 's1')
+  await nextTask()
+  assert.equal(calls.length, 2)
+  assert.match(calls[1].ssml, /第二句/)
+
+  runtime.handleSpeakStateChange('speak_start', 's2')
+  await nextTask()
+  assert.equal(calls.length, 3)
+  assert.match(calls[2].ssml, /第三句/)
+
+  runtime.handleSpeakStateChange('speak_start', 's3')
+  await nextTask()
+  assert.equal(calls.length, 3)
+  runtime.handleSpeakStateChange('speak_end', 's3')
+  await nextTask()
+  await Promise.all([first, second, third, fourth])
+  assert.equal(runtime.streamStarted, false)
+})
+
+test('reports a dropped segment instead of losing it silently', async () => {
+  const { Runtime, reported } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  runtime.setTraceContext({ traceId: () => 'trace-drop', runId: () => undefined, utteranceId: () => undefined, revision: () => undefined })
+  // No avatar instance: the segment cannot be handed over and must be visible.
+  await runtime.dispatchSpeechSegment({ text: '被丢弃的内容' }, true, runtime.speechGeneration)
+  const dropped = reported.find((event) => event.name === 'speech.dropped')
+  assert.ok(dropped)
+  assert.equal(dropped.status, 'error')
+  assert.equal(dropped.attributes.reason, 'avatar_unavailable')
+  assert.equal(dropped.attributes.textLength, 6)
+})
+
+test('drops a segment whose utterance was abandoned while it waited its turn', async () => {
+  const { Runtime, reported } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd) { calls.push({ ssml, isStart, isEnd }) },
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+  runtime.setTraceContext({ traceId: () => 'trace-stale', runId: () => undefined, utteranceId: () => undefined, revision: () => undefined })
+
+  // A generation from an utterance that is already gone.
+  await runtime.dispatchSpeechSegment({ text: '上一轮残留' }, true, runtime.speechGeneration + 1)
+  assert.equal(calls.length, 0)
+  const dropped = reported.find((event) => event.name === 'speech.dropped')
+  assert.ok(dropped)
+  assert.equal(dropped.attributes.reason, 'generation_changed')
+  assert.equal(dropped.attributes.textLength, 5)
+})
+
+test('an interrupt mid-stream keeps the abandoned answer out of the next one', async () => {
+  const { Runtime } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd) { calls.push({ ssml, isStart, isEnd }) },
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+
+  // Two clauses in one pass: the first goes out, the second waits for the SDK
+  // to acknowledge it. That wait is exactly where a barge-in lands.
+  const abandoned = runtime.speak('第一段。第二段。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 1)
+
+  await runtime.interrupt()
+  // The clause was cut before the wait, so without a guard it would be
+  // re-queued here and open the *next* answer.
+  assert.equal(runtime.pendingSpeech, undefined)
+  assert.equal(runtime.speechBuffer, '')
+  await abandoned
+
+  const next = runtime.speak('新的回答。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 2)
+  assert.match(calls[1].ssml, /新的回答/)
+  assert.doesNotMatch(calls[1].ssml, /第二段/)
+  runtime.handleSpeakStateChange('speak_start', 'sdk-next')
+  runtime.handleSpeakStateChange('speak_end', 'sdk-next')
+  await next
+})
+
+test('records how much speech was discarded when an interrupt arrives', async () => {
+  const { Runtime, reported } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  runtime.avatar = {
+    speak() {},
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+  runtime.setTraceContext({ traceId: () => 'trace-interrupt', runId: () => undefined, utteranceId: () => undefined, revision: () => undefined })
+  // Buffer a clause below the release threshold, then interrupt mid-answer.
+  await runtime.speak('还没说出口的话')
+  await runtime.interrupt()
+  const interrupted = reported.find((event) => event.name === 'speech.interrupted')
+  assert.ok(interrupted)
+  assert.equal(interrupted.attributes.pendingLength, 7)
+  assert.equal(runtime.speechBuffer, '')
+})
+
 test('keeps the final segment until the stream closes so it can be marked is_end', async () => {
-  const Runtime = await loadRuntimeForTest()
+  const { Runtime } = await loadRuntimeForTest()
   const runtime = new Runtime()
   const calls = []
   runtime.avatar = {
@@ -190,12 +381,171 @@ test('keeps the final segment until the stream closes so it can be marked is_end
   assert.equal(runtime.streamStarted, false)
 })
 
-async function loadRuntimeForTest() {
+test('reports the speak lifecycle onto the shared trace once a trace exists', async () => {
+  const { Runtime, reported } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  runtime.avatar = {
+    speak() {},
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+  // No trace yet: the avatar runtime must stay silent rather than invent one.
+  runtime.setTraceContext({
+    traceId: () => undefined,
+    runId: () => undefined,
+    utteranceId: () => undefined,
+    revision: () => undefined,
+  })
+  runtime.handleSpeakStateChange('speak_start', 'sdk-1')
+  assert.equal(reported.length, 0)
+
+  runtime.setTraceContext({
+    traceId: () => 'trace-1',
+    runId: () => 'run-1',
+    utteranceId: () => 'utt-1',
+    revision: () => 4,
+  })
+  runtime.handleSpeakStateChange('speak_start', 'sdk-1')
+  assert.equal(reported.length, 1)
+  assert.equal(reported[0].name, 'speak.started')
+  assert.equal(reported[0].traceId, 'trace-1')
+  assert.equal(reported[0].runId, 'run-1')
+  assert.equal(reported[0].utteranceId, 'utt-1')
+  assert.equal(reported[0].revision, 4)
+
+  // An error transition marks the trace and carries no SSML or audio.
+  runtime.handleSpeakStateChange('speak_error', 'sdk-1')
+  const failure = reported.find((event) => event.name === 'speak.failed')
+  assert.ok(failure)
+  assert.equal(failure.status, 'error')
+  assert.equal(JSON.stringify(reported).includes('ssml'), false)
+})
+
+test('marks a TTSA warning once and clears it when the session recovers', async () => {
+  const { Runtime, reported } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  runtime.setTraceContext({
+    traceId: () => 'trace-ttsa',
+    runId: () => undefined,
+    utteranceId: () => undefined,
+    revision: () => undefined,
+  })
+  runtime.markTtsaWarning({ code: 40006 }, '暂无空闲房间')
+  // Repeated warnings must not flood the trace.
+  runtime.markTtsaWarning({ code: 40006 }, '暂无空闲房间')
+  const warnings = reported.filter((event) => event.name === 'ttsa.warning')
+  assert.equal(warnings.length, 1)
+  assert.equal(warnings[0].status, 'error')
+
+  runtime.markTtsaRecovered()
+  runtime.markTtsaRecovered()
+  assert.equal(reported.filter((event) => event.name === 'ttsa.recovered').length, 1)
+})
+
+test('uses a monotonic fallback clock when performance is unavailable', async () => {
+  const { Runtime } = await loadRuntimeForTest({ reportClientEvent: () => undefined })
+  const runtime = new Runtime()
+  // The guarded clock must not throw in a sandbox without `performance`.
+  assert.doesNotThrow(() => runtime.setTraceContext({
+    traceId: () => 'trace-clock',
+    runId: () => undefined,
+    utteranceId: () => undefined,
+    revision: () => undefined,
+  }))
+  assert.doesNotThrow(() => runtime.handleSpeakStateChange('speak_start', 'sdk-clock'))
+})
+
+test('reports blocked audio when the page was never unlocked', async () => {
+  // A phone that never received a gesture: the context is suspended and every
+  // utterance would be rendered in silence.
+  const { Runtime, reported } = await loadRuntimeForTest({
+    audioUnlock: audioStateStub('suspended'),
+  })
+  const runtime = new Runtime()
+  runtime.setTraceContext({ traceId: () => 'trace-audio', runId: () => undefined, utteranceId: () => undefined, revision: () => undefined })
+  runtime.avatar = { speak() {}, interrupt: () => 0, interactiveidle() {} }
+
+  const pending = runtime.dispatchSpeechSegment({ text: '测试内容' }, false, runtime.speechGeneration)
+  runtime.handleSpeakStateChange('speak_start', 'a1')
+  await pending
+
+  const blocked = reported.find((event) => event.name === 'avatar.audio_blocked')
+  assert.ok(blocked)
+  assert.equal(blocked.status, 'error')
+  assert.equal(blocked.attributes.state, 'suspended')
+})
+
+test('reports the audio state once per change, not once per segment', async () => {
+  let state = 'suspended'
+  const audio = {
+    installAudioContextTracker() {},
+    resumeTrackedAudio() {},
+    avatarAudioState: () => ({ state, unlocked: state === 'running', trackedCount: 1 }),
+  }
+  const { Runtime, reported } = await loadRuntimeForTest({ audioUnlock: audio })
+  const runtime = new Runtime()
+  runtime.setTraceContext({ traceId: () => 'trace-audio2', runId: () => undefined, utteranceId: () => undefined, revision: () => undefined })
+  runtime.avatar = { speak() {}, interrupt: () => 0, interactiveidle() {} }
+
+  const speakOnce = async (text, id) => {
+    const pending = runtime.dispatchSpeechSegment({ text }, false, runtime.speechGeneration)
+    runtime.handleSpeakStateChange('speak_start', id)
+    await pending
+  }
+
+  await speakOnce('第一句', 'a1')
+  assert.equal(reported.filter((event) => event.name === 'avatar.audio_blocked').length, 1)
+  // Still suspended: repeating the marker would bury the rest of the trace.
+  await speakOnce('第二句', 'a2')
+  assert.equal(reported.filter((event) => event.name === 'avatar.audio_blocked').length, 1)
+
+  // The user taps, and the page finally unlocks.
+  state = 'running'
+  await speakOnce('第三句', 'a3')
+  const unlocked = reported.filter((event) => event.name === 'avatar.audio_unlocked')
+  assert.equal(unlocked.length, 1)
+  assert.equal(unlocked[0].attributes.state, 'running')
+})
+
+/**
+ * Stand-in for the audio unlock module.
+ *
+ * `resumeTrackedAudio` deliberately does nothing while suspended: that mirrors
+ * a phone where no gesture ever unlocked the page, and is the case the runtime
+ * has to report rather than silently accept.
+ */
+function audioStateStub(state) {
+  return {
+    installAudioContextTracker() {},
+    resumeTrackedAudio() {},
+    avatarAudioState: () => ({ state, unlocked: state === 'running', trackedCount: 1 }),
+  }
+}
+
+function createAudioUnlockStub(initialState) {
+  const state = { value: initialState }
+  return {
+    setState(next) { state.value = next },
+    installAudioContextTracker() {},
+    resumeTrackedAudio() {},
+    avatarAudioState: () => ({
+      state: state.value,
+      unlocked: state.value === 'running',
+      trackedCount: 1,
+    }),
+  }
+}
+
+async function loadRuntimeForTest(options = {}) {
   const runtimeSource = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
   const runtimeOutput = ts.transpileModule(runtimeSource, {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
   }).outputText
   const module = { exports: {} }
+  // Capture telemetry so tests can assert what the vendor SDK lifecycle
+  // reported onto the shared trace, without pulling in the real transport.
+  const reported = []
+  const reportClientEvent = options.reportClientEvent ?? ((event) => { reported.push(event) })
   const context = {
     module,
     exports: module.exports,
@@ -203,14 +553,18 @@ async function loadRuntimeForTest() {
       if (specifier.endsWith('/mofaSpeech')) return { buildMofaSpeechRequest: (text) => ({ ssml: text, extra: {} }) }
       if (specifier.endsWith('/runtimeId')) return { createRuntimeId: (() => { let id = 0; return () => `speech-${++id}` })() }
       if (specifier.endsWith('/scriptLoader')) return { loadExternalScript: async () => undefined }
+      if (specifier.includes('clientReporter')) return { reportClientEvent }
+      if (specifier.endsWith('/audioUnlock')) return options.audioUnlock ?? createAudioUnlockStub(options.audioState ?? 'suspended')
       return {}
     },
     window: { setTimeout, clearTimeout, requestAnimationFrame: (callback) => setTimeout(callback, 0) },
+    performance: typeof performance === 'undefined' ? undefined : performance,
+    Date,
     console,
     URL,
   }
   vm.runInNewContext(runtimeOutput, context)
-  return module.exports.MofaBrowserRuntime
+  return { Runtime: module.exports.MofaBrowserRuntime, reported }
 }
 
 function nextTask() {

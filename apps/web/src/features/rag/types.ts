@@ -6,6 +6,10 @@ export interface RagHealth {
   collections?: RagCollectionStatistics[]
   docling_available?: boolean | null
   doclingAvailable?: boolean | null
+  /** False when the configured OCR engine cannot be constructed (missing runtime). */
+  docling_ocr_ready?: boolean | null
+  /** Human readable reason the OCR engine is unusable, when it is. */
+  docling_ocr_error?: string | null
 }
 
 export interface RagCollectionStatistics {

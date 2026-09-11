@@ -4,6 +4,7 @@ import type { useAvatar } from '../features/avatar/model'
 import type { useChat } from '../features/chat/model'
 import type { useRealtimeSession } from '../features/realtime/model'
 import { AvatarStage } from '../features/avatar/components/AvatarStage'
+import type { AvatarTraceSource } from '../features/avatar/runtime/AvatarRuntimeSurface'
 import { ConversationDrawer } from '../features/chat/components/ConversationDrawer'
 import { HomeConversationBar } from '../features/chat/components/HomeConversationBar'
 
@@ -40,6 +41,17 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
   const [avatarReady, setAvatarReady] = useState(false)
   const realtimeAssistant = realtime.state.assistantText.trim()
   const pendingApproval = [...chat.timeline].reverse().find((item) => item.approvalId && item.approvalStatus === 'pending')
+  // The avatar runtime lives longer than any single run, so it reads the trace
+  // identity lazily. This ref keeps the identity current without reconnecting
+  // the avatar (and re-downloading its assets) on every streamed delta.
+  const realtimeTraceRef = useRef(realtime.state)
+  realtimeTraceRef.current = realtime.state
+  const avatarTraceSource = useRef<AvatarTraceSource>({
+    traceId: () => realtimeTraceRef.current.traceId ?? realtimeTraceRef.current.connectionId,
+    runId: () => realtimeTraceRef.current.runId,
+    utteranceId: () => realtimeTraceRef.current.utteranceId,
+    revision: () => realtimeTraceRef.current.revision,
+  }).current
   const activeSpeech = realtimeAssistant ? {
     id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
     text: realtimeAssistant,
@@ -95,6 +107,7 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           isCreating={avatar.isCreating}
           speech={activeSpeech}
           interruptKey={avatarSpeaking ? latestUser?.id : undefined}
+          traceSource={avatarTraceSource}
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}
           onDisconnect={() => void avatar.close()}

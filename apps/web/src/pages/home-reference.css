@@ -89,6 +89,33 @@
 
 .avatar-runtime-overlay span { font-size: 10px; }
 
+/* Shown only when the browser has audio suspended — a phone that has not been
+   unlocked yet. It sits above the stage so the tap that unlocks audio can
+   actually reach it. */
+.avatar-audio-hint {
+  position: absolute;
+  z-index: 3;
+  bottom: 12px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  color: var(--brand-ink);
+  background: var(--surface);
+  box-shadow: 0 3px 10px rgba(55, 82, 128, .16);
+  font-size: 11px;
+  font-weight: 650;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.avatar-audio-hint:hover { background: var(--brand-soft); }
+
 .avatar-waiting {
   position: absolute;
   inset: 0;

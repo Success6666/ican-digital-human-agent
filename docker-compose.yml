@@ -156,7 +156,13 @@ services:
       EVAL_OUTPUT_PRICE_PER_1K: ${EVAL_OUTPUT_PRICE_PER_1K:-0.009}
       EVAL_CURRENCY: ${EVAL_CURRENCY:-CNY}
       DOCLING_ENABLED: ${DOCLING_ENABLED:-true}
-      DOCLING_ARTIFACTS_PATH: /app/model-cache/docling
+      # Left unset on purpose. Once DOCLING_ARTIFACTS_PATH is set, Docling 2.1xx
+      # treats the directory as a fully prefetched offline store and stops
+      # falling back to the Hugging Face cache: layout, table and RapidOCR
+      # weights all have to live under it, and a partially populated directory
+      # turns every PDF into FileNotFoundError. Without it, models resolve
+      # through HF_HOME (inside the agent-model-cache volume) and RapidOCR uses
+      # the checkpoints its own wheel already ships.
       DOCLING_MAX_CONCURRENCY: ${DOCLING_MAX_CONCURRENCY:-1}
       DOCLING_OCR_BACKEND: ${DOCLING_OCR_BACKEND:-onnxruntime}
       DOCLING_OCR_LANG: ${DOCLING_OCR_LANG:-chinese}

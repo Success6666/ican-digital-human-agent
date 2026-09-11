@@ -14,6 +14,10 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
+from app.observability.client_events import (  # noqa: E402
+    ClientTelemetryBatch,
+    ClientTelemetryEvent,
+)
 from app.observability.futureagi import FutureAGIConfig, FutureAGISink  # noqa: E402
 from app.observability.futureagi_runtime import FutureAGIRuntime  # noqa: E402
 from app.observability.local import LocalJsonLogSink  # noqa: E402
@@ -337,6 +341,183 @@ class ObservabilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(service.pending_task_count, 0)
         self.assertEqual(sink.cancelled, 1)
         self.assertEqual(sink.flushed, 1)
+
+    async def test_client_events_join_the_server_trace_with_server_identity(self) -> None:
+        trace_id = "trace-shared-1"
+        self.observability.record_event(
+            "realtime.run_started",
+            event_type="realtime",
+            trace_id=trace_id,
+            attributes={"owner_id": "u-owner"},
+        )
+        accepted = self.observability.ingest_client_events(
+            [
+                ClientTelemetryEvent(
+                    name="speak.dispatched",
+                    trace_id=trace_id,
+                    run_id="run-1",
+                    utterance_id="utt-1",
+                    revision=3,
+                    attributes={"text_length": 12, "owner_id": "forged-owner"},
+                )
+            ],
+            owner_id="u-owner",
+            session_id="sess-1",
+            connection_id="conn-1",
+        )
+        self.assertEqual(accepted, 1)
+        events = self.observability.recent(owner_id="u-owner")
+        browser_event = [event for event in events if event.name == "speak.dispatched"][0]
+        self.assertEqual(browser_event.trace_id, trace_id)
+        self.assertEqual(browser_event.event_type, "realtime")
+        self.assertEqual(browser_event.attributes["source"], "browser")
+        self.assertEqual(browser_event.attributes["session_id"], "sess-1")
+        self.assertEqual(browser_event.attributes["run_id"], "run-1")
+        self.assertEqual(browser_event.attributes["revision"], 3)
+        # A client cannot reassign ownership of an event.
+        self.assertEqual(browser_event.attributes["owner_id"], "u-owner")
+
+    async def test_client_events_reject_unknown_names_and_secret_attributes(self) -> None:
+        with self.assertRaises(ValueError):
+            ClientTelemetryEvent(name="exec.arbitrary", trace_id="trace-x")
+
+        event = ClientTelemetryEvent(
+            name="capture.permission_denied",
+            trace_id="trace-x",
+            status="error",
+            attributes={"reason": "NotAllowedError", "token": "top-secret"},
+        )
+        self.assertEqual(event.attributes["token"], "[REDACTED]")
+
+    async def test_client_event_error_status_is_preserved_as_failure(self) -> None:
+        self.observability.ingest_client_events(
+            [
+                ClientTelemetryEvent(
+                    name="speak.failed",
+                    trace_id="trace-err",
+                    status="error",
+                    attributes={"reason": "星云播报失败"},
+                )
+            ],
+            owner_id="u-err",
+        )
+        events = self.observability.recent(owner_id="u-err")
+        self.assertEqual(events[0].status, "error")
+        self.assertTrue(events[0].error_message)
+
+    async def test_client_batch_bounds_event_count(self) -> None:
+        with self.assertRaises(ValueError):
+            ClientTelemetryBatch(events=[])
+
+    def test_replay_groups_events_into_end_to_end_phases(self) -> None:
+        """A browser+server trace must replay as five ordered phases."""
+        trace_id = "trace-e2e-1"
+        self.observability.record_event(
+            "realtime.run_started", event_type="realtime", trace_id=trace_id, attributes={"owner_id": "u-e2e"},
+        )
+        self.observability.record_event(
+            "asr.response", event_type="realtime", trace_id=trace_id, attributes={"owner_id": "u-e2e"},
+        )
+        self.observability.record_event(
+            "agent.first_byte", event_type="agent", trace_id=trace_id, attributes={"owner_id": "u-e2e"},
+        )
+        self.observability.ingest_client_events(
+            [
+                ClientTelemetryEvent(name="capture.recorder_started", trace_id=trace_id, attributes={"owner_id": "u-e2e"}),
+                ClientTelemetryEvent(name="speech.assembled", trace_id=trace_id, attributes={"deltaLength": 6}),
+                ClientTelemetryEvent(name="speak.dispatched", trace_id=trace_id, attributes={"textLength": 6}),
+            ],
+            owner_id="u-e2e",
+        )
+
+        replay = self.observability.trace_replay(trace_id, owner_id="u-e2e")
+        self.assertIsNotNone(replay)
+        phases = replay.trace.phases
+        self.assertEqual([phase.key for phase in phases], ["capture", "asr", "agent", "speech", "playback"])
+        self.assertTrue(all(phase.observed for phase in phases))
+        self.assertEqual(replay.trace.origin, "browser")
+        # Phases are listed in canonical turn order, which is NOT necessarily
+        # wall-clock order: capture starts before the run trace exists, so its
+        # offset can sit after the agent's. The invariant that matters for the
+        # waterfall is that every offset is a real, non-negative distance from
+        # the trace start and that the first marker anchors at zero.
+        offsets = [phase.start_offset_ms for phase in phases]
+        self.assertTrue(all(offset >= 0 for offset in offsets))
+        self.assertEqual(min(offsets), 0.0)
+        self.assertEqual(replay.trace.coverage, ["capture", "asr", "agent", "speech", "playback"])
+
+    def test_unobserved_phases_are_reported_as_gaps(self) -> None:
+        """A server-only trace must expose its blind spots instead of hiding them."""
+        trace_id = "trace-server-only"
+        self.observability.record_event(
+            "agent.stream", event_type="agent", trace_id=trace_id, attributes={"owner_id": "u-gap"},
+        )
+        replay = self.observability.trace_replay(trace_id, owner_id="u-gap")
+        self.assertIsNotNone(replay)
+        phases = {phase.key: phase for phase in replay.trace.phases}
+        self.assertTrue(phases["agent"].observed)
+        self.assertFalse(phases["capture"].observed)
+        self.assertFalse(phases["playback"].observed)
+        self.assertEqual(replay.trace.origin, "server")
+        self.assertEqual(replay.trace.coverage, ["agent"])
+        # An unobserved phase has no span, so it must not claim a real duration.
+        self.assertIsNone(phases["capture"].duration_ms)
+
+    def test_phase_reports_the_failing_marker_reason(self) -> None:
+        """Silence must stay explainable: the failing phase carries the reason."""
+        trace_id = "trace-silent"
+        self.observability.ingest_client_events(
+            [
+                ClientTelemetryEvent(
+                    name="ttsa.warning",
+                    trace_id=trace_id,
+                    status="error",
+                    attributes={"reason": "暂无空闲房间", "code": 40006},
+                )
+            ],
+            owner_id="u-silent",
+        )
+        replay = self.observability.trace_replay(trace_id, owner_id="u-silent")
+        self.assertIsNotNone(replay)
+        playback = next(phase for phase in replay.trace.phases if phase.key == "playback")
+        self.assertEqual(playback.status, "error")
+        self.assertTrue(playback.error_message)
+
+    def test_speech_loss_markers_are_whitelisted(self) -> None:
+        """Losing the start of an answer must stay visible in the trace.
+
+        These markers are the only evidence that a segment was dropped or an
+        interrupt cut the avatar off, so a rename that drops them from the
+        whitelist would silently bring the invisible-loss bug back.
+        """
+        for name in ("speech.dropped", "speech.ack_timeout", "speech.interrupted"):
+            with self.subTest(name=name):
+                event = ClientTelemetryEvent(
+                    name=name,
+                    trace_id="trace-loss",
+                    status="error",
+                    attributes={"reason": "generation_changed", "pendingLength": 7},
+                )
+                self.assertEqual(event.name, name)
+                self.assertEqual(event.attributes["pendingLength"], 7)
+
+        accepted = self.observability.ingest_client_events(
+            [
+                ClientTelemetryEvent(
+                    name="speech.dropped",
+                    trace_id="trace-loss",
+                    status="error",
+                    attributes={"reason": "avatar_unavailable", "textLength": 12},
+                )
+            ],
+            owner_id="u-loss",
+        )
+        self.assertEqual(accepted, 1)
+        replay = self.observability.trace_replay("trace-loss", owner_id="u-loss")
+        self.assertIsNotNone(replay)
+        speech = next(phase for phase in replay.trace.phases if phase.key == "speech")
+        self.assertTrue(speech.observed)
+        self.assertEqual(speech.status, "error")
 
 
 if __name__ == "__main__":

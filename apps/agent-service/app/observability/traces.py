@@ -6,7 +6,7 @@ from collections.abc import Iterable
 import math
 from typing import Any
 
-from .models import TelemetryEvent, TraceReplay, TraceStage, TraceSummary
+from .models import TelemetryEvent, TracePhase, TraceReplay, TraceStage, TraceSummary
 from .redaction import redact
 
 
@@ -25,6 +25,24 @@ _CANCEL_NAMES = {
     "run.stop",
     "run.interrupted",
 }
+
+# End-to-end phases of the voice loop, in the order a turn actually happens.
+# Matching is by name prefix so a new marker inside an existing phase is picked
+# up without having to extend this table.
+_PHASE_ORDER: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("capture", "采集", ("capture.",)),
+    ("asr", "识别", ("asr.", "realtime.first_transcript")),
+    ("agent", "理解", ("agent.", "security_gate", "receive", "realtime.run_started")),
+    ("speech", "装配", ("speech.", "realtime.first_delta", "realtime.audio_queue", "send_text")),
+    ("playback", "播报", ("speak.", "ttsa.", "realtime.first_audio_output", "realtime.interrupt_ack")),
+)
+
+_PHASE_LABELS = {key: label for key, label, _ in _PHASE_ORDER}
+
+# A phase is browser-owned when only the client can observe it. Recognition is
+# server-observable now that the ASR ingress emits its own markers, so it is
+# intentionally absent here and counts as covered for server-origin traces.
+_BROWSER_PHASES = {"capture", "speech", "playback"}
 
 
 def summaries(
@@ -56,6 +74,8 @@ def replay(
     truncated = len(ordered) > safe_limit
     visible = ordered[:safe_limit]
     safe_events = [event.model_copy(update={"attributes": redact(event.attributes)}) for event in visible]
+    # Summarise the sanitised set so a redacted credential can never reach the
+    # waterfall through an error message or attribute.
     return TraceReplay(trace=_summarize(safe_events), events=safe_events, truncated=truncated)
 
 
@@ -88,6 +108,7 @@ def _summarize(events: list[TelemetryEvent]) -> TraceSummary:
         )
         for event in ordered
     ]
+    phases = _phases(ordered, started_at)
     return TraceSummary(
         trace_id=ordered[0].trace_id,
         status=status,  # type: ignore[arg-type]
@@ -111,7 +132,76 @@ def _summarize(events: list[TelemetryEvent]) -> TraceSummary:
             ("cancellation_latency_ms", "cancel_latency_ms", "cancelLatencyMs", "latency_ms"),
         ),
         stages=stages,
+        phases=phases,
+        origin=_origin(ordered),
+        coverage=[phase.key for phase in phases if phase.observed],
     )
+
+
+def _phases(events: list[TelemetryEvent], started_at: Any) -> list[TracePhase]:
+    """Bucket trace events into the five end-to-end phases of one turn.
+
+    Every phase is always returned, including unobserved ones, so the console
+    shows a gap instead of silently hiding a stage the browser never reported.
+    """
+
+    buckets: dict[str, list[TelemetryEvent]] = {key: [] for key, _, _ in _PHASE_ORDER}
+    for event in events:
+        key = _phase_for(event.name)
+        if key is not None:
+            buckets[key].append(event)
+
+    phases: list[TracePhase] = []
+    for key, label, _ in _PHASE_ORDER:
+        items = buckets[key]
+        if not items:
+            phases.append(TracePhase(key=key, label=label, start_offset_ms=0.0, observed=False))  # type: ignore[arg-type]
+            continue
+        first = items[0]
+        last = items[-1]
+        statuses = {item.status for item in items}
+        status = "error" if "error" in statuses else ("ok" if "ok" in statuses else "unset")
+        error_event = next((item for item in items if item.status == "error"), None)
+        failure = None
+        if error_event is not None:
+            failure = error_event.error_message or str(error_event.attributes.get("reason") or "") or None
+        duration_ms = max(0.0, (last.timestamp - first.timestamp).total_seconds() * 1000)
+        phases.append(
+            TracePhase(
+                key=key,  # type: ignore[arg-type]
+                label=label,
+                start_offset_ms=max(0.0, (first.timestamp - started_at).total_seconds() * 1000),
+                # A single-marker phase has no measurable span; reporting 0.0
+                # would misread as "instantaneous" in the waterfall.
+                duration_ms=duration_ms if len(items) > 1 else None,
+                status=status,  # type: ignore[arg-type]
+                event_count=len(items),
+                first_event_name=first.name,
+                last_event_name=last.name,
+                observed=True,
+                error_message=failure or None,
+            )
+        )
+    return phases
+
+
+def _phase_for(name: str) -> str | None:
+    normalized = name.casefold()
+    for key, _, prefixes in _PHASE_ORDER:
+        for prefix in prefixes:
+            if normalized == prefix or normalized.startswith(prefix):
+                return key
+    return None
+
+
+def _origin(events: list[TelemetryEvent]) -> str:
+    """Label the trace by whether the browser contributed any marker."""
+
+    for event in events:
+        if event.attributes.get("source") == "browser":
+            return "browser"
+    return "server"
+
 
 
 def _ordered(events: Iterable[TelemetryEvent]) -> list[TelemetryEvent]:

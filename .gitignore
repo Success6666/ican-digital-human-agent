@@ -35,3 +35,12 @@ apps/agent-service/data/
 tmp-docs/*.json
 tmp-docs/*.png
 tmp-docs/pi-agent-reference/
+
+# Scratch/debug files produced during a working session
+.workbuddy/
+zz-*
+tmp-docs/mofa-*.html
+tmp-docs/mofa-*.txt
+tmp-docs/platform-*.js
+tmp-docs/sdk-integration-*.js
+tmp-docs/v0.1.53-avatar-debug-logging-artifacts/

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .client_events import ClientTelemetryAck, ClientTelemetryBatch
 from .service import ObservabilityService, get_observability
 
 try:
@@ -70,6 +71,25 @@ def build_router(service: ObservabilityService | None = None, *, prefix: str = "
             ]
         }
 
+    @api.post("/events")
+    async def ingest_events(
+        batch: ClientTelemetryBatch,
+        context: dict[str, str] = Depends(auth_dependency),
+    ) -> dict[str, Any]:
+        """Accept browser-reported markers into the owner-scoped trace buffer."""
+        try:
+            accepted = selected.ingest_client_events(
+                batch.events,
+                owner_id=context["user_id"],
+                session_id=_optional(batch.session_id),
+                connection_id=_optional(batch.connection_id),
+            )
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            return ClientTelemetryAck(
+                accepted=0, rejected=len(batch.events), reason=str(exc)
+            ).model_dump(mode="json")
+        return ClientTelemetryAck(accepted=accepted, rejected=0).model_dump(mode="json")
+
     @api.get("/traces/{trace_id}")
     async def trace_replay(
         trace_id: str,
@@ -94,5 +114,11 @@ router = build_router()
 
 def _valid_trace_id(value: str) -> bool:
     return 1 <= len(value) <= 128 and all(char.isalnum() or char in "-_" for char in value)
+
+
+def _optional(value: str | None) -> str | None:
+    clean = (value or "").strip()
+    return clean[:128] if clean else None
+
 
 __all__ = ["build_router", "router"]

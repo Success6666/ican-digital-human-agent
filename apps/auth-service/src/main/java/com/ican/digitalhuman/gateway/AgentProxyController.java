@@ -77,6 +77,12 @@ public class AgentProxyController {
         return agentGatewayClient.post("/internal/chat", body, current.id(), current.username());
     }
 
+    @PostMapping("/telemetry/events")
+    public JsonNode reportTelemetry(@RequestBody JsonNode body) {
+        UserAccount current = user();
+        return agentGatewayClient.post("/internal/observability/events", body, current.id(), current.username());
+    }
+
     @GetMapping("/profile")
     public JsonNode profile() {
         UserAccount current = user();

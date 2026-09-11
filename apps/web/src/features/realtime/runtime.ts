@@ -1,4 +1,5 @@
 import type { AvatarSession } from '../../shared/api/types'
+import { flushClientEvents, reportClientEvent, setTelemetryContext } from '../observability/clientReporter'
 import { buildRealtimeConfig, controlFrame } from './protocol'
 import { RealtimeEventGate } from './eventGate'
 import { handleRealtimeEvent } from './events'
@@ -21,6 +22,30 @@ type ActiveCapture = {
 
 type RecorderConfig = Pick<RealtimeClientConfig, 'sampleRate' | 'channels' | 'frameMs' | 'maxAudioBufferBytes'>
 
+/** Level above which a frame counts as speech rather than room noise. */
+const SPEECH_LEVEL_THRESHOLD = 0.035
+
+/**
+ * How long to keep listening after the user goes quiet.
+ *
+ * A flat window is the single largest fixed delay in the voice loop, so it is
+ * derived from how the turn actually ended instead of being a constant:
+ * a loud, decisive finish is very unlikely to be followed by more words, while
+ * a soft or faded finish may be a mid-sentence pause worth waiting through.
+ * Values stay inside a band so the behaviour never becomes unpredictable.
+ */
+const SILENCE_WINDOW_MIN_MS = 320
+const SILENCE_WINDOW_MAX_MS = 650
+/** Below this trailing loudness the ending looks like a fade, not a finish. */
+const QUIET_ENDING_LEVEL = 0.08
+
+export function endOfTurnSilenceMs(peakLevel: number, trailingLevel: number): number {
+  if (peakLevel >= 0.25 && trailingLevel < QUIET_ENDING_LEVEL) return SILENCE_WINDOW_MIN_MS
+  if (peakLevel >= 0.25) return 380
+  if (peakLevel >= 0.12) return 500
+  return SILENCE_WINDOW_MAX_MS
+}
+
 /** Agent-facing runtime: owns utterance generations, audio and presentation state. */
 export class RealtimeRuntime {
   readonly textSupported: boolean
@@ -38,6 +63,12 @@ export class RealtimeRuntime {
   private revision = 0
   private utteranceId?: string
   private runId?: string
+  /**
+   * Current run trace. Falls back to the connection id so capture events that
+   * happen before a run exists still land on the realtime connection trace.
+   */
+  private traceId?: string
+  private connectionId?: string
   private utteranceOpen = false
   private audioStarted = false
   private operation = 0
@@ -45,6 +76,9 @@ export class RealtimeRuntime {
   private silenceTimer?: ReturnType<typeof setTimeout>
   private maxRecordingTimer?: ReturnType<typeof setTimeout>
   private speechDetected = false
+  /** Highest level seen in the current breath so the end-of-turn wait can adapt. */
+  private peakSpeechLevel = 0
+  private trailingSpeechLevel = 0
 
   constructor(session: AvatarSession | null, dispatch: Dispatch, readOptions: OptionsReader) {
     this.sessionId = session?.sessionId
@@ -57,6 +91,7 @@ export class RealtimeRuntime {
   mount(session: AvatarSession | null): void {
     if (!session?.sessionId || this.disposed) return
     this.config = buildRealtimeConfig(session.sessionId, session.clientParams)
+    setTelemetryContext({ sessionId: session.sessionId })
     const config = this.config
     this.playback = this.createPlayback(config)
     this.transport = new RealtimeTransport(session.sessionId, config, {
@@ -129,7 +164,10 @@ export class RealtimeRuntime {
     this.dispatch({ type: 'revision', utteranceId, revision })
     this.dispatch({ type: 'recording', state: 'requesting' })
     this.speechDetected = false
+    this.peakSpeechLevel = 0
+    this.trailingSpeechLevel = 0
     this.clearRecordingTimers()
+    this.report('capture.permission_request', { utteranceId, revision })
     let audioStartSent = false
     let recorder: Pcm16Recorder | undefined
     try {
@@ -149,6 +187,11 @@ export class RealtimeRuntime {
         return false
       }
       this.dispatch({ type: 'recording', state: 'recording' })
+      this.report('capture.recorder_started', {
+        utteranceId,
+        revision,
+        attributes: { sampleRate: config.sampleRate, channels: config.channels, frameMs: config.frameMs },
+      })
       this.maxRecordingTimer = setTimeout(() => { void this.stopRecording() }, 15_000)
       return true
     } catch (cause) {
@@ -156,7 +199,15 @@ export class RealtimeRuntime {
       else this.pauseRecorder()
       if (audioStartSent) this.sendAudioEnd(utteranceId, revision)
       if (this.disposed || this.operation !== operation) return false
-      this.dispatch({ type: 'recording', state: Pcm16Recorder.supported ? 'error' : 'unsupported', message: cause instanceof Error ? cause.message : '麦克风暂不可用' })
+      const reason = cause instanceof Error ? cause.message : '麦克风暂不可用'
+      const denied = /权限|Permission|NotAllowed/i.test(reason)
+      this.report(denied ? 'capture.permission_denied' : 'capture.recorder_failed', {
+        utteranceId,
+        revision,
+        status: 'error',
+        attributes: { reason },
+      })
+      this.dispatch({ type: 'recording', state: Pcm16Recorder.supported ? 'error' : 'unsupported', message: reason })
       return false
     }
   }
@@ -171,6 +222,7 @@ export class RealtimeRuntime {
     this.dispatch({ type: 'audio_level', level: 0 })
     this.sendAudioEnd()
     this.utteranceOpen = false
+    this.report('capture.recorder_stopped')
     this.dispatch({ type: 'recording', state: 'idle' })
     this.dispatch({ type: 'phase', phase: 'thinking', message: '正在理解' })
   }
@@ -304,17 +356,22 @@ export class RealtimeRuntime {
   private handleAudioLevel(level: number): void {
     const normalized = Math.max(0, Math.min(1, level))
     this.dispatch({ type: 'audio_level', level: normalized })
-    if (normalized >= 0.035) {
+    if (normalized >= SPEECH_LEVEL_THRESHOLD) {
       this.speechDetected = true
+      // Track how loud the turn was: a decisive, loud finish lets the server
+      // stop listening much sooner without cutting off a quiet trailing word.
+      this.peakSpeechLevel = Math.max(this.peakSpeechLevel, normalized)
+      this.trailingSpeechLevel = normalized
       if (this.silenceTimer) clearTimeout(this.silenceTimer)
       this.silenceTimer = undefined
       return
     }
     if (!this.speechDetected || this.silenceTimer) return
+    const wait = endOfTurnSilenceMs(this.peakSpeechLevel, this.trailingSpeechLevel)
     this.silenceTimer = setTimeout(() => {
       this.silenceTimer = undefined
       if (this.recorder?.isRecording) void this.stopRecording()
-    }, 650)
+    }, wait)
   }
 
   private clearRecordingTimers(): void {
@@ -337,6 +394,38 @@ export class RealtimeRuntime {
     }))
   }
 
+  /**
+   * Emit a browser-side marker onto the current run trace.
+   *
+   * The run trace is preferred, but capture happens before a run exists, so
+   * connection-level markers fall back to the connection id. This keeps one
+   * trace spanning "microphone opened" through "avatar finished speaking".
+   */
+  private report(
+    name: string,
+    options: {
+      utteranceId?: string
+      revision?: number
+      runId?: string
+      status?: 'ok' | 'error' | 'unset'
+      durationMs?: number
+      attributes?: Record<string, unknown>
+    } = {},
+  ): void {
+    const traceId = this.traceId || this.connectionId
+    if (!traceId) return
+    reportClientEvent({
+      name,
+      traceId,
+      runId: options.runId ?? this.runId,
+      utteranceId: options.utteranceId ?? this.utteranceId,
+      revision: options.revision ?? this.revision,
+      durationMs: options.durationMs,
+      status: options.status,
+      attributes: options.attributes,
+    })
+  }
+
   private handleTransportState(state: RealtimeState['connection']): void {
     if (this.disposed) return
     this.dispatch({ type: 'connection', state })
@@ -354,6 +443,10 @@ export class RealtimeRuntime {
 
   private handleReady(event: RealtimeInboundEvent): void {
     if (this.disposed) return
+    if (event.connectionId) {
+      this.connectionId = event.connectionId
+      setTelemetryContext({ connectionId: event.connectionId })
+    }
     const negotiated = this.transport?.negotiatedConfig
     if (negotiated) {
       this.config = negotiated
@@ -364,7 +457,10 @@ export class RealtimeRuntime {
     this.gate = new RealtimeEventGate()
     if (this.utteranceId) this.gate.reset(this.utteranceId, this.revision)
     const capabilities = event.capabilities
-    this.dispatch({ type: 'connection', state: 'connected', connectionId: event.connectionId, message: '实时通道已连接' })
+    this.dispatch({ type: 'connection', state: 'connected', connectionId: event.connectionId, traceId: this.traceId, message: '实时通道已连接' })
+    this.report('realtime.client_connected', {
+      attributes: { capabilities: Boolean(capabilities) },
+    })
     if (capabilities) {
       const asr = capabilities.asr
       this.dispatch({
@@ -387,6 +483,8 @@ export class RealtimeRuntime {
   }
 
   private handleInbound(event: RealtimeInboundEvent): void {
+    if (event.traceId) this.traceId = event.traceId
+    if (event.connectionId) this.connectionId = event.connectionId
     handleRealtimeEvent(event, {
       gate: this.gate,
       playback: this.playback,
@@ -402,5 +500,17 @@ export class RealtimeRuntime {
       setRunId: (runId) => { this.runId = runId },
       disposed: this.disposed,
     })
+    const kind = String(event.type ?? '').toLowerCase()
+    if (kind === 'run_started' && event.runId) {
+      this.dispatch({ type: 'run', runId: event.runId, traceId: this.traceId })
+      this.report('realtime.phase', { runId: event.runId, attributes: { phase: 'running' } })
+      return
+    }
+    if (kind === 'interrupted' || kind === 'run_done' || kind === 'done') {
+      // The run is finished, so the browser's view of this trace is complete.
+      // Flushing now keeps the report aligned with the server-side terminal
+      // marker instead of leaving it queued behind a later run.
+      flushClientEvents()
+    }
   }
 }

@@ -1,9 +1,36 @@
 import type { AvatarClientParams } from '../../../shared/api/types'
 import type { AvatarPerformanceCue } from '../../../shared/api/types'
-import type { AvatarRuntimeStatus, BrowserAvatarRuntime } from './browserRuntime'
+import { reportClientEvent } from '../../observability/clientReporter'
+import type { AvatarRuntimeStatus, AvatarTraceContext, BrowserAvatarRuntime } from './browserRuntime'
+import { avatarAudioState, installAudioContextTracker, resumeTrackedAudio } from './audioUnlock'
 import { buildMofaSpeechRequest } from './mofaSpeech'
 import { createRuntimeId } from './runtimeId'
 import { loadExternalScript } from './scriptLoader'
+
+/** Vendor SDK speak calls are silent-failure prone; bound them explicitly. */
+const SPEAK_COMPLETION_TIMEOUT_MS = 15_000
+
+/**
+ * How long a non-final segment waits for the SDK to acknowledge `speak_start`.
+ *
+ * The vendor SDK answers a segment submitted while the previous one is still
+ * starting with a "speak_start 未结束" warning and silently drops the earlier
+ * text. Waiting for the acknowledgement keeps the stream ordered, and this
+ * bound guarantees a silent SDK can never stall the reply.
+ */
+const SPEAK_ACK_TIMEOUT_MS = 1_200
+
+/**
+ * Monotonic clock for speak latency.
+ *
+ * `performance` is not guaranteed in every evaluation sandbox, so fall back to
+ * `Date.now` rather than letting instrumentation break the speech pipeline.
+ */
+function nowMilliseconds(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
 
 interface XmovAvatarInstance {
   init(options?: Record<string, unknown>): Promise<void>
@@ -57,9 +84,58 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   private streamStarted = false
   private invisible = false
   private emotionEnabled = false
+  /**
+   * Serializes every `speak` call.
+   *
+   * The vendor SDK keeps one streaming utterance at a time. React re-runs the
+   * speech effect on every delta, and a single call can also release several
+   * clauses at once, so without this chain two `speak` calls overlap and the
+   * SDK drops the earlier text — the avatar starts mid-sentence and its
+   * opening words are never heard.
+   */
+  private speechChain: Promise<void> = Promise.resolve()
+  private segmentAck?: { promise: Promise<void>; settle: () => void; timer: number }
   private releaseConsoleGuard?: () => void
   private connectionGeneration = 0
   private disposed = false
+  private trace?: AvatarTraceContext
+  private speakStartedAt?: number
+  private speechTimedOut = false
+  private ttsaWarningActive = false
+  private lastAudioState?: string
+
+  setTraceContext(context: AvatarTraceContext): void {
+    this.trace = context
+  }
+
+  /**
+   * Report a vendor-SDK speak lifecycle marker.
+   *
+   * These events never carry audio or SSML: only counts, timing and the SDK's
+   * own state names, so a trace can show *that* the avatar was asked to speak
+   * without leaking the content of the conversation into telemetry.
+   */
+  private report(
+    name: string,
+    options: {
+      status?: 'ok' | 'error' | 'unset'
+      durationMs?: number
+      attributes?: Record<string, unknown>
+    } = {},
+  ): void {
+    const traceId = this.trace?.traceId()
+    if (!traceId) return
+    reportClientEvent({
+      name,
+      traceId,
+      runId: this.trace?.runId(),
+      utteranceId: this.trace?.utteranceId(),
+      revision: this.trace?.revision(),
+      durationMs: options.durationMs,
+      status: options.status,
+      attributes: options.attributes,
+    })
+  }
 
   async connect(host: HTMLElement, params: AvatarClientParams, onStatus: (status: AvatarRuntimeStatus) => void): Promise<void> {
     const connectionGeneration = ++this.connectionGeneration
@@ -67,8 +143,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     this.status = onStatus
     try {
       const config = requiredConfig(params)
+      // Must run before the SDK is constructed: it makes its own AudioContext,
+      // and a later gesture can only resume it if we are already watching for it.
+      installAudioContextTracker()
       this.emotionEnabled = config.emotionEnabled
       onStatus({ phase: 'loading', progress: 0, message: '正在加载数字人运行时' })
+      this.report('avatar.connect_started', {
+        attributes: { sdkUrl: config.sdkUrl, gatewayOrigin: new URL(config.gatewayServer).origin },
+      })
       await loadExternalScript(config.cryptoUrl, () => Boolean(window.CryptoJS))
       this.assertConnectionActive(connectionGeneration)
       window.CryptoJSTest = window.CryptoJS
@@ -83,14 +165,31 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       let initialized = false
       let rendered = false
       let ttsaWarning = false
+      let readinessReported = false
       const currentConnection = () => this.isConnectionActive(connectionGeneration)
       const report = (status: AvatarRuntimeStatus) => {
         if (currentConnection()) onStatus(status)
       }
-      const markReady = () => {
+      const markReady = (caller: string) => {
         signalFirstFrame()
-        if (!currentConnection() || !initialized || ttsaWarning || rendered) return
+        if (!currentConnection()) {
+          this.report('avatar.ready_blocked', { attributes: { reason: 'connection_dropped', caller } })
+          return
+        }
+        if (!initialized) {
+          this.report('avatar.ready_blocked', { attributes: { reason: 'not_initialized', caller } })
+          return
+        }
+        if (ttsaWarning) {
+          this.report('avatar.ready_blocked', { attributes: { reason: 'ttsa_warning', caller } })
+          return
+        }
+        if (rendered) return
         rendered = true
+        if (!readinessReported) {
+          readinessReported = true
+          this.report('avatar.ready_achieved', { attributes: { caller } })
+        }
         report({ phase: 'ready', progress: 100, message: '数字人已连接' })
       }
 
@@ -126,7 +225,8 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
           }
           if (networkState === 'online') {
             ttsaWarning = false
-            markReady()
+            this.markTtsaRecovered()
+            markReady('onMessage:online')
             return
           }
           if (isSpeechOverlapWarning(detail)) {
@@ -136,6 +236,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
           }
           if (isRecoverableTtsaError(message, detail)) {
             ttsaWarning = true
+            this.markTtsaWarning(message, detail)
             report({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
             return
           }
@@ -153,6 +254,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
             }
             if (isRecoverableTtsaError(message, detail)) {
               ttsaWarning = true
+              this.markTtsaWarning(message, detail)
               report({ phase: 'warning', progress: 100, message: formatTtsaError(message, detail) })
               return
             }
@@ -176,13 +278,13 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
         onStateRenderChange: (state: unknown) => {
           if (!currentConnection()) return
           debugMofa('SDK render state', state)
-          if (String(state).toLowerCase().includes('render')) markReady()
+          if (String(state).toLowerCase().includes('render')) markReady('onStateRenderChange')
         },
         onStatusChange: (state: unknown) => {
           if (!currentConnection()) return
           debugMofa('SDK status state', state)
           const normalized = normalizeSdkStatus(state)
-          if (normalized === 'ready') markReady()
+          if (normalized === 'ready') markReady('onStatusChange:ready')
           if (normalized === 'reconnecting') report({ phase: 'loading', progress: 90, message: '数字人连接恢复中' })
           if (normalized === 'closed') report({ phase: 'error', message: '数字人连接已断开，请重新连接' })
         },
@@ -211,11 +313,19 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
         container: { size: [width, height] },
         avatar: { h_align: 'center', v_align: 'bottom', scale: Math.min(0.36, Math.max(0.28, (height / 1920) * 0.98)) },
       })
-      markReady()
+      markReady('connect:final')
       if (this.invisible) this.applyVisibility()
     } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause)
+      this.report('avatar.connect_failed', {
+        status: 'error',
+        attributes: {
+          reason: sanitizeMofaString(detail),
+          phase: this.isConnectionActive(connectionGeneration) ? 'connect_in_progress' : 'connect_dropped',
+        },
+      })
       if (this.isConnectionActive(connectionGeneration)) await this.dispose()
-      throw new Error(sanitizeMofaString(cause instanceof Error ? cause.message : String(cause)))
+      throw new Error(sanitizeMofaString(detail))
     }
   }
 
@@ -227,22 +337,88 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     if (!this.isConnectionActive(generation)) throw new Error('数字人连接已取消')
   }
 
+  /**
+   * Record whether the page can actually make sound at the moment of speaking.
+   *
+   * Only reported when the state changes: a suspended context is a permanent
+   * condition on a phone that was never unlocked, so repeating it per segment
+   * would bury the rest of the trace.
+   */
+  private reportAudioState(): void {
+    const audio = avatarAudioState()
+    const key = `${audio.state}:${audio.trackedCount}`
+    if (this.lastAudioState === key) return
+    this.lastAudioState = key
+    if (audio.state === 'running') {
+      this.report('avatar.audio_unlocked', {
+        attributes: { state: audio.state, trackedCount: audio.trackedCount },
+      })
+      return
+    }
+    this.report('avatar.audio_blocked', {
+      status: 'error',
+      attributes: { state: audio.state, trackedCount: audio.trackedCount },
+    })
+  }
+
+  private markTtsaWarning(message: unknown, detail: string): void {
+    if (this.ttsaWarningActive) return
+    this.ttsaWarningActive = true
+    const code = typeof message === 'object' && message !== null ? Number((message as { code?: unknown }).code) : Number.NaN
+    // A TTSA warning blocks `markReady`, which is exactly the branch that makes
+    // the avatar go silent. Record it so silence is never an unexplained gap.
+    this.report('ttsa.warning', {
+      status: 'error',
+      attributes: {
+        reason: sanitizeMofaString(detail),
+        ...(Number.isFinite(code) ? { code } : {}),
+      },
+    })
+  }
+
+  private markTtsaRecovered(): void {
+    if (!this.ttsaWarningActive) return
+    this.ttsaWarningActive = false
+    this.report('ttsa.recovered')
+  }
+
   private handleSpeakStateChange(state: string, clientSpeakId?: string | number): void {
     const key = clientSpeakId === undefined || clientSpeakId === null ? undefined : String(clientSpeakId)
     if (state === 'speak_start') {
       if (key) this.activeSpeechId = key
       if (this.speechCompletion && !this.speechCompletion.clientSpeakId && key) this.speechCompletion.clientSpeakId = key
+      const durationMs = this.speakStartedAt === undefined ? undefined : Math.max(0, nowMilliseconds() - this.speakStartedAt)
+      this.speakStartedAt = undefined
+      // The SDK owns this segment now; the stream may hand over the next one.
+      this.finishSegmentAck()
+      this.report('speak.started', { durationMs, attributes: key ? { clientSpeakId: key } : undefined })
       return
     }
-    const completion = this.speechCompletion
-    if (!completion || completion.generation !== this.speechGeneration) return
-    if (completion.clientSpeakId && key && completion.clientSpeakId !== key) return
+
+    // A terminal state is always reported, even when no completion promise is
+    // waiting: the avatar going quiet after a failed segment is exactly the
+    // failure this trace exists to explain, and it must not be dropped just
+    // because the segment was a non-final one.
     if (state === 'speak_end' || state === 'end') {
-      this.finishSpeechCompletion()
-      this.activeSpeechId = undefined
-    } else if (state === 'speak_error' || state === 'error') {
-      this.failSpeechCompletion(new Error('星云播报失败'))
+      this.report('speak.ended', { attributes: key ? { clientSpeakId: key } : undefined })
+      if (this.matchesCompletion(key)) {
+        this.finishSpeechCompletion()
+        this.activeSpeechId = undefined
+      }
+      return
     }
+    if (state === 'speak_error' || state === 'error') {
+      this.report('speak.failed', { status: 'error', attributes: { reason: 'speak_error', ...(key ? { clientSpeakId: key } : {}) } })
+      if (this.matchesCompletion(key)) this.failSpeechCompletion(new Error('星云播报失败'))
+    }
+  }
+
+  /** True when a terminal SDK state belongs to the completion we are waiting on. */
+  private matchesCompletion(key?: string): boolean {
+    const completion = this.speechCompletion
+    if (!completion || completion.generation !== this.speechGeneration) return false
+    if (completion.clientSpeakId && key && completion.clientSpeakId !== key) return false
+    return true
   }
 
   setVisibility(visible: boolean): void {
@@ -253,44 +429,96 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
   }
 
   async speak(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void> {
+    // Every call joins one chain so segments reach the SDK in order. Without
+    // this, concurrent calls make the SDK discard the segment that had not
+    // finished starting, which is heard as the avatar skipping to the end of
+    // its answer.
+    const run = this.speechChain.then(
+      () => this.speakOrdered(text, presentation, options),
+      () => this.speakOrdered(text, presentation, options),
+    )
+    // One rejected segment must not poison every call that follows it.
+    this.speechChain = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  private async speakOrdered(text: string, presentation?: AvatarPerformanceCue, options?: { flush?: boolean }): Promise<void> {
     const clean = text.trim()
     const flush = Boolean(options?.flush)
     if (!this.avatar || (!clean && !flush)) return
+    // Captured once so a later interrupt can be recognised: `speechGeneration`
+    // moves on when the utterance is abandoned, and everything queued before
+    // that belongs to an answer the user is no longer listening to.
+    const generation = this.speechGeneration
     if (clean) this.speechBuffer += clean
     while (true) {
       if (!this.speechBuffer.trim()) break
-      const boundary = findSpeechBoundary(this.speechBuffer, flush)
+      // The opening segment is what actually makes the avatar start talking, so
+      // it is released on a much shorter buffer: waiting for a full clause here
+      // is felt directly as "the avatar takes a moment to answer". Once speech
+      // is flowing, a longer buffer keeps prosody and motion stable.
+      const boundary = findSpeechBoundary(this.speechBuffer, flush, !this.streamStarted)
       if (boundary < 0) break
       const segment = this.speechBuffer.slice(0, boundary).trim()
       this.speechBuffer = this.speechBuffer.slice(boundary).trimStart()
       if (!segment) continue
       if (this.pendingSpeech) {
-        void this.dispatchSpeechSegment(this.pendingSpeech, false).catch((cause) => {
+        // Awaited, not fire-and-forget: releasing several clauses in one pass
+        // used to issue them all at once and lose every one but the last.
+        await this.dispatchSpeechSegment(this.pendingSpeech, false, generation).catch((cause) => {
           debugMofa('SDK non-final speak failed', cause)
           this.status?.({ phase: 'error', message: cause instanceof Error ? cause.message : '数字人播报失败' })
         })
+        // `await` above is exactly where an interrupt lands. The clause was cut
+        // before the wait, so re-queueing it here would let text from the
+        // abandoned answer open the next one.
+        if (generation !== this.speechGeneration) {
+          this.pendingSpeech = undefined
+          return
+        }
       }
       this.pendingSpeech = { text: segment, presentation }
     }
     if (!flush) return
+    if (generation !== this.speechGeneration) {
+      this.pendingSpeech = undefined
+      return
+    }
 
-    const finalSegment = this.pendingSpeech
+    // `findSpeechBoundary` only releases whole clauses, so whatever is still in
+    // the buffer when the stream closes is real content. Merging it keeps the
+    // tail of an answer from being silently dropped.
+    const leftover = this.speechBuffer.trim()
+    this.speechBuffer = ''
+    const queued = this.pendingSpeech
     this.pendingSpeech = undefined
+    let finalSegment: { text: string; presentation?: AvatarPerformanceCue } | undefined
+    if (queued && leftover) finalSegment = { text: `${queued.text}${leftover}`, presentation: queued.presentation }
+    else if (queued) finalSegment = queued
+    else if (leftover) finalSegment = { text: leftover, presentation }
+
     if (!finalSegment) {
       if (!this.streamStarted) this.status?.({ phase: 'ready', message: '数字人已连接' })
       return
     }
-    await this.dispatchSpeechSegment(finalSegment, true)
+    await this.dispatchSpeechSegment(finalSegment, true, generation)
   }
 
   async interrupt(): Promise<void> {
     if (!this.avatar) return
+    // Anything not handed to the SDK yet is about to be lost. Recording the
+    // volume makes "the avatar stopped early" visible instead of silent.
+    const pendingLength = this.speechBuffer.trim().length + (this.pendingSpeech?.text.length ?? 0)
     this.speechBuffer = ''
     this.pendingSpeech = undefined
     this.streamStarted = false
     this.speechGeneration += 1
     this.activeSpeechId = undefined
+    this.finishSegmentAck()
     this.finishSpeechCompletion()
+    if (pendingLength > 0) {
+      this.report('speech.interrupted', { attributes: { pendingLength } })
+    }
     this.avatar.interrupt('user_speaking')
     this.status?.({ phase: 'ready', message: '已停止上一轮表达' })
   }
@@ -303,6 +531,7 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     this.streamStarted = false
     this.speechGeneration += 1
     this.activeSpeechId = undefined
+    this.finishSegmentAck()
     this.finishSpeechCompletion()
     const current = this.avatar
     this.avatar = undefined
@@ -326,12 +555,36 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     this.avatar.switchInvisibleMode()
   }
 
-  private async dispatchSpeechSegment(segment: { text: string; presentation?: AvatarPerformanceCue }, isEnd: boolean): Promise<void> {
-    const generation = this.speechGeneration
-    if (!this.avatar || generation !== this.speechGeneration) return
+  private async dispatchSpeechSegment(
+    segment: { text: string; presentation?: AvatarPerformanceCue },
+    isEnd: boolean,
+    generation: number,
+  ): Promise<void> {
+    if (!this.avatar) {
+      // Dropping a segment here used to be completely silent, which is how the
+      // start of an answer could vanish with the trace still looking clean.
+      this.report('speech.dropped', {
+        status: 'error',
+        attributes: { reason: 'avatar_unavailable', textLength: segment.text.length, isEnd },
+      })
+      return
+    }
+    if (generation !== this.speechGeneration) {
+      // The utterance was interrupted while this segment waited its turn.
+      // Sending it would splice the abandoned answer into the current one.
+      this.report('speech.dropped', {
+        status: 'error',
+        attributes: { reason: 'generation_changed', textLength: segment.text.length, isEnd },
+      })
+      return
+    }
     const request = buildMofaSpeechRequest(segment.text, segment.presentation, { enableEmotion: this.emotionEnabled })
     const extra = Object.keys(request.extra).length ? request.extra : undefined
     const isStart = !this.streamStarted
+    // A suspended AudioContext is why a phone plays nothing while a desktop is
+    // fine. Try to recover one that lapsed, then record what we ended up with.
+    resumeTrackedAudio()
+    this.reportAudioState()
     debugMofa('SDK speak dispatched', {
       isStart,
       isEnd,
@@ -339,16 +592,35 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
       hasExtra: Boolean(extra),
     })
     if (!isEnd) {
+      const ack = this.createSegmentAck(generation)
+      this.speakStartedAt = nowMilliseconds()
       this.avatar.speak(request.ssml, isStart, false, extra)
       this.streamStarted = true
+      this.report('speak.dispatched', {
+        attributes: { isStart, isEnd, textLength: segment.text.length, hasEmotion: Boolean(extra) },
+      })
       this.status?.({ phase: 'speaking', message: '数字人正在表达' })
+      // Hold the next segment until the SDK owns this one. Submitting while
+      // the previous `speak_start` is still pending is what made the SDK drop
+      // the earlier clause and jump the avatar to the end of its answer.
+      await ack.promise
       return
     }
 
+    // The final clause gets its own `speak_start` from the SDK. Clearing the
+    // previous id lets the completion bind to that one — otherwise it waits
+    // for an end event carrying an earlier clause's id, and a perfectly good
+    // utterance times out after being spoken in full.
+    this.activeSpeechId = undefined
     const completion = this.createSpeechCompletion(generation)
     this.speechCompletion = completion
+    this.speechTimedOut = false
+    this.speakStartedAt = nowMilliseconds()
     this.avatar.speak(request.ssml, isStart, true, extra)
     this.streamStarted = true
+    this.report('speak.dispatched', {
+      attributes: { isStart, isEnd, textLength: segment.text.length, hasEmotion: Boolean(extra) },
+    })
     this.status?.({ phase: 'speaking', message: '数字人正在表达' })
     try {
       await completion.promise
@@ -358,6 +630,14 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
         this.activeSpeechId = undefined
       }
       debugMofa('SDK speak failed', { clientSpeakId: completion.clientSpeakId, cause })
+      // A timeout already reported `speak.timeout`; only report the remaining
+      // failure modes so one broken utterance does not produce two markers.
+      if (!this.speechTimedOut) {
+        this.report('speak.failed', {
+          status: 'error',
+          attributes: { reason: cause instanceof Error ? cause.message : 'speak_failed' },
+        })
+      }
       throw cause
     } finally {
       if (this.speechCompletion === completion) this.speechCompletion = undefined
@@ -395,10 +675,57 @@ export class MofaBrowserRuntime implements BrowserAvatarRuntime {
     completion.timer = window.setTimeout(() => {
       if (this.speechCompletion !== completion || generation !== this.speechGeneration) return
       this.speechCompletion = undefined
+      this.speechTimedOut = true
       this.avatar?.interrupt('speak_timeout')
+      // Silence with no terminal marker is the hardest failure to diagnose,
+      // so both the trace and the operator are told why the avatar stopped.
+      this.report('speak.timeout', {
+        status: 'error',
+        durationMs: SPEAK_COMPLETION_TIMEOUT_MS,
+        attributes: { reason: 'speak_timeout', clientSpeakId: completion.clientSpeakId },
+      })
       completion.reject(new Error('星云播报超时'))
-    }, 15_000)
+    }, SPEAK_COMPLETION_TIMEOUT_MS)
     return completion
+  }
+
+  /**
+   * Gate the next segment on the SDK acknowledging this one.
+   *
+   * The acknowledgement is only a "the SDK took it" signal, never a wait for
+   * playback to finish — speech still streams. It resolves on timeout as well,
+   * so an SDK that never calls back slows the stream but cannot stall it.
+   */
+  private createSegmentAck(generation: number): { promise: Promise<void>; settle: () => void; timer: number } {
+    let settle!: () => void
+    const promise = new Promise<void>((resolve) => { settle = resolve })
+    const ack = {
+      promise,
+      settle,
+      timer: window.setTimeout(() => {
+        if (this.segmentAck !== ack) return
+        this.segmentAck = undefined
+        // Continuing without the acknowledgement risks an overlap warning, so
+        // the trace records the gap rather than letting the text just vanish.
+        this.report('speech.ack_timeout', {
+          status: 'error',
+          durationMs: SPEAK_ACK_TIMEOUT_MS,
+          attributes: { reason: 'speak_start_missing' },
+        })
+        settle()
+      }, SPEAK_ACK_TIMEOUT_MS),
+    }
+    if (generation === this.speechGeneration) this.segmentAck = ack
+    else settle()
+    return ack
+  }
+
+  private finishSegmentAck(): void {
+    const ack = this.segmentAck
+    if (!ack) return
+    this.segmentAck = undefined
+    window.clearTimeout(ack.timer)
+    ack.settle()
   }
 
   private finishSpeechCompletion(): void {
@@ -495,11 +822,22 @@ function sanitizeMofaUrl(value: string): string {
   }
 }
 
-function findSpeechBoundary(value: string, flush: boolean): number {
-  const punctuation = /[。！？!?；;\n]/g
+/**
+ * Length the buffer must reach before a segment is released.
+ *
+ * The opening segment uses a much smaller threshold so the avatar begins
+ * speaking as soon as there is a phrase worth saying. Later segments favour a
+ * larger buffer so the mouth and emotion stay in step with the text.
+ */
+const OPENING_SPEECH_MIN_CHARS = 6
+const STEADY_SPEECH_MIN_CHARS = 16
+
+function findSpeechBoundary(value: string, flush: boolean, opening = false): number {
+  const punctuation = /[。！？!?；;，,\n]/g
   let match: RegExpExecArray | null
   while ((match = punctuation.exec(value))) return match.index + 1
-  if (value.trim().length >= 16 || flush) return value.length
+  const threshold = opening ? OPENING_SPEECH_MIN_CHARS : STEADY_SPEECH_MIN_CHARS
+  if (value.trim().length >= threshold || flush) return value.length
   return -1
 }
 

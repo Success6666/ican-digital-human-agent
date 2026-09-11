@@ -99,6 +99,7 @@ export function normalizeInbound(value: Record<string, unknown>): RealtimeInboun
     requestId: optionalText(value.requestId ?? value.request_id, 128),
     sessionId: optionalText(value.sessionId ?? value.session_id, 128),
     connectionId: optionalText(value.connectionId ?? value.connection_id, 128),
+    traceId: optionalText(value.traceId ?? value.trace_id, 128),
     runId: optionalText(value.runId ?? value.run_id, 128),
     utteranceId: optionalText(value.utteranceId ?? value.utterance_id, 128),
     revision: optionalInteger(value.revision, 0, Number.MAX_SAFE_INTEGER),

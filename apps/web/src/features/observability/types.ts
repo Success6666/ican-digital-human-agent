@@ -14,6 +14,23 @@ export interface TelemetryEvent {
   error_message?: string | null
 }
 
+export type TracePhaseKey = 'capture' | 'asr' | 'agent' | 'speech' | 'playback'
+
+export interface TracePhase {
+  key: TracePhaseKey
+  label: string
+  /** Offset from the trace's first event; drives the waterfall position. */
+  startOffsetMs: number
+  durationMs?: number
+  status: 'ok' | 'error' | 'unset'
+  eventCount: number
+  firstEventName?: string
+  lastEventName?: string
+  /** False when nothing was reported for this phase, i.e. a real blind spot. */
+  observed: boolean
+  errorMessage?: string
+}
+
 export interface TraceGroup {
   id: string
   label: string
@@ -26,6 +43,9 @@ export interface TraceGroup {
   cancellationLatencyMs?: number
   agentLatencyMs?: number
   digitalHumanLatencyMs?: number
+  phases: TracePhase[]
+  origin: 'browser' | 'server'
+  coverage: TracePhaseKey[]
 }
 
 export type AuditFilter = 'all' | 'errors' | 'rag' | 'provider'

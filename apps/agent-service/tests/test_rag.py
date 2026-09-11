@@ -196,6 +196,70 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
         _ = parser.available
         self.assertIsNone(parser._converter)
 
+    def test_missing_ocr_runtime_is_reported_before_conversion(self) -> None:
+        """A missing onnxruntime must be visible in health, not on first upload."""
+
+        parser = DoclingParser(
+            config=DoclingRuntimeConfig(enabled=True, do_ocr=True, ocr_backend="onnxruntime")
+        )
+        with patch("app.rag.docling_parser.importlib.util.find_spec", return_value=None):
+            self.assertFalse(parser.ocr_ready)
+            self.assertIn("onnxruntime", parser.ocr_backend_error or "")
+        # The probe must stay cheap: no converter is built to answer it.
+        self.assertIsNone(parser._converter)
+
+    def test_ocr_probe_is_skipped_when_ocr_is_disabled(self) -> None:
+        parser = DoclingParser(
+            config=DoclingRuntimeConfig(enabled=True, do_ocr=False, ocr_backend="onnxruntime")
+        )
+        with patch("app.rag.docling_parser.importlib.util.find_spec", return_value=None):
+            self.assertTrue(parser.ocr_ready)
+            self.assertIsNone(parser.ocr_backend_error)
+
+    def test_unknown_ocr_backend_is_left_to_docling(self) -> None:
+        parser = DoclingParser(
+            config=DoclingRuntimeConfig(enabled=True, do_ocr=True, ocr_backend="tesseract")
+        )
+        with patch("app.rag.docling_parser.importlib.util.find_spec", return_value=None):
+            self.assertTrue(parser.ocr_ready)
+
+    def test_ocr_probe_reuses_module_lookup_helper(self) -> None:
+        from app.rag.docling_parser import missing_ocr_backend, ocr_backend_module
+
+        self.assertEqual(ocr_backend_module("onnxruntime"), "onnxruntime")
+        self.assertEqual(ocr_backend_module(" ONNXRuntime "), "onnxruntime")
+        self.assertIsNone(ocr_backend_module("tesseract"))
+        with patch("app.rag.docling_parser.importlib.util.find_spec", return_value=object()):
+            self.assertIsNone(missing_ocr_backend("onnxruntime"))
+
+    def test_ocr_probe_surfaces_a_native_library_failure(self) -> None:
+        """The real failure mode: the package resolves but `import cv2` fails."""
+
+        from app.rag import docling_parser
+        import builtins
+
+        parser = DoclingParser(
+            config=DoclingRuntimeConfig(enabled=True, do_ocr=True, ocr_backend="onnxruntime")
+        )
+        real_import = builtins.__import__
+
+        def failing(name, *args, **kwargs):
+            if name == "rapidocr":
+                raise ImportError("libxcb.so.1: cannot open shared object file")
+            return real_import(name, *args, **kwargs)
+
+        with patch("app.rag.docling_parser.importlib.util.find_spec", return_value=object()):
+            with patch.object(builtins, "__import__", failing):
+                self.assertFalse(parser.ocr_ready)
+                self.assertIn("ImportError", parser.ocr_backend_error or "")
+                self.assertIn("ImportError", docling_parser.ocr_engine_error("onnxruntime") or "")
+
+    def test_ocr_engine_error_is_quiet_for_unknown_backends(self) -> None:
+        from app.rag.docling_parser import ocr_engine_error
+
+        with patch("app.rag.docling_parser.importlib.util.find_spec", return_value=object()):
+            self.assertIsNone(ocr_engine_error("tesseract"))
+
     def test_chunker_bounds_and_overlap(self) -> None:
         chunker = CharacterChunker(max_chars=64, overlap_chars=8)
         chunks = chunker.split("one two three four five six seven eight nine ten eleven twelve")

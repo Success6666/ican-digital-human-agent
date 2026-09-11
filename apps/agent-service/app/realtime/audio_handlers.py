@@ -36,6 +36,7 @@ class RealtimeAudioHandlersMixin:
         finally:
             if not committed:
                 await self.state.rollback_revision(ticket)
+        self.telemetry.asr_started(utterance_id=utterance_id, revision=revision)
         await self.state.start_audio(utterance_id, revision)
         await self._emit(
             "ack", request_id=message.request_id, action="audio_start", accepted=True,
@@ -67,9 +68,19 @@ class RealtimeAudioHandlersMixin:
         try:
             result = await self.ingress.finish()
         except asyncio.CancelledError:
+            self.telemetry.asr_finished(
+                utterance_id=current[0] if current else None,
+                revision=current[1] if current else None,
+                status="error", reason="cancelled", text_length=0,
+            )
             await self._reset_ingress_safely()
             raise
         except Exception as exc:
+            self.telemetry.asr_finished(
+                utterance_id=current[0] if current else None,
+                revision=current[1] if current else None,
+                status="error", reason="audio_finish_failed", text_length=0,
+            )
             await self._send_error("audio_finish_failed", safe_error(exc))
             await self._emit(
                 "ack", request_id=message.request_id, action="audio_end", accepted=False,
@@ -80,6 +91,13 @@ class RealtimeAudioHandlersMixin:
             return
         finally:
             await self._reset_ingress_safely()
+        self.telemetry.asr_finished(
+            utterance_id=current[0] if current else result.utterance_id,
+            revision=current[1] if current else result.revision,
+            status=result.status,
+            reason=result.reason,
+            text_length=len(result.text or ""),
+        )
         await self._emit(
             "transcript", request_id=message.request_id,
             utterance_id=current[0] if current else result.utterance_id,
@@ -114,6 +132,13 @@ class RealtimeAudioHandlersMixin:
             return
 
     async def _audio_queue(self, stats: Any) -> None:
+        self.telemetry.asr_buffered(
+            utterance_id=getattr(stats, "utterance_id", None),
+            frames=getattr(stats, "frames", 0),
+            received_bytes=getattr(stats, "bytes_received", 0),
+            buffered_bytes=getattr(stats, "buffered_bytes", 0),
+            dropped_frames=getattr(stats, "dropped_frames", 0),
+        )
         await self._emit(
             "audio_queue", utterance_id=getattr(stats, "utterance_id", None),
             revision=getattr(stats, "revision", None),

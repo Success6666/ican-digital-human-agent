@@ -19,6 +19,63 @@ class DocumentParseError(RuntimeError):
     """Raised when a binary document cannot be parsed."""
 
 
+# Docling ships the RapidOCR ONNX weights but treats the inference runtime as
+# an optional extra. Map each backend to the module Docling will import when it
+# builds the OCR stage, so a missing runtime can be reported up front instead
+# of surfacing as an opaque ImportError on the first real upload.
+_OCR_BACKEND_MODULES: dict[str, str] = {
+    "onnxruntime": "onnxruntime",
+    "openvino": "openvino",
+    "paddle": "paddle",
+}
+
+
+def ocr_backend_module(backend: str) -> str | None:
+    """Return the runtime module a Docling OCR backend depends on."""
+
+    return _OCR_BACKEND_MODULES.get(backend.strip().lower())
+
+
+def missing_ocr_backend(backend: str) -> str | None:
+    """Return the missing runtime name for a backend, or None when usable.
+
+    Unknown backends return None: Docling is the authority on those and should
+    be allowed to raise its own error rather than be pre-empted here.
+    """
+
+    module = ocr_backend_module(backend)
+    if module is None:
+        return None
+    try:
+        if importlib.util.find_spec(module) is None:
+            return module
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return module
+    return None
+
+
+def ocr_engine_error(backend: str) -> str | None:
+    """Report why the configured OCR engine cannot run, or None when it can.
+
+    `find_spec` is not enough on its own: the RapidOCR engine imports `cv2`,
+    which links against X11/GL shared libraries that slim base images do not
+    ship. The package is present, the module spec resolves, and only the real
+    import reveals that `libxcb.so.1` is missing. Docling reports that as
+    "RapidOCR is not installed", which sends operators chasing the wrong thing.
+    """
+
+    missing = missing_ocr_backend(backend)
+    if missing is not None:
+        return f"OCR 引擎依赖缺失：{missing}"
+    if ocr_backend_module(backend) != "onnxruntime":
+        return None
+    try:
+        from rapidocr import RapidOCR  # type: ignore[import-not-found]  # noqa: F401
+    except Exception as exc:
+        return f"OCR 引擎不可用：{type(exc).__name__}"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class DoclingRuntimeConfig:
     """Small environment-backed policy for the local Docling pipeline."""
@@ -104,6 +161,25 @@ class DoclingParser:
             return importlib.util.find_spec("docling.document_converter") is not None
         except (ImportError, ModuleNotFoundError, ValueError):
             return False
+
+    @property
+    def ocr_backend_error(self) -> str | None:
+        """Name of the missing OCR runtime, if the configured one is unusable.
+
+        The converter builds its OCR stage lazily, so a missing runtime only
+        blows up during the first conversion. Probing the module here lets
+        health surfaces warn before a user uploads anything.
+        """
+
+        if not self.config.enabled or not self.config.do_ocr:
+            return None
+        return ocr_engine_error(self.config.ocr_backend)
+
+    @property
+    def ocr_ready(self) -> bool:
+        """Whether the configured OCR engine can actually be constructed."""
+
+        return self.ocr_backend_error is None
 
     @property
     def converter_error(self) -> str | None:

@@ -7,6 +7,7 @@ import threading
 from typing import Any
 from uuid import uuid4
 
+from .client_events import ClientTelemetryEvent
 from .local import LocalJsonLogSink
 from .models import ObservabilityHealth, TelemetryEvent, TraceReplay, TraceSummary
 from .ports import EventSink
@@ -186,6 +187,53 @@ class ObservabilityService(ObservabilityMarkerMixin):
     def trace_replay(self, trace_id: str, *, owner_id: str | None = None) -> TraceReplay | None:
         """Return a sanitized, ordered event sequence for one trace."""
         return replay_trace(self.recent(1000, owner_id=owner_id), trace_id)
+
+    def ingest_client_events(
+        self,
+        events: list[ClientTelemetryEvent],
+        *,
+        owner_id: str,
+        session_id: str | None = None,
+        connection_id: str | None = None,
+    ) -> int:
+        """Fold browser-reported markers into the same trace buffer as server events.
+
+        Identity, ordering and ownership are stamped here rather than trusted
+        from the client, so a browser can only append to traces it owns.
+        """
+
+        accepted = 0
+        for item in events:
+            attributes: dict[str, Any] = {
+                # Server-side identity wins over any client-supplied value.
+                "owner_id": owner_id,
+                "source": "browser",
+                **item.attributes,
+            }
+            attributes["owner_id"] = owner_id
+            if session_id:
+                attributes["session_id"] = session_id
+            if connection_id:
+                attributes["connection_id"] = connection_id
+            if item.run_id:
+                attributes["run_id"] = item.run_id
+            if item.utterance_id:
+                attributes["utterance_id"] = item.utterance_id
+            if item.revision is not None:
+                attributes["revision"] = item.revision
+            error = None
+            if item.status == "error":
+                reason = attributes.get("reason") or attributes.get("message")
+                error = RuntimeError(str(reason)[:256]) if reason else RuntimeError("client_error")
+            self.record_event_nonblocking(
+                item.name,
+                event_type="realtime",
+                trace_id=item.trace_id,
+                attributes=attributes,
+                error=error,
+            )
+            accepted += 1
+        return accepted
 
     async def flush(self) -> None:
         await _flush_pending_transport(self)

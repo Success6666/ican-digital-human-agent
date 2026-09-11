@@ -29,6 +29,7 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
         ...state,
         connection: action.state,
         connectionId: action.connectionId ?? state.connectionId,
+        traceId: action.traceId ?? state.traceId,
         statusText: action.message ?? connectionText(action.state),
         error: action.state === 'error' ? state.error : undefined,
         phase: action.state === 'error' ? 'error' : state.phase,
@@ -81,7 +82,7 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
         lastEventAt: new Date().toISOString(),
       }
     case 'run':
-      return { ...state, runId: action.runId, phase: action.runId ? 'thinking' : state.phase, lastEventAt: new Date().toISOString() }
+      return { ...state, runId: action.runId, traceId: action.traceId ?? state.traceId, phase: action.runId ? 'thinking' : state.phase, lastEventAt: new Date().toISOString() }
     case 'transcript':
       if (action.status === 'unsupported') {
         return { ...state, phase: 'degraded', statusText: '当前未配置语音识别，请使用文本输入', error: undefined, lastEventAt: new Date().toISOString() }

@@ -10,6 +10,7 @@ from app.main import build_container, create_app
 from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from app.realtime.audio_handlers import RealtimeAudioHandlersMixin
 from app.realtime.handlers import RealtimeHandlersMixin
+from app.realtime.observability import RealtimeTelemetry
 from app.realtime.state import ConnectionState
 from app.realtime.protocol import RealtimeMessage
 from app.settings import Settings
@@ -240,6 +241,7 @@ class _AudioHarness(RealtimeAudioHandlersMixin):
         self.state = ConnectionState()
         self.ingress = _FailOnceIngress()
         self.limits = type("Limits", (), {"max_audio_buffer_bytes": 1024})()
+        self.telemetry = RealtimeTelemetry(None, "conn-audio")
         self.events: list[dict[str, object]] = []
 
     async def _clear_audio(self, *, reason: str | None = None) -> None:
@@ -273,6 +275,7 @@ class _FinalAudioHarness(RealtimeAudioHandlersMixin):
         self.ingress = _FinalIngress()
         self.events: list[dict[str, object]] = []
         self.limits = type("Limits", (), {"max_audio_buffer_bytes": 1024})()
+        self.telemetry = RealtimeTelemetry(None, "conn-final")
 
     async def _emit(self, event_type: str, **fields):
         self.events.append({"type": event_type, **fields})

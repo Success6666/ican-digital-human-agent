@@ -40,6 +40,7 @@ export interface RealtimeState {
   phase: RealtimePhase
   sessionId?: string
   connectionId?: string
+  traceId?: string
   runId?: string
   utteranceId?: string
   revision: number
@@ -76,13 +77,13 @@ export const initialRealtimeState: RealtimeState = {
 
 export type RealtimeAction =
   | { type: 'reset'; sessionId?: string; supported: boolean; textSupported?: boolean }
-  | { type: 'connection'; state: RealtimeConnectionState; message?: string; connectionId?: string }
+  | { type: 'connection'; state: RealtimeConnectionState; message?: string; connectionId?: string; traceId?: string }
   | { type: 'recording'; state: RealtimeRecordingState; message?: string }
   | { type: 'capabilities'; audioInput?: boolean; audioOutput?: boolean; asr?: unknown; tts?: unknown }
   | { type: 'playback'; state: RealtimePlaybackState; message?: string }
   | { type: 'phase'; phase: RealtimePhase; message?: string }
   | { type: 'revision'; utteranceId?: string; revision: number }
-  | { type: 'run'; runId?: string }
+  | { type: 'run'; runId?: string; traceId?: string }
   | { type: 'transcript'; status: 'partial' | 'final' | 'unsupported' | 'error'; text?: string; reason?: string }
   | { type: 'assistant'; text: string; append?: boolean }
   | { type: 'buffer'; bytes: number; dropped?: number }
@@ -113,6 +114,7 @@ export interface RealtimeInboundEvent {
   requestId?: string
   sessionId?: string
   connectionId?: string
+  traceId?: string
   runId?: string
   utteranceId?: string
   revision?: number

@@ -1,8 +1,10 @@
-import type { TelemetryEvent, TraceGroup } from './types'
+import type { TelemetryEvent, TraceGroup, TracePhase, TracePhaseKey } from './types'
 
 const eventLabels: Record<string, string> = {
   'agent.invoke': 'Agent 请求',
   'agent.stream': '流式响应',
+  'agent.first_byte': '首个字节',
+  'agent.first_visible': '首段可见',
   receive: '接收消息',
   retrieve: '知识检索',
   'rag.search': 'RAG 检索',
@@ -13,6 +15,55 @@ const eventLabels: Record<string, string> = {
   'provider.event': 'Provider 事件',
   'span.start': '开始执行',
   trace: '请求链路',
+  // Browser-reported realtime markers.
+  'capture.permission_request': '申请麦克风权限',
+  'capture.permission_granted': '麦克风已授权',
+  'capture.permission_denied': '麦克风被拒绝',
+  'capture.recorder_started': '开始录音',
+  'capture.recorder_stopped': '结束录音',
+  'capture.recorder_failed': '录音启动失败',
+  'capture.track_ended': '音轨结束',
+  'capture.first_frame': '首帧音频',
+  'realtime.client_connected': '实时通道已连接',
+  'realtime.client_disconnected': '实时通道已断开',
+  'realtime.client_send_failed': '实时发送失败',
+  'realtime.phase': '阶段变化',
+  'speech.assembled': '装配播报文本',
+  'speech.skipped': '跳过播报',
+  'speech.dispatch_failed': '播报派发失败',
+  'speech.dropped': '播报片段被丢弃',
+  'speech.ack_timeout': '播报未获确认',
+  'speech.interrupted': '播报被打断',
+  'speak.dispatched': '提交播报',
+  'speak.started': '开始发声',
+  'speak.ended': '发声结束',
+  'speak.failed': '发声失败',
+  'speak.timeout': '发声超时',
+  'ttsa.warning': 'TTSA 会话告警',
+  'ttsa.recovered': 'TTSA 已恢复',
+  'avatar.connect_started': '开始连接数字人',
+  'avatar.connect_failed': '数字人连接失败',
+  'avatar.ready_achieved': '数字人就绪',
+  'avatar.ready_blocked': '数字人卡在未就绪',
+  'avatar.phase_changed': '数字人阶段变化',
+  'avatar.audio_unlocked': '音频已解锁',
+  'avatar.audio_blocked': '音频被浏览器拦截',
+  'realtime.run_started': '本轮开始',
+  'realtime.first_transcript': '首个转写',
+  'asr.capture_started': '开始采集音频',
+  'asr.audio_buffered': '音频累积',
+  'asr.finished': '识别完成',
+  'asr.failed': '识别失败',
+  'realtime.first_delta': '首个增量',
+  'realtime.audio_queue': '音频入队',
+  'realtime.interrupt_ack': '打断确认',
+  'realtime.run_terminal': '本轮结束',
+  'realtime.first_audio_output': '首个音频输出',
+  'realtime.ready': '实时通道就绪',
+  'realtime.closed': '实时通道关闭',
+  'security_gate': '安全校验',
+  send_text: '发送文本',
+  system_status: '系统状态',
 }
 
 const attributeLabels: Record<string, string> = {
@@ -24,15 +75,152 @@ const attributeLabels: Record<string, string> = {
   tool_name: '工具',
   backend: '遥测后端',
   documents: '文档数量',
+  reason: '原因',
+  phase: '阶段',
+  code: '错误码',
+  textLength: '文本长度',
+  text_length: '文本长度',
+  deltaLength: '增量长度',
+  totalLength: '总长度',
+  pendingLength: '待播长度',
+  trackedCount: '音频上下文数',
+  isStart: '首段',
+  isEnd: '末段',
+  flush: '已收尾',
+  hasEmotion: '含情绪',
+  hasPresentation: '含动作',
+  sampleRate: '采样率',
+  channels: '声道',
+  frameMs: '帧长',
+  capabilities: '能力协商',
+  clientSpeakId: '播报标识',
+  source: '来源',
+  origin: '来源',
+  revision: '轮次',
+  run_id: '运行标识',
+  utterance_id: '话轮标识',
+  frames: '音频帧数',
+  received_bytes: '接收字节',
+  buffered_bytes: '缓冲字节',
+  dropped_frames: '丢弃帧数',
+  status: '状态',
 }
 
-const hiddenKeys = new Set(['trace_id', 'span_id', 'parent_span_id', 'session_id', 'user_id', 'api_key', 'secret_key', 'token'])
+const hiddenKeys = new Set([
+  'trace_id',
+  'span_id',
+  'parent_span_id',
+  'session_id',
+  'connection_id',
+  'user_id',
+  'owner_id',
+  'api_key',
+  'secret_key',
+  'token',
+])
 
 const FIRST_EVENT_NAMES = new Set(['agent.first_byte', 'stream.first_event', 'first_event'])
 const FIRST_VISIBLE_NAMES = new Set(['agent.first_visible', 'stream.first_visible', 'first_visible'])
 const AGENT_LATENCY_NAMES = new Set(['agent.invoke', 'agent.stream', 'agent.completed', 'agent.complete'])
 const DIGITAL_HUMAN_LATENCY_NAMES = new Set(['provider', 'send_text', 'digital_human', 'avatar'])
 const CANCELLATION_NAMES = new Set(['cancel', 'cancelled', 'cancellation', 'interrupt', 'interrupted', 'run.stop', 'run.interrupted'])
+
+export const TRACE_PHASE_KEYS: TracePhaseKey[] = ['capture', 'asr', 'agent', 'speech', 'playback']
+
+export const TRACE_PHASE_LABELS: Record<TracePhaseKey, string> = {
+  capture: '采集',
+  asr: '识别',
+  agent: '理解',
+  speech: '装配',
+  playback: '播报',
+}
+
+export const TRACE_PHASE_HINTS: Record<TracePhaseKey, string> = {
+  capture: '浏览器麦克风授权与录音帧',
+  asr: '语音识别（服务端）',
+  agent: 'Agent 图与首 token',
+  speech: '增量文本装配为播报段',
+  playback: '魔珐 SDK 发声与 TTSA 会话',
+}
+
+/**
+ * Phase membership. Matching by prefix means a new marker added inside an
+ * existing phase is picked up without touching this table, but the order of
+ * the entries still decides which phase wins for an ambiguous name.
+ */
+const PHASE_PREFIXES: Array<[TracePhaseKey, string[]]> = [
+  ['capture', ['capture.']],
+  ['asr', ['asr.', 'realtime.first_transcript']],
+  ['agent', ['agent.', 'security_gate', 'receive', 'realtime.run_started']],
+  ['speech', ['speech.', 'realtime.first_delta', 'realtime.audio_queue', 'send_text']],
+  ['playback', ['speak.', 'ttsa.', 'realtime.first_audio_output', 'realtime.interrupt_ack']],
+]
+
+function phaseForName(name: string): TracePhaseKey | undefined {
+  const normalized = name.toLowerCase()
+  for (const [key, prefixes] of PHASE_PREFIXES) {
+    if (prefixes.some((prefix) => normalized === prefix || normalized.startsWith(prefix))) return key
+  }
+  return undefined
+}
+
+/**
+ * Bucket a trace's events into the five end-to-end phases.
+ *
+ * Unobserved phases are still returned so the console renders a visible gap
+ * rather than hiding a stage the browser never reported — that gap is the
+ * whole point of tracing "the digital human went silent".
+ */
+export function groupPhases(events: TelemetryEvent[]): TracePhase[] {
+  if (events.length === 0) return []
+  const start = timestampOf(events[0])
+  const buckets = new Map<TracePhaseKey, TelemetryEvent[]>(TRACE_PHASE_KEYS.map((key) => [key, []]))
+  for (const event of events) {
+    const name = String(event.name ?? event.event_type ?? '')
+    const key = phaseForName(name)
+    if (key) buckets.get(key)?.push(event)
+  }
+  return TRACE_PHASE_KEYS.map((key) => {
+    const items = buckets.get(key) ?? []
+    if (items.length === 0) {
+      return {
+        key,
+        label: TRACE_PHASE_LABELS[key],
+        startOffsetMs: 0,
+        status: 'unset' as const,
+        eventCount: 0,
+        observed: false,
+      }
+    }
+    const first = items[0]
+    const last = items[items.length - 1]
+    const status: TracePhase['status'] = items.some((event) => eventStatus(event) === 'error')
+      ? 'error'
+      : items.some((event) => eventStatus(event) === 'ok')
+        ? 'ok'
+        : 'unset'
+    const failure = items.find((event) => eventStatus(event) === 'error')
+    return {
+      key,
+      label: TRACE_PHASE_LABELS[key],
+      startOffsetMs: Math.max(0, timestampOf(first) - start),
+      // A single-marker phase has no measurable span; leaving it undefined
+      // stops the waterfall from drawing a fake instantaneous bar.
+      durationMs: items.length > 1 ? Math.max(0, timestampOf(last) - timestampOf(first)) : undefined,
+      status,
+      eventCount: items.length,
+      firstEventName: String(first.name ?? first.event_type ?? ''),
+      lastEventName: String(last.name ?? last.event_type ?? ''),
+      observed: true,
+      errorMessage: failure ? safeErrorMessage(failure.error_message) : undefined,
+    }
+  })
+}
+
+export function traceOrigin(events: TelemetryEvent[]): 'browser' | 'server' {
+  return events.some((event) => event.attributes?.source === 'browser') ? 'browser' : 'server'
+}
+
 
 export function eventLabel(event: TelemetryEvent): string {
   const name = String(event.name ?? event.event_type ?? '运行事件')
@@ -109,6 +297,7 @@ export function groupTraces(events: TelemetryEvent[]): TraceGroup[] {
         : ordered.some((event) => eventStatus(event) === 'ok')
           ? 'ok'
           : 'unset'
+      const phases = groupPhases(ordered)
       return {
         id,
         label: '',
@@ -121,6 +310,9 @@ export function groupTraces(events: TelemetryEvent[]): TraceGroup[] {
         cancellationLatencyMs: latencyFor(ordered, CANCELLATION_NAMES, ['cancellation_latency_ms', 'cancel_latency_ms', 'cancelLatencyMs', 'latency_ms']),
         agentLatencyMs: latencyFor(ordered, AGENT_LATENCY_NAMES, ['agent_latency_ms', 'agentLatencyMs']),
         digitalHumanLatencyMs: latencyFor(ordered, DIGITAL_HUMAN_LATENCY_NAMES, ['digital_human_latency_ms', 'digitalHumanLatencyMs', 'avatar_latency_ms']),
+        phases,
+        origin: traceOrigin(ordered),
+        coverage: phases.filter((phase) => phase.observed).map((phase) => phase.key),
       }
     })
     .sort((a, b) => compareEventOrder(b.events[0], a.events[0]))

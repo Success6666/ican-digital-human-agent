@@ -8,6 +8,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_RETRIES=8
 
 WORKDIR /app
+
+# `rapidocr` (pulled in by Docling) depends on the full `opencv-python` wheel,
+# which links against X11/GL. The slim base image ships none of them, so
+# `import cv2` fails with "libxcb.so.1: cannot open shared object file" and
+# Docling reports it as the misleading "RapidOCR is not installed".
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements-container.txt ./
 COPY constraints-cpu.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \

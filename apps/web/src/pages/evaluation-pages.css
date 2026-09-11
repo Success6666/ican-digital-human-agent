@@ -225,6 +225,117 @@
   margin-top: auto;
   padding-top: 13px;
 }
+
+.trace-waterfall {
+  display: grid;
+  gap: 8px;
+  margin-top: 13px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.trace-waterfall-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.trace-waterfall-origin {
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-size: 9px;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+}
+.trace-waterfall-origin--server {
+  color: var(--ink-faint);
+  background: var(--surface-soft);
+}
+.trace-waterfall-caption {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+.trace-waterfall-rows {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.trace-waterfall-row {
+  display: grid;
+  grid-template-columns: 62px minmax(80px, 1fr) 74px minmax(0, 1.4fr);
+  gap: 9px;
+  align-items: center;
+}
+.trace-waterfall-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 650;
+}
+.trace-waterfall-track {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-soft);
+}
+.trace-waterfall-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--brand);
+}
+.trace-waterfall-bar--ok { background: oklch(0.62 0.15 157); }
+.trace-waterfall-bar--error { background: var(--danger); }
+.trace-waterfall-bar--unset { background: oklch(0.72 0.12 76); }
+.trace-waterfall-gap {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent,
+    transparent 4px,
+    var(--surface-soft) 4px,
+    var(--surface-soft) 8px
+  );
+}
+.trace-waterfall-metric {
+  display: grid;
+  gap: 1px;
+  color: var(--ink);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.trace-waterfall-metric small {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+.trace-waterfall-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trace-waterfall-detail em {
+  color: var(--danger);
+  font-style: normal;
+}
+.trace-waterfall-row--missing .trace-waterfall-name,
+.trace-waterfall-row--missing .trace-waterfall-metric {
+  color: var(--ink-faint);
+}
+
 .replay-play {
   min-height: 32px;
   padding: 0 11px;
@@ -386,4 +497,7 @@
   .human-run-summary > div:nth-child(2n) { border-right: 0; }
   .human-run-summary > div:nth-child(-n + 3) { border-bottom: 1px solid var(--line); }
   .human-run-columns { grid-template-columns: 1fr; }
+  /* Two columns: the bar keeps its position, the detail drops to its own row. */
+  .trace-waterfall-row { grid-template-columns: 56px minmax(70px, 1fr) 68px; }
+  .trace-waterfall-detail { grid-column: 2 / -1; white-space: normal; }
 }

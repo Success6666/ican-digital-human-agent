@@ -22,9 +22,12 @@ class RealtimeTelemetry:
         self.started_at = time.perf_counter()
         self._run_started: dict[str, float] = {}
         self._run_traces: dict[str, str] = {}
+        self._utterance_started: dict[str, float] = {}
         self._markers: set[tuple[str, str]] = set()
         self._last_queue_at = 0.0
         self._last_dropped = -1
+        self._last_asr_buffered_at = 0.0
+        self._last_asr_dropped = -1
         self._closed = False
 
     def bind(self, *, owner_id: str, session_id: str) -> None:
@@ -95,6 +98,109 @@ class RealtimeTelemetry:
             if kind in {"run_done", "done"}:
                 self._run_started.pop(run_id, None)
                 self._run_traces.pop(run_id, None)
+
+    def asr_started(
+        self,
+        *,
+        utterance_id: str | None,
+        revision: int | None,
+        trace_id: str | None = None,
+    ) -> None:
+        """Mark the moment the server starts buffering one spoken turn.
+
+        The utterance id is already the browser-side correlation key, so the
+        capture phase becomes observable at the exact point audio begins to
+        accumulate instead of only when a transcript finally arrives.
+        """
+        resolved = trace_id or self._utterance_trace(utterance_id)
+        if utterance_id:
+            self._utterance_started[utterance_id] = time.perf_counter()
+            self._bound_map(self._utterance_started)
+        self._record(
+            "asr.capture_started",
+            trace_id=resolved,
+            attributes={
+                "utterance_id": utterance_id,
+                "revision": revision,
+                "latency_ms": self._elapsed(),
+            },
+        )
+
+    def asr_buffered(
+        self,
+        *,
+        utterance_id: str | None,
+        frames: int,
+        received_bytes: int,
+        buffered_bytes: int,
+        dropped_frames: int,
+        trace_id: str | None = None,
+    ) -> None:
+        """Record audio accumulation without emitting one event per frame."""
+        resolved = trace_id or self._utterance_trace(utterance_id)
+        dropped = max(0, dropped_frames)
+        now = time.perf_counter()
+        if dropped <= self._last_asr_dropped and now - self._last_asr_buffered_at < 0.5:
+            return
+        self._last_asr_buffered_at = now
+        self._last_asr_dropped = max(self._last_asr_dropped, dropped)
+        self._record(
+            "asr.audio_buffered",
+            trace_id=resolved,
+            attributes={
+                "utterance_id": utterance_id,
+                "frames": frames,
+                "received_bytes": received_bytes,
+                "buffered_bytes": buffered_bytes,
+                "dropped_frames": dropped_frames,
+            },
+        )
+
+    def asr_finished(
+        self,
+        *,
+        utterance_id: str | None,
+        revision: int | None,
+        status: str,
+        reason: str | None,
+        text_length: int,
+        trace_id: str | None = None,
+    ) -> None:
+        """Close the recognition phase with a terminal status and duration."""
+        resolved = trace_id or self._utterance_trace(utterance_id)
+        started = self._utterance_started.pop(utterance_id or "", None)
+        duration_ms = (
+            round(max(0.0, (time.perf_counter() - started) * 1000), 2)
+            if started is not None
+            else None
+        )
+        name = "asr.failed" if status == "error" else "asr.finished"
+        self._record(
+            name,
+            trace_id=resolved,
+            attributes={
+                "utterance_id": utterance_id,
+                "revision": revision,
+                "status": status,
+                "reason": reason,
+                "text_length": max(0, text_length),
+                "duration_ms": duration_ms,
+                "latency_ms": self._elapsed(),
+            },
+        )
+
+    def _utterance_trace(self, utterance_id: str | None) -> str:
+        """Correlate a spoken turn with whatever trace the browser announced.
+
+        Browser audio arrives before `run_started`, so the connection id is the
+        only stable key until the run claims the turn. Once a run trace exists
+        it wins, keeping ASR on the same trace as the rest of the pipeline.
+        """
+        if utterance_id:
+            for run_id, mapped in self._run_traces.items():
+                if run_id and mapped:
+                    return mapped
+        return self.connection_id
 
     def binary_output(self, size: int, *, run_id: str | None = None) -> None:
         if size <= 0:
@@ -172,8 +278,18 @@ class RealtimeTelemetry:
             "run_id": run_id,
             **(attributes or {}),
         }
+        # The sink derives status from an exception object, not from attributes.
+        # Without this a failed marker would be recorded as ``ok`` and the
+        # console waterfall would hide a broken stage behind a green bar.
+        error = _failure(values)
         try:
-            recorder(name, event_type="realtime", trace_id=trace_id, attributes=values)
+            recorder(
+                name,
+                event_type="realtime",
+                trace_id=trace_id,
+                attributes=values,
+                **({"error": error} if error is not None else {}),
+            )
         except Exception:
             return
 
@@ -184,6 +300,19 @@ class RealtimeTelemetry:
     def _bound_map(values: dict[str, Any], limit: int = 512) -> None:
         while len(values) > limit:
             values.pop(next(iter(values)))
+
+
+def _failure(attributes: dict[str, Any]) -> RuntimeError | None:
+    """Turn a marker's own failure fields into the error object the sink wants.
+
+    Realtime markers describe outcomes with ``status``/``reason`` instead of an
+    exception, so this bridges the two representations without inventing a
+    message where nothing actually failed.
+    """
+    if str(attributes.get("status", "")).casefold() != "error":
+        return None
+    reason = attributes.get("reason") or attributes.get("code") or "realtime_error"
+    return RuntimeError(str(reason)[:512])
 
 
 def _text(value: Any) -> str | None:

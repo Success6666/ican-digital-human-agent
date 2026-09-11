@@ -1,7 +1,7 @@
 import { AudioWaveform, LoaderCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { AvatarSession } from '../../../shared/api/types'
-import { AvatarRuntimeSurface } from '../runtime/AvatarRuntimeSurface'
+import { AvatarRuntimeSurface, type AvatarTraceSource } from '../runtime/AvatarRuntimeSurface'
 import { AvatarPreviewSurface } from '../runtime/AvatarPreviewSurface'
 import { readAvatarPreview, subscribeAvatarPreview, type AvatarPreview } from '../runtime/previewCache'
 
@@ -12,13 +12,14 @@ interface AvatarStageProps {
   interruptKey?: string
   activate?: boolean
   visible?: boolean
+  traceSource?: AvatarTraceSource
   onSpeakingChange?: (speaking: boolean) => void
   onReadyChange?: (ready: boolean) => void
   onCreate: () => void
   onDisconnect: () => void
 }
 
-export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, onSpeakingChange, onReadyChange, onCreate, onDisconnect }: AvatarStageProps) {
+export function AvatarStage({ session, isCreating, speech, interruptKey, activate = false, visible = true, traceSource, onSpeakingChange, onReadyChange, onCreate, onDisconnect }: AvatarStageProps) {
   const [preview, setPreview] = useState<AvatarPreview | null>(() => readAvatarPreview())
   const [runtimeActive, setRuntimeActive] = useState(() => !readAvatarPreview())
   const activateRuntime = useCallback(() => {
@@ -45,7 +46,7 @@ export function AvatarStage({ session, isCreating, speech, interruptKey, activat
   return (
     <section className={'avatar-stage' + (session ? ' avatar-stage--connected' : '')} aria-label="数字人展示区">
       {session && shouldConnect ? (
-        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} onSpeakingChange={onSpeakingChange} onReadyChange={onReadyChange} />
+        <AvatarRuntimeSurface session={session} speech={speech} interruptKey={interruptKey} visible={visible} traceSource={traceSource} onSpeakingChange={onSpeakingChange} onReadyChange={onReadyChange} />
       ) : preview ? (
         <>
           <AvatarPreviewSurface preview={preview} />

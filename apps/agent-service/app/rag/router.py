@@ -85,6 +85,8 @@ def build_router(service: RagService | None = None, *, prefix: str = "/internal/
             "docling_available": parser,
             "docling_loaded": bool(getattr(selected.parser, "loaded", False)),
             "docling_load_error": getattr(selected.parser, "load_error", None),
+            "docling_ocr_ready": bool(getattr(selected.parser, "ocr_ready", True)),
+            "docling_ocr_error": getattr(selected.parser, "ocr_backend_error", None),
             "parse_concurrency": selected.parse_concurrency,
             "chunker": selected.chunker.__class__.__name__,
             "chunk_max_chars": getattr(selected.chunker, "max_chars", None),

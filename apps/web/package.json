@@ -10,6 +10,7 @@
     "test:realtime": "node --test tests/realtime-audio.test.mjs tests/realtime-lifecycle.test.mjs",
     "test:layout": "node --test tests/layout-contract.test.mjs",
     "test:avatar": "node --test tests/mofa-speech.test.mjs",
+    "test:observability": "node --test tests/observability-phases.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
