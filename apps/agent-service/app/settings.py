@@ -103,6 +103,23 @@ class Settings(BaseModel):
         gt=0,
         le=10,
     )
+    # How long a single spoken question may be. ASR transcribes the whole
+    # utterance at `audio_end`, so this is exactly the user's speaking window: a
+    # budget that is too small truncates long questions, and one that is too large
+    # keeps that much PCM resident per connection.
+    realtime_max_audio_buffer_seconds: float = Field(
+        default=60.0,
+        alias="REALTIME_MAX_AUDIO_BUFFER_SECONDS",
+        gt=0,
+        le=600,
+    )
+    realtime_tts_concurrency: int = Field(default=2, alias="REALTIME_TTS_CONCURRENCY", ge=1, le=32)
+    realtime_tts_queue_timeout_seconds: float = Field(
+        default=5.0,
+        alias="REALTIME_TTS_QUEUE_TIMEOUT_SECONDS",
+        gt=0,
+        le=60,
+    )
     asr_endpoint: str = Field(default="", alias="HTTP_ASR_ENDPOINT", max_length=512)
     asr_api_key: str = Field(default="", alias="HTTP_ASR_API_KEY", max_length=512)
     asr_timeout_seconds: float = Field(default=30.0, alias="HTTP_ASR_TIMEOUT_SECONDS", gt=0, le=60)
@@ -180,6 +197,7 @@ class Settings(BaseModel):
         "docling_max_concurrency",
         "evaluation_buffer_size",
         "observability_max_pending_tasks",
+        "realtime_tts_concurrency",
     )
     @classmethod
     def positive_int(cls, value: int) -> int:
@@ -222,6 +240,8 @@ class Settings(BaseModel):
         "realtime_handshake_timeout_seconds",
         "realtime_idle_timeout_seconds",
         "realtime_interrupt_timeout_seconds",
+        "realtime_max_audio_buffer_seconds",
+        "realtime_tts_queue_timeout_seconds",
         "observability_pending_flush_timeout_seconds",
     )
     @classmethod

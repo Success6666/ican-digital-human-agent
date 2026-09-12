@@ -117,7 +117,13 @@ export function normalizeInbound(value: Record<string, unknown>): RealtimeInboun
     heartbeatMs: optionalInteger(value.heartbeatMs ?? value.heartbeat_ms, 1_000, 300_000),
     audioQueueMs: optionalNumber(value.audioQueueMs ?? value.audio_queue_ms, 0, 60_000),
     queueDepth: optionalInteger(value.queueDepth ?? value.queue_depth, 0, 100_000),
-    bufferedBytes: optionalInteger(value.bufferedBytes ?? value.buffered_bytes, 0, 4 * 1024 * 1024),
+    // The clamp has to stay above the largest configurable server budget: the
+    // byte buffer is derived from `REALTIME_MAX_AUDIO_BUFFER_SECONDS` (up to
+    // 600 s ≈ 19.2 MB), so a 4 MB ceiling would silently clamp a legitimately
+    // large reading and make the panel report usage above capacity.
+    bufferedBytes: optionalInteger(value.bufferedBytes ?? value.buffered_bytes, 0, 64 * 1024 * 1024),
+    droppedFrames: optionalInteger(value.droppedFrames ?? value.dropped_frames, 0, 10_000_000),
+    capacityBytes: optionalInteger(value.capacityBytes ?? value.capacity_bytes, 0, 64 * 1024 * 1024),
     capabilities: normalizeRecord(value.capabilities),
     audioFormat: normalizeRecord(value.audioFormat ?? value.audio_format),
     limits: normalizeRecord(value.limits),

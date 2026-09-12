@@ -28,6 +28,7 @@ class RealtimeTelemetry:
         self._last_dropped = -1
         self._last_asr_buffered_at = 0.0
         self._last_asr_dropped = -1
+        self._truncated: set[str] = set()
         self._closed = False
 
     def bind(self, *, owner_id: str, session_id: str) -> None:
@@ -134,11 +135,20 @@ class RealtimeTelemetry:
         received_bytes: int,
         buffered_bytes: int,
         dropped_frames: int,
+        capacity_bytes: int | None = None,
         trace_id: str | None = None,
     ) -> None:
         """Record audio accumulation without emitting one event per frame."""
         resolved = trace_id or self._utterance_trace(utterance_id)
         dropped = max(0, dropped_frames)
+        if dropped > 0:
+            self._truncation(
+                utterance_id=utterance_id,
+                trace_id=resolved,
+                dropped_frames=dropped,
+                buffered_bytes=buffered_bytes,
+                capacity_bytes=capacity_bytes,
+            )
         now = time.perf_counter()
         if dropped <= self._last_asr_dropped and now - self._last_asr_buffered_at < 0.5:
             return
@@ -152,7 +162,46 @@ class RealtimeTelemetry:
                 "frames": frames,
                 "received_bytes": received_bytes,
                 "buffered_bytes": buffered_bytes,
+                "dropped_frames": dropped,
+                "capacity_bytes": capacity_bytes,
+            },
+        )
+
+    def _truncation(
+        self,
+        *,
+        utterance_id: str | None,
+        trace_id: str,
+        dropped_frames: int,
+        buffered_bytes: int,
+        capacity_bytes: int | None,
+    ) -> None:
+        """Name the first overflow of an utterance explicitly.
+
+        The periodic buffer sample already carries a drop count, but a count on a
+        sample named "buffered" does not read as a fault. Raising the ring into a
+        hard cliff is gone, yet the consequence is unchanged: the oldest audio is
+        discarded and the question starts mid-sentence. That has to be findable by
+        looking for failures, so it gets its own marker, emitted once per utterance
+        and coloured as an error.
+        """
+        key = utterance_id or trace_id
+        if key in self._truncated:
+            return
+        self._truncated.add(key)
+        while len(self._truncated) > 512:
+            self._truncated.pop()
+        self._record(
+            "asr.buffer_truncated",
+            trace_id=trace_id,
+            attributes={
+                "utterance_id": utterance_id,
+                "reason": "audio_buffer_overflow",
+                "status": "error",
                 "dropped_frames": dropped_frames,
+                "dropped_ms": dropped_frames * 20,
+                "buffered_bytes": buffered_bytes,
+                "capacity_bytes": capacity_bytes,
             },
         )
 
@@ -186,6 +235,32 @@ class RealtimeTelemetry:
                 "text_length": max(0, text_length),
                 "duration_ms": duration_ms,
                 "latency_ms": self._elapsed(),
+            },
+        )
+
+    def tts_dropped(
+        self,
+        *,
+        run_id: str | None,
+        reason: str,
+        text_length: int,
+        trace_id: str | None = None,
+    ) -> None:
+        """Record a speech segment that never reached the synthesizer.
+
+        A dropped segment is inaudible by definition — there is no audio frame to
+        miss — so without this marker a reply with holes in it is indistinguishable
+        from a reply that was simply shorter. Marked as an error so the console
+        waterfall colours it instead of showing a healthy stage.
+        """
+        self._record(
+            "realtime.tts_dropped",
+            trace_id=trace_id or self._run_traces.get(run_id or "", self.connection_id),
+            run_id=run_id,
+            attributes={
+                "reason": reason,
+                "text_length": max(0, text_length),
+                "status": "error",
             },
         )
 

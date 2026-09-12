@@ -51,6 +51,9 @@ export interface RealtimeState {
   error?: string
   droppedFrames: number
   bufferedBytes: number
+  // The server's per-utterance audio budget, so the panel can say how close a
+  // question came to being trimmed instead of showing a bare frame count.
+  bufferCapacityBytes: number
   audioLevel: number
   lastEventAt?: string
 }
@@ -72,6 +75,7 @@ export const initialRealtimeState: RealtimeState = {
   statusText: '当前仅支持文本实时链路',
   droppedFrames: 0,
   bufferedBytes: 0,
+  bufferCapacityBytes: 0,
   audioLevel: 0,
 }
 
@@ -86,7 +90,7 @@ export type RealtimeAction =
   | { type: 'run'; runId?: string; traceId?: string }
   | { type: 'transcript'; status: 'partial' | 'final' | 'unsupported' | 'error'; text?: string; reason?: string }
   | { type: 'assistant'; text: string; append?: boolean }
-  | { type: 'buffer'; bytes: number; dropped?: number }
+  | { type: 'buffer'; bytes: number; dropped?: number; capacity?: number }
   | { type: 'audio_level'; level: number }
   | { type: 'error'; message: string; fatal?: boolean }
   | { type: 'event'; at?: string }
@@ -141,6 +145,9 @@ export interface RealtimeInboundEvent {
   // protocol field instead of falling through to the index signature, where it
   // typechecked as `unknown` and could not be handed to the reducer.
   droppedFrames?: number
+  // Byte budget the server enforces for one utterance, sent alongside the usage
+  // reading so the UI can express truncation in seconds rather than frames.
+  capacityBytes?: number
   capabilities?: Record<string, unknown>
   audioFormat?: Record<string, unknown>
   limits?: Record<string, unknown>

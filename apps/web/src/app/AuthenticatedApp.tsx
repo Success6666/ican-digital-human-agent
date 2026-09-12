@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../features/auth/model'
 import { useAvatar } from '../features/avatar/model'
 import { useChat } from '../features/chat/model'
@@ -15,8 +15,26 @@ export function AuthenticatedApp() {
   const { user, logout } = useAuth()
   const avatar = useAvatar()
   const chat = useChat(avatar.session, user?.id)
-  const realtime = useRealtimeSession(avatar.session, { onInterrupt: chat.stop })
+  const realtime = useRealtimeSession(avatar.session, {
+    onInterrupt: chat.stop,
+    // Voice turns now land in the shared conversation record. The realtime
+    // channel has always carried the final transcript and the reply deltas;
+    // nothing ever handed them to the chat model, so the drawer showed no
+    // spoken turn and the agent context lost the whole voice conversation.
+    onTranscript: (text) => chat.beginVoiceTurn(text),
+    onAssistantText: (text, append) => chat.appendVoiceAssistant(text, append),
+  })
   const [page, setPage] = useState<PageKey>(() => pageFromHash(window.location.hash))
+  // A voice reply is only "done" when the session leaves thinking/speaking.
+  // Tracking the previous phase keeps the finalizer edge-triggered: without it,
+  // every idle render would re-run the effect and the pending placeholder would
+  // be cleared before the first delta even arrives.
+  const realtimePhaseRef = useRef(realtime.state.phase)
+  useEffect(() => {
+    const previous = realtimePhaseRef.current
+    realtimePhaseRef.current = realtime.state.phase
+    if (previous !== 'idle' && realtime.state.phase === 'idle') chat.finishVoiceTurn()
+  }, [realtime.state.phase, chat.finishVoiceTurn])
 
   useEffect(() => {
     const onHashChange = () => setPage(pageFromHash(window.location.hash))

@@ -36,7 +36,11 @@ export function RealtimePanel({ realtime }: RealtimePanelProps) {
         <div className="realtime-degraded"><MicOff size={15} aria-hidden="true" /><span>先建立一个数字人会话</span></div>
       ) : (
         <>
-          <div className="realtime-status-line"><span>{state.statusText}</span>{state.droppedFrames > 0 && <small>已丢弃 {state.droppedFrames} 帧</small>}</div>
+          {/* Frames are 20 ms, so a drop count converts to the only unit a
+              user can act on: how much of the opening of their question was
+              trimmed. "已丢弃 37 帧" reads like telemetry; "开头缺了约 1 秒"
+              reads like a diagnosis. */}
+          <div className="realtime-status-line"><span>{state.statusText}</span>{state.droppedFrames > 0 && <small>开头丢失约 {Math.max(1, Math.round(state.droppedFrames * 20 / 1000))} 秒音频</small>}</div>
           <div className="realtime-transcript" aria-live="off">
             <span>用户</span><p className={!transcript ? 'realtime-placeholder' : undefined}>{transcript || '按住麦克风或点击开始说话'}</p>
           </div>

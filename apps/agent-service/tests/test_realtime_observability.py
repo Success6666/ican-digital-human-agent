@@ -144,6 +144,70 @@ def test_dropped_frames_bypass_the_buffer_rate_limit() -> None:
     assert observer.last("asr.audio_buffered")["attributes"]["dropped_frames"] == 3
 
 
+def test_buffer_overflow_raises_one_explicit_truncation_marker() -> None:
+    observer = _RecordingObserver()
+    telemetry = _telemetry(observer)
+
+    # Overflow hits mid-utterance; the periodic sample keeps flowing afterwards.
+    telemetry.asr_buffered(
+        utterance_id="utt-9", frames=10, received_bytes=6400, buffered_bytes=6400,
+        dropped_frames=0, capacity_bytes=6400,
+    )
+    telemetry.asr_buffered(
+        utterance_id="utt-9", frames=20, received_bytes=12800, buffered_bytes=6400,
+        dropped_frames=10, capacity_bytes=6400,
+    )
+    telemetry.asr_buffered(
+        utterance_id="utt-9", frames=30, received_bytes=19200, buffered_bytes=6400,
+        dropped_frames=20, capacity_bytes=6400,
+    )
+
+    truncated = [event for event in observer.events if event["name"] == "asr.buffer_truncated"]
+    # One utterance, one truncation marker: a per-frame event would drown the
+    # trace, and a silent one is exactly the failure this marker exists to end.
+    assert len(truncated) == 1
+    attributes = truncated[0]["attributes"]
+    assert attributes["reason"] == "audio_buffer_overflow"
+    assert attributes["status"] == "error"
+    assert attributes["dropped_frames"] == 10
+    # Milliseconds are the human-facing unit the panel renders.
+    assert attributes["dropped_ms"] == 200
+    assert attributes["capacity_bytes"] == 6400
+    assert truncated[0]["trace_id"] == "conn-1"
+
+
+def test_truncation_marker_is_per_utterance_not_per_connection() -> None:
+    observer = _RecordingObserver()
+    telemetry = _telemetry(observer)
+
+    telemetry.asr_buffered(
+        utterance_id="utt-a", frames=20, received_bytes=12800, buffered_bytes=6400,
+        dropped_frames=10, capacity_bytes=6400,
+    )
+    telemetry.asr_buffered(
+        utterance_id="utt-b", frames=20, received_bytes=12800, buffered_bytes=6400,
+        dropped_frames=10, capacity_bytes=6400,
+    )
+
+    # A later question overflowing on its own must be named on its own.
+    assert observer.names().count("asr.buffer_truncated") == 2
+
+
+def test_tts_drop_is_recorded_as_an_error_marker() -> None:
+    observer = _RecordingObserver()
+    telemetry = _telemetry(observer)
+
+    telemetry.tts_dropped(run_id="run-77", reason="tts_queue_timeout", text_length=120)
+
+    dropped = observer.find("realtime.tts_dropped")
+    assert dropped["attributes"]["reason"] == "tts_queue_timeout"
+    assert dropped["attributes"]["text_length"] == 120
+    assert dropped["attributes"]["status"] == "error"
+    assert dropped["attributes"]["run_id"] == "run-77"
+    # The reply with holes must look broken in the console, not healthy.
+    assert dropped["trace_id"] == "conn-1"
+
+
 def test_asr_markers_follow_the_run_trace_once_a_run_is_known() -> None:
     observer = _RecordingObserver()
     telemetry = _telemetry(observer)

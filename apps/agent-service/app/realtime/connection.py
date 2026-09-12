@@ -50,7 +50,7 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
         self.queue = BoundedOutboundQueue(limits.outbound_queue_size)
         self.ingress = ingress or MockPcmIngress(limits=limits)
         self.audio_output = output or getattr(container, "audio_output", None)
-        self._tts_semaphore = asyncio.Semaphore(2)
+        self._tts_semaphore = asyncio.Semaphore(limits.tts_concurrency)
         self.stop_event = asyncio.Event()
         self.run_tasks: dict[str, asyncio.Task[Any]] = {}
         self.background_tasks: set[asyncio.Task[Any]] = set()

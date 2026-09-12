@@ -39,7 +39,12 @@ async function loadStateModule() {
       throw new Error(`unexpected import: ${specifier}`)
     },
   })
-  return stateModule.exports
+  // `state.ts` consumes `initialRealtimeState` but does not re-export it, so the
+  // merged view below is what tests must import from: destructuring
+  // `initialRealtimeState` off `state.ts` alone yields `undefined`, and the
+  // reducer then throws on the first buffer action instead of failing the
+  // assertion — a pass/fail flip that depends on which action runs first.
+  return { ...typesModule.exports, ...stateModule.exports }
 }
 
 test('audio_end clears the active generation even when transport is unavailable', () => {
@@ -230,6 +235,36 @@ test('audio queue events forward the server drop count to the reducer', async ()
   // The server has always sent `droppedFrames` and the panel has always rendered
   // it; the event handler just never forwarded it, so a truncated question stayed
   // invisible in the UI even after the server stopped rejecting frames outright.
+  // `capacityBytes` rides along so the panel can express usage in seconds.
   const events = await readFile(fileURLToPath(new URL('../src/features/realtime/events.ts', import.meta.url)), 'utf8')
-  assert.match(events, /type: 'buffer', bytes: event\.bufferedBytes \?\? 0, dropped: event\.droppedFrames \?\? 0/)
+  assert.match(events, /bytes: event\.bufferedBytes \?\? 0/)
+  assert.match(events, /dropped: event\.droppedFrames \?\? 0/)
+  assert.match(events, /capacity: event\.capacityBytes \?\? 0/)
+})
+
+test('the protocol layer validates the buffer fields instead of trusting the wire', async () => {
+  // `normalizeInbound` rebuilds each event from whitelisted fields. The buffer
+  // fields survive only through the raw spread otherwise, which means no clamp
+  // and no snake_case fallback — exactly the kind of field that drifts when the
+  // server renames something.
+  const protocol = await readFile(fileURLToPath(new URL('../src/features/realtime/protocol.ts', import.meta.url)), 'utf8')
+  assert.match(protocol, /droppedFrames: optionalInteger\(value\.droppedFrames \?\? value\.dropped_frames/)
+  assert.match(protocol, /capacityBytes: optionalInteger\(value\.capacityBytes \?\? value\.capacity_bytes/)
+  // The clamp must stay above the largest configurable budget (600 s ≈ 19.2 MB),
+  // otherwise a legitimate reading is clamped into "usage above capacity".
+  assert.match(protocol, /64 \* 1024 \* 1024/)
+})
+
+test('buffered usage reads against the negotiated capacity', async () => {
+  const { initialRealtimeState, realtimeReducer } = await loadStateModule()
+  let state = realtimeReducer(initialRealtimeState, { type: 'buffer', bytes: 6400, dropped: 0, capacity: 1_920_000 })
+  assert.equal(state.bufferCapacityBytes, 1_920_000)
+  state = realtimeReducer(state, { type: 'buffer', bytes: 960_000, dropped: 2, capacity: 1_920_000 })
+  assert.equal(state.bufferedBytes, 960_000)
+  assert.equal(state.bufferCapacityBytes, 1_920_000)
+  // A reading without a capacity keeps the last known budget instead of
+  // blanking it — the server only re-announces it alongside meaningful samples.
+  state = realtimeReducer(state, { type: 'buffer', bytes: 1_920_000, dropped: 2 })
+  assert.equal(state.bufferCapacityBytes, 1_920_000)
+  assert.equal(state.droppedFrames, 2)
 })

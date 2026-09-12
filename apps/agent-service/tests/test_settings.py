@@ -34,6 +34,11 @@ def test_session_resource_defaults_are_bounded() -> None:
     assert settings.realtime_handshake_timeout_seconds == 5.0
     assert settings.realtime_idle_timeout_seconds == 45.0
     assert settings.realtime_interrupt_timeout_seconds == 0.25
+    # The audio budget is human-facing seconds; the byte conversion happens in
+    # `build_container`, so here only the default window matters.
+    assert settings.realtime_max_audio_buffer_seconds == 60.0
+    assert settings.realtime_tts_concurrency == 2
+    assert settings.realtime_tts_queue_timeout_seconds == 5.0
     assert settings.session_store_backend == "memory"
     assert settings.redis_operation_timeout_seconds == 0.25
 
@@ -81,6 +86,11 @@ def test_session_resource_settings_load_from_environment(monkeypatch: pytest.Mon
         ("session_heartbeat_interval_seconds", 0),
         ("realtime_handshake_timeout_seconds", 0),
         ("realtime_interrupt_timeout_seconds", 0),
+        ("realtime_max_audio_buffer_seconds", 0),
+        ("realtime_max_audio_buffer_seconds", 601),
+        ("realtime_tts_concurrency", 0),
+        ("realtime_tts_concurrency", 33),
+        ("realtime_tts_queue_timeout_seconds", 0),
     ],
 )
 def test_runtime_limits_reject_invalid_values(field: str, value: float | int) -> None:

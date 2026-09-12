@@ -158,6 +158,50 @@ export function useChat(session: AvatarSession | null, accountId?: string) {
     })
   }, [])
 
+  // Voice turns never pass through `sendMessage`: the realtime channel owns the
+  // run, so there is no fetch to abort and no stream to consume. Without an
+  // entry point here the drawer showed nothing the user said, and the agent
+  // context built from `chat.messages` lost every spoken turn. The ref tracks
+  // the placeholder created for the reply so deltas can find it even though
+  // they arrive through a completely different transport.
+  const voiceAssistantIdRef = useRef<string | null>(null)
+
+  const beginVoiceTurn = useCallback((text: string) => {
+    const spoken = text.trim()
+    if (!spoken) return
+    const assistantId = id('assistant')
+    voiceAssistantIdRef.current = assistantId
+    const userMessage: ChatMessage = { id: id('user'), role: 'user', content: spoken, createdAt: new Date().toISOString() }
+    const assistantMessage: ChatMessage = { id: assistantId, role: 'assistant', content: '', createdAt: new Date().toISOString(), pending: true }
+    setMessages((current) => [
+      ...current.map((item) => item.pending ? { ...item, pending: false, statusText: undefined } : item),
+      userMessage,
+      assistantMessage,
+    ])
+  }, [])
+
+  const appendVoiceAssistant = useCallback((text: string, append: boolean) => {
+    if (!text) return
+    const assistantId = voiceAssistantIdRef.current
+    // A delta without a placeholder means the turn never opened (no final
+    // transcript yet, or the history was cleared mid-run): dropping the text
+    // keeps the drawer consistent instead of materializing an answer whose
+    // question is missing.
+    if (!assistantId) return
+    setMessages((current) => current.map((item) => item.id === assistantId
+      ? { ...item, content: append ? item.content + text : text }
+      : item))
+  }, [])
+
+  const finishVoiceTurn = useCallback(() => {
+    const assistantId = voiceAssistantIdRef.current
+    if (!assistantId) return
+    voiceAssistantIdRef.current = null
+    setMessages((current) => current.map((item) => item.id === assistantId && item.pending
+      ? { ...item, pending: false, statusText: item.content.trim() ? undefined : '本轮语音未返回文本回复。' }
+      : item))
+  }, [])
+
   const resolveApproval = useCallback(async (approvalId: string, approved: boolean) => {
     if (!session) return
     setTimeline((current) => current.map((item) => item.approvalId === approvalId
@@ -356,6 +400,8 @@ export function useChat(session: AvatarSession | null, accountId?: string) {
     if (currentSession && hasActiveRun) void requestInterrupt(currentSession.sessionId, currentRunId)
     abortRef.current = null
     activeRunIdRef.current = null
+    // An open voice turn would otherwise append deltas onto a cleared history.
+    voiceAssistantIdRef.current = null
     setSending(false)
     setMessages([])
     setTimeline([])
@@ -366,6 +412,7 @@ export function useChat(session: AvatarSession | null, accountId?: string) {
     stop()
     const next = createConversation()
     activeConversationIdRef.current = next.id
+    voiceAssistantIdRef.current = null
     setActiveConversationId(next.id)
     setMessages([])
     setTimeline([])
@@ -404,5 +451,5 @@ export function useChat(session: AvatarSession | null, accountId?: string) {
     if (accountId) writeConversations(accountId, nextRecords)
   }, [accountId, conversations, stop])
 
-  return { messages, conversations, activeConversationId, timeline, isSending, error, sendMessage, resolveApproval, stop, clear, newConversation, selectConversation, deleteConversation, formatTime }
+  return { messages, conversations, activeConversationId, timeline, isSending, error, sendMessage, resolveApproval, stop, clear, newConversation, selectConversation, deleteConversation, beginVoiceTurn, appendVoiceAssistant, finishVoiceTurn, formatTime }
 }

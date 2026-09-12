@@ -179,9 +179,22 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
         if not callable(synthesize) or not getattr(output, "enabled", False):
             return
         try:
+            # Wait for a real slot. The previous 50 ms cap was shorter than a
+            # single synthesis request, so as soon as the two slots were busy the
+            # segment was thrown away — the reply played with holes in it and the
+            # trace said nothing, which is the worst combination: a broken answer
+            # that looks healthy. The wait is still bounded so a wedged TTS backend
+            # cannot pin every delta, but a drop is now reported instead of being
+            # silent.
             try:
-                await asyncio.wait_for(self._tts_semaphore.acquire(), timeout=0.05)
+                await asyncio.wait_for(
+                    self._tts_semaphore.acquire(),
+                    timeout=self.limits.tts_queue_timeout_seconds,
+                )
             except asyncio.TimeoutError:
+                self.telemetry.tts_dropped(
+                    run_id=binding.run_id, reason="tts_queue_timeout", text_length=len(text)
+                )
                 return
             try:
                 chunks = synthesize(text, run_id=binding.run_id)
@@ -194,7 +207,10 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
                 self._tts_semaphore.release()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            self.telemetry.tts_dropped(
+                run_id=binding.run_id, reason=safe_error(exc), text_length=len(text)
+            )
             return
 
     async def _interrupt(self, message: RealtimeMessage) -> None:

@@ -65,3 +65,29 @@ test('filler events never become visible assistant text', () => {
   const fillerBranch = presenterSource.slice(presenterSource.indexOf("if (kind === 'filler')"), presenterSource.indexOf("if (kind === 'intent')"))
   assert.doesNotMatch(fillerBranch, /updateAssistant\([^\n]*statusText/)
 })
+
+test('voice turns land in the conversation record', async () => {
+  // The realtime channel has always carried the final transcript and the reply
+  // deltas, but nothing ever handed them to the chat model: the drawer showed no
+  // spoken turn and the agent context built from `chat.messages` lost the whole
+  // voice conversation. The options were declared and plumbed through the
+  // runtime — the only missing piece was the app wiring them.
+  const appSource = await readFile(fileURLToPath(new URL('../src/app/AuthenticatedApp.tsx', import.meta.url)), 'utf8')
+  assert.match(appSource, /onTranscript: \(text\) => chat\.beginVoiceTurn\(text\)/)
+  assert.match(appSource, /onAssistantText: \(text, append\) => chat\.appendVoiceAssistant\(text, append\)/)
+  // The finalizer must be edge-triggered on leaving thinking/speaking, not run
+  // on every idle render, or the pending placeholder is cleared before the
+  // first delta arrives.
+  assert.match(appSource, /previous !== 'idle' && realtime\.state\.phase === 'idle'/)
+  assert.match(appSource, /chat\.finishVoiceTurn\(\)/)
+
+  // The chat model owns the placeholder lifecycle: begin finalizes any turn
+  // that is still open, append only reaches the tracked message, and clear and
+  // newConversation reset the ref so a later run cannot append onto a cleared
+  // history.
+  assert.match(chatModelSource, /const beginVoiceTurn = useCallback/)
+  assert.match(chatModelSource, /const appendVoiceAssistant = useCallback/)
+  assert.match(chatModelSource, /const finishVoiceTurn = useCallback/)
+  assert.match(chatModelSource, /voiceAssistantIdRef\.current = null/)
+  assert.doesNotMatch(chatModelSource, /beginVoiceTurn\(text: string\)[\s\S]{0,400}interruptRef/)
+})

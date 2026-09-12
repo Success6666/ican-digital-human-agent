@@ -138,6 +138,7 @@ class RealtimeAudioHandlersMixin:
             received_bytes=getattr(stats, "bytes_received", 0),
             buffered_bytes=getattr(stats, "buffered_bytes", 0),
             dropped_frames=getattr(stats, "dropped_frames", 0),
+            capacity_bytes=self.limits.max_audio_buffer_bytes,
         )
         await self._emit(
             "audio_queue", utterance_id=getattr(stats, "utterance_id", None),

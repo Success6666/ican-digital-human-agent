@@ -45,7 +45,7 @@ from .rag.models import SearchRequest
 from .interview.service import InterviewService
 from .webfetch.service import WebFetchService
 from .realtime.audio import MockPcmIngress
-from .realtime.limits import RealtimeLimits
+from .realtime.limits import RealtimeLimits, audio_buffer_bytes_for_seconds
 from .realtime.media import HttpAsrIngress, HttpTtsOutput, NullAudioOutput
 from .realtime.router import router as realtime_router
 from .settings import Settings, get_settings
@@ -107,6 +107,11 @@ def build_container(
         idle_timeout_seconds=settings.realtime_idle_timeout_seconds,
         handshake_timeout_seconds=settings.realtime_handshake_timeout_seconds,
         interrupt_timeout_seconds=settings.realtime_interrupt_timeout_seconds,
+        max_audio_buffer_bytes=audio_buffer_bytes_for_seconds(
+            settings.realtime_max_audio_buffer_seconds
+        ),
+        tts_concurrency=settings.realtime_tts_concurrency,
+        tts_queue_timeout_seconds=settings.realtime_tts_queue_timeout_seconds,
     )
     store_kwargs = dict(
         ttl_seconds=settings.session_ttl_seconds,
