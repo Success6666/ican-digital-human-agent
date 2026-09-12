@@ -44,6 +44,12 @@ export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session
   // Phones keep audio suspended until a real gesture. The avatar then speaks
   // with no sound and no visible reason, so the silence gets a way out.
   const [audioBlocked, setAudioBlocked] = useState(false)
+  // The interrupt key names the user turn that may pre-empt speech, so the last
+  // honoured key is remembered: a re-render that merely restates the same turn
+  // must never stop the avatar a second time.
+  const handledInterruptKeyRef = useRef<string>()
+  const statusPhaseRef = useRef(status.phase)
+  statusPhaseRef.current = status.phase
 
   const handleUnlockAudio = useCallback(() => {
     // Runs inside a click, which is the only moment a phone will accept it.
@@ -137,6 +143,13 @@ export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session
 
   useEffect(() => {
     if (!interruptKey) return
+    if (handledInterruptKeyRef.current === interruptKey) return
+    handledInterruptKeyRef.current = interruptKey
+    // A new user turn only stops speech that is actually playing. Interrupting
+    // an idle avatar would bump the speech generation for nothing, and reading
+    // "the avatar just started speaking" as a new turn is exactly how the
+    // opening sentence of every reply used to be discarded.
+    if (statusPhaseRef.current !== 'speaking') return
     void runtimeRef.current?.interrupt()
   }, [interruptKey])
 
@@ -176,7 +189,12 @@ export const AvatarRuntimeSurface = memo(function AvatarRuntimeSurface({ session
         status: 'error',
         attributes: { reason: cause instanceof Error ? cause.message : 'speak_failed' },
       })
-      setStatus({ phase: 'error', message: '数字人播报失败，请重新连接' })
+      // A failed utterance must not take the runtime down with it. Moving the
+      // runtime to `error` here disabled speaking for the rest of the session:
+      // the guard above skips every later delta, so one slow utterance left the
+      // avatar mute until the page was reconnected. The utterance ended badly,
+      // the runtime is still usable, and the next turn speaks normally.
+      setStatus((previous) => (previous.phase === 'speaking' ? { phase: 'ready', progress: 100, message: '数字人已连接' } : previous))
     })
     if (!avatarAudioState().unlocked) setAudioBlocked(true)
   }, [speech?.id, speech?.pending, speech?.text, status.phase])

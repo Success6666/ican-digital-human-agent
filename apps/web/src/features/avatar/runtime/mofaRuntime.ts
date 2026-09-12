@@ -940,6 +940,13 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 }
 
-async function waitForStablePaint(): Promise<void> {
-  await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())))
+async function waitForStablePaint(timeoutMs = 1_000): Promise<void> {
+  // Bounded on purpose: a background tab or an occluded window can stop
+  // delivering animation frames altogether. Waiting forever for a frame the
+  // browser will never deliver left the runtime stuck on "正在加载数字人资源
+  // 80%" — connected, downloading finished, but never ready, with no error.
+  await Promise.race([
+    new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))),
+    delay(timeoutMs),
+  ])
 }

@@ -507,6 +507,60 @@ test('reports the audio state once per change, not once per segment', async () =
   assert.equal(unlocked[0].attributes.state, 'running')
 })
 
+test('a new user turn only pre-empts speech that is actually playing', async () => {
+  const surface = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/AvatarRuntimeSurface.tsx', import.meta.url)), 'utf8')
+  // The stage must not stop the avatar just because a key showed up: reading
+  // "the avatar started speaking" as a new turn is exactly how the opening
+  // sentence of a reply used to be discarded. A turn is also honoured once, so
+  // an unrelated re-render cannot stop the avatar again.
+  assert.match(surface, /handledInterruptKeyRef/)
+  assert.match(surface, /if \(statusPhaseRef\.current !== 'speaking'\) return/)
+  // One failed utterance must not disable the runtime for the rest of the
+  // session: `error` makes the delta guard skip every later delta.
+  assert.doesNotMatch(surface, /setStatus\(\{ phase: 'error', message: '数字人播报失败，请重新连接' \}\)/)
+})
+
+test('bounds the first-paint wait so an unpainted tab still reaches ready', async () => {
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/avatar/runtime/mofaRuntime.ts', import.meta.url)), 'utf8')
+  // A background or occluded window can stop delivering animation frames. An
+  // unbounded rAF wait left the runtime stuck on "正在加载数字人资源 80%"
+  // forever instead of reporting ready, which also blocks all conversation.
+  assert.match(runtime, /async function waitForStablePaint\(timeoutMs = 1_000\): Promise<void>/)
+  assert.match(runtime, /Promise\.race\(\[\s*new Promise<void>\(\(resolve\) => window\.requestAnimationFrame/)
+})
+
+test('stays usable after a segment fails so the next answer is not lost', async () => {
+  const { Runtime } = await loadRuntimeForTest()
+  const runtime = new Runtime()
+  const calls = []
+  runtime.avatar = {
+    speak(ssml, isStart, isEnd) { calls.push({ ssml, isStart, isEnd }) },
+    interrupt() { return 0 },
+    interactiveidle() {},
+  }
+
+  // A rejected final segment abandons the utterance. The timeout path resets
+  // the same flags, so this exercises the shared recovery.
+  const failed = runtime.speak('失败的一段。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].isEnd, true)
+  runtime.handleSpeakStateChange('speak_error', 'sdk-fail')
+  await assert.rejects(failed)
+  // Left mid-stream, the next reply would be submitted as a *continuation* of
+  // the answer that died instead of opening its own utterance.
+  assert.equal(runtime.streamStarted, false)
+
+  const next = runtime.speak('新的回答。', undefined, { flush: true })
+  await nextTask()
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].isStart, true)
+  assert.match(calls[1].ssml, /新的回答/)
+  runtime.handleSpeakStateChange('speak_start', 'sdk-next')
+  runtime.handleSpeakStateChange('speak_end', 'sdk-next')
+  await next
+})
+
 /**
  * Stand-in for the audio unlock module.
  *

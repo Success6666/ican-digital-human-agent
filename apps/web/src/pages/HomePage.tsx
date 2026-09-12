@@ -52,6 +52,16 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
     utteranceId: () => realtimeTraceRef.current.utteranceId,
     revision: () => realtimeTraceRef.current.revision,
   }).current
+  // Only a *new user turn* may pre-empt speech.
+  //
+  // This must never be derived from the avatar's own state. `avatarSpeaking`
+  // flips to true the moment the avatar starts talking, so deriving the key
+  // from it made the key change on every reply *because the reply began* — the
+  // stage then read that as "a new question arrived", interrupted the answer it
+  // had just started, and threw away everything buffered so far. That is what
+  // cut the opening sentence off every reply while the rest of the answer
+  // still played.
+  const avatarInterruptKey = latestUser?.id
   const activeSpeech = realtimeAssistant ? {
     id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
     text: realtimeAssistant,
@@ -106,7 +116,7 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
           visible={visible}
           isCreating={avatar.isCreating}
           speech={activeSpeech}
-          interruptKey={avatarSpeaking ? latestUser?.id : undefined}
+          interruptKey={avatarInterruptKey}
           traceSource={avatarTraceSource}
           activate={chat.isSending || realtime.state.recording === 'recording' || realtime.state.recording === 'requesting'}
           onCreate={() => void avatar.create()}
