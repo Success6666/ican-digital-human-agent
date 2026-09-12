@@ -197,3 +197,15 @@ test('ASR errors remain visible without exposing raw backend details', async () 
   assert.equal(next.statusText, '语音识别服务返回异常，请重试')
   assert.equal(next.error, '语音识别服务返回异常，请重试')
 })
+
+test('the recorder backlog is not sized by the server utterance budget', async () => {
+  // `maxAudioBufferBytes` is how much audio the *server* may retain for one
+  // utterance; it is not a transport budget. Wiring it into the recorder made the
+  // backlog of unsent audio scale with the server, so a stalled socket could hold
+  // a minute of already-spoken audio and deliver it long after the user stopped
+  // talking. Raising the server budget to cover long questions must therefore not
+  // loosen the transport bound, and the two must stay independent.
+  const runtime = await readFile(fileURLToPath(new URL('../src/features/realtime/runtime.ts', import.meta.url)), 'utf8')
+  assert.doesNotMatch(runtime, /maxPendingBytes:\s*config\.maxAudioBufferBytes/)
+  assert.doesNotMatch(runtime, /RecorderConfig[^\n]*maxAudioBufferBytes/)
+})

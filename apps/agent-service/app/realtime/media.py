@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .audio import AudioFormat, AudioIngressError, AudioIngressStats, MockPcmIngress, TranscriptResult
+from .audio import AudioFormat, AudioIngressStats, MockPcmIngress, TranscriptResult
 from .limits import DEFAULT_LIMITS, RealtimeLimits
 
 
@@ -38,9 +38,21 @@ class HttpAsrIngress(MockPcmIngress):
 
     async def push(self, frame: bytes) -> AudioIngressStats:
         stats = await super().push(frame)
-        if len(self._buffer) + len(frame) > self.limits.max_audio_buffer_bytes:
-            raise AudioIngressError("audio_buffer_full", "音频缓冲区已满", close=False)
         self._buffer.extend(frame)
+        # Keep the real buffer in lockstep with the accounted size instead of
+        # refusing the frame once the budget is spent. Raising
+        # `audio_buffer_full` here turned the budget into a hard cliff: every
+        # later frame was rejected, so a question longer than the budget lost its
+        # entire tail — and because the rejection travels as an `error` frame the
+        # panel reported a failure even though the beginning had been captured.
+        # The superclass already models a bounded ring, so drop the oldest whole
+        # frames and keep the newest audio: what the user is still saying is the
+        # part most likely to carry the actual ask. `buffered_bytes` is frame
+        # aligned (it starts at 0 and only ever moves by whole frames), so
+        # trimming to it can never shift the PCM sample grid.
+        retained = stats.buffered_bytes
+        if len(self._buffer) > retained:
+            self._buffer = self._buffer[len(self._buffer) - retained :]
         return stats
 
     async def finish(self) -> TranscriptResult:

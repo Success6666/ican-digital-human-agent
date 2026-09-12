@@ -13,7 +13,10 @@ class RealtimeLimits:
     control_frame_bytes: int = 64 * 1024
     audio_frame_bytes: int = 640  # PCM16, 16 kHz, mono, 20 ms.
     max_audio_frame_bytes: int = 4096
-    max_audio_buffer_bytes: int = 256 * 1024
+    # 60 s of PCM16 16 kHz mono (32 000 B/s) — exactly 3 000 whole frames. ASR runs
+    # once, on `audio_end`, so the buffer has to hold the entire utterance: the old
+    # 256 KiB budget covered barely 8 s and truncated any longer question.
+    max_audio_buffer_bytes: int = 1_920_000
     outbound_queue_size: int = 128
     max_pending_runs: int = 2
     handshake_timeout_seconds: float = 5.0

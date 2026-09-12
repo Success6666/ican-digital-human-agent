@@ -20,7 +20,7 @@ type ActiveCapture = {
   operation: number
 }
 
-type RecorderConfig = Pick<RealtimeClientConfig, 'sampleRate' | 'channels' | 'frameMs' | 'maxAudioBufferBytes'>
+type RecorderConfig = Pick<RealtimeClientConfig, 'sampleRate' | 'channels' | 'frameMs'>
 
 /** Level above which a frame counts as speech rather than room noise. */
 const SPEECH_LEVEL_THRESHOLD = 0.035
@@ -289,8 +289,7 @@ export class RealtimeRuntime {
     if (this.recorder && this.recorderConfig
       && this.recorderConfig.sampleRate === config.sampleRate
       && this.recorderConfig.channels === config.channels
-      && this.recorderConfig.frameMs === config.frameMs
-      && this.recorderConfig.maxAudioBufferBytes === config.maxAudioBufferBytes) {
+      && this.recorderConfig.frameMs === config.frameMs) {
       return this.recorder
     }
     await this.releaseRecorder()
@@ -298,13 +297,16 @@ export class RealtimeRuntime {
       sampleRate: config.sampleRate,
       channels: config.channels,
       frameMs: config.frameMs,
-      maxAudioBufferBytes: config.maxAudioBufferBytes,
     }
     this.recorder = new Pcm16Recorder({
       sampleRate: config.sampleRate,
       channels: config.channels,
       frameMs: config.frameMs,
-      maxPendingBytes: config.maxAudioBufferBytes,
+      // Deliberately absent: `config.maxAudioBufferBytes` is the server's
+      // whole-utterance budget, not a transport budget. Feeding it in made the
+      // recorder's backlog of *unsent* audio scale with the server, so a stalled
+      // socket could hold a minute of already-spoken audio and deliver it far
+      // too late. The recorder keeps its own bounded default instead.
       onChunk: (frame) => {
         const capture = this.activeCapture
         return capture ? this.sendAudioFrame(capture.transport, capture.config, capture.operation, frame) : false
