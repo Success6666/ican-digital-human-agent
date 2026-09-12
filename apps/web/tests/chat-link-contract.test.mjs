@@ -40,7 +40,15 @@ test('assistant speech only uses real response text', () => {
   // Deriving it from `avatarSpeaking` made it flip the instant a reply began,
   // so the stage stopped the answer it had just started and threw away the
   // opening sentence every time.
-  assert.match(homeSource, /const avatarInterruptKey = latestUser\?\.id/)
+  //
+  // It has to watch both doors a turn can come through. Keying on the chat
+  // message alone meant a spoken turn — which never enters `chat.messages` —
+  // could not interrupt at all, and any earlier text message kept outranking
+  // every later utterance, so barge-in stayed dead for the rest of the session.
+  assert.equal(
+    homeSource.includes("const avatarInterruptKey = [latestUser?.id ?? '', realtime.state.utteranceId ?? ''].join('|')"),
+    true,
+  )
   assert.match(homeSource, /interruptKey=\{avatarInterruptKey\}/)
   assert.doesNotMatch(homeSource, /interruptKey=\{avatarSpeaking/)
 })

@@ -61,7 +61,16 @@ export function HomePage({ avatar, chat, realtime, visible = true }: HomePagePro
   // had just started, and threw away everything buffered so far. That is what
   // cut the opening sentence off every reply while the rest of the answer
   // still played.
-  const avatarInterruptKey = latestUser?.id
+  //
+  // A turn arrives through two independent doors, so the key watches both:
+  // a typed message lands in `chat.messages` (its id is the turn), while a
+  // spoken one never reaches the chat list — `startRecording` mints a fresh
+  // realtime utterance before the first frame. Keying on the chat message alone
+  // silently disabled barge-in for the voice path, and worse, *kept* it disabled
+  // for speech that followed any text message, because a truthy message id
+  // outranked every later utterance. Joining both means either door opens the
+  // key, and each door names its own turn.
+  const avatarInterruptKey = [latestUser?.id ?? '', realtime.state.utteranceId ?? ''].join('|')
   const activeSpeech = realtimeAssistant ? {
     id: `realtime-${realtime.state.utteranceId ?? realtime.state.revision}:${realtimeAssistant.length}:${realtime.state.phase}`,
     text: realtimeAssistant,

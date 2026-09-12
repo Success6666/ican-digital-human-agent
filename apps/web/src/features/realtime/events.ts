@@ -53,7 +53,11 @@ export function handleRealtimeEvent(event: RealtimeInboundEvent, context: Realti
     }
   } else if (kind === 'audio_queue') {
     if (event.data) context.playback?.enqueue(event.data)
-    context.dispatch({ type: 'buffer', bytes: event.bufferedBytes ?? 0 })
+    // `droppedFrames` is what turns a silent truncation into a visible one, so it
+    // must actually reach the state: the server has always sent it, the panel has
+    // always rendered it, and the event handler simply never forwarded it, which
+    // left the "已丢弃 N 帧" badge pinned at zero no matter what the server did.
+    context.dispatch({ type: 'buffer', bytes: event.bufferedBytes ?? 0, dropped: event.droppedFrames ?? 0 })
   } else if (kind === 'ack') {
     if (event.action === 'interrupt' && event.accepted) context.dispatch({ type: 'phase', phase: 'idle', message: '上一轮已停止' })
     if (event.action === 'audio_start' && event.accepted === false) {

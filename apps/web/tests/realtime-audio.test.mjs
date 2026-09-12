@@ -209,3 +209,27 @@ test('the recorder backlog is not sized by the server utterance budget', async (
   assert.doesNotMatch(runtime, /maxPendingBytes:\s*config\.maxAudioBufferBytes/)
   assert.doesNotMatch(runtime, /RecorderConfig[^\n]*maxAudioBufferBytes/)
 })
+
+test('the drop counter mirrors the server reading and resets per turn', async () => {
+  // The server sends `droppedFrames` as a cumulative count for the current
+  // utterance. Two things have to hold for the panel's "已丢弃 N 帧" badge to mean
+  // anything: the value must be mirrored rather than accumulated (adding a
+  // running total on every frame turns 1, 2, 3 into 1, 3, 6), and a new turn must
+  // start from zero instead of inheriting the previous turn's total.
+  const { initialRealtimeState, realtimeReducer } = await loadStateModule()
+  let state = realtimeReducer(initialRealtimeState, { type: 'buffer', bytes: 640, dropped: 0 })
+  state = realtimeReducer(state, { type: 'buffer', bytes: 1280, dropped: 4 })
+  state = realtimeReducer(state, { type: 'buffer', bytes: 1920, dropped: 7 })
+  assert.equal(state.droppedFrames, 7)
+  assert.equal(state.bufferedBytes, 1920)
+  state = realtimeReducer(state, { type: 'revision', utteranceId: 'utt-2', revision: 2 })
+  assert.equal(state.droppedFrames, 0)
+})
+
+test('audio queue events forward the server drop count to the reducer', async () => {
+  // The server has always sent `droppedFrames` and the panel has always rendered
+  // it; the event handler just never forwarded it, so a truncated question stayed
+  // invisible in the UI even after the server stopped rejecting frames outright.
+  const events = await readFile(fileURLToPath(new URL('../src/features/realtime/events.ts', import.meta.url)), 'utf8')
+  assert.match(events, /type: 'buffer', bytes: event\.bufferedBytes \?\? 0, dropped: event\.droppedFrames \?\? 0/)
+})

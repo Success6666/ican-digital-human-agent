@@ -78,6 +78,9 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
         interimTranscript: '',
         transcript: '',
         assistantText: '',
+        // The drop counter is per utterance (see the `buffer` case), so a new turn
+        // starts from zero instead of inheriting the previous turn's total.
+        droppedFrames: 0,
         error: undefined,
         lastEventAt: new Date().toISOString(),
       }
@@ -104,7 +107,11 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
         lastEventAt: new Date().toISOString(),
       }
     case 'buffer':
-      return { ...state, bufferedBytes: Math.max(0, action.bytes), droppedFrames: state.droppedFrames + Math.max(0, action.dropped ?? 0), lastEventAt: new Date().toISOString() }
+      // `dropped` is a cumulative count for the current utterance, so it is
+      // mirrored rather than added: accumulating it on every frame would grow
+      // quadratically (`0`, `1`, `3`, `6`, …) and report a truncation far larger
+      // than what happened. `bufferedBytes` is likewise an absolute reading.
+      return { ...state, bufferedBytes: Math.max(0, action.bytes), droppedFrames: Math.max(0, action.dropped ?? state.droppedFrames), lastEventAt: new Date().toISOString() }
     case 'audio_level':
       return { ...state, audioLevel: Math.max(0, Math.min(1, action.level)), lastEventAt: new Date().toISOString() }
     case 'error':

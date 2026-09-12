@@ -136,6 +136,11 @@ export interface RealtimeInboundEvent {
   audioQueueMs?: number
   queueDepth?: number
   bufferedBytes?: number
+  // The server counts dropped audio frames per utterance and reports the running
+  // total on every `audio_queue` event. Declaring it keeps the drop count a real
+  // protocol field instead of falling through to the index signature, where it
+  // typechecked as `unknown` and could not be handed to the reducer.
+  droppedFrames?: number
   capabilities?: Record<string, unknown>
   audioFormat?: Record<string, unknown>
   limits?: Record<string, unknown>
