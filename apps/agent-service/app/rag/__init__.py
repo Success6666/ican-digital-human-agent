@@ -21,6 +21,15 @@ from .models import (
     SearchResult,
 )
 from .service import RagService, build_default_rag_service
+from .tuning import (
+    RetrievalOutcome,
+    RetrievalTuning,
+    QueryTrace,
+    classify_candidates,
+    diagnose,
+    retrieve,
+    summarize_traces,
+)
 
 __all__ = [
     "CharacterChunker",
@@ -40,8 +49,15 @@ __all__ = [
     "MetadataLimits",
     "ParsedDocument",
     "RagService",
+    "QueryTrace",
+    "RetrievalOutcome",
+    "RetrievalTuning",
     "SearchHit",
     "SearchRequest",
     "SearchResult",
     "build_default_rag_service",
+    "classify_candidates",
+    "diagnose",
+    "retrieve",
+    "summarize_traces",
 ]

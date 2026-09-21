@@ -32,6 +32,7 @@ from .models import (
     RagStatistics,
 )
 from .ports import Chunker, DocumentParser, VectorStore
+from .tuning import RetrievalTuning
 
 
 class RagService:
@@ -321,6 +322,7 @@ def build_default_rag_service(
         hnsw_m=_positive_int(os.getenv("RAG_HNSW_M"), 32),
         hnsw_ef_search=_positive_int(os.getenv("RAG_HNSW_EF_SEARCH"), 64),
         index_cache_namespaces=_positive_int(os.getenv("RAG_INDEX_CACHE_NAMESPACES"), 64),
+        tuning=RetrievalTuning.from_env(),
     )
     return RagService(
         parser=DoclingParser(strict_binary=strict_binary, config=docling_config),

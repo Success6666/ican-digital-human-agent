@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import sqlite3
 import time
 from typing import Any
@@ -21,6 +20,8 @@ from .embeddings import HashEmbeddingProvider
 from .memory_store import _matches
 from .models import CollectionStatistics, DocumentChunk, RagStatistics, SearchHit
 from .ports import EmbeddingProvider
+from .tuning import RetrievalTuning, retrieve
+from .tuning.trace import QueryTrace
 
 
 class FaissVectorStore:
@@ -43,6 +44,7 @@ class FaissVectorStore:
         hnsw_m: int = 32,
         hnsw_ef_search: int = 64,
         index_cache_namespaces: int = 64,
+        tuning: RetrievalTuning | None = None,
     ) -> None:
         if not path.strip():
             raise ValueError("path is required")
@@ -52,6 +54,7 @@ class FaissVectorStore:
         self.index_path = Path(index_path) if index_path else self.path.with_suffix(".faiss")
         self.embedder = embedder or HashEmbeddingProvider()
         self.max_chunks = max_chunks
+        self.tuning = tuning or RetrievalTuning.from_env()
         self.index_type = (index_type or os.getenv("RAG_INDEX_TYPE", "auto")).strip().lower()
         self.hnsw_min_chunks = max(1, hnsw_min_chunks)
         self.hnsw_m = max(4, hnsw_m)
@@ -105,6 +108,34 @@ class FaissVectorStore:
             namespace,
             top_k,
             metadata_filter or {},
+        )
+
+    async def search_traced(
+        self,
+        query: str,
+        *,
+        namespace: str,
+        top_k: int = 5,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> tuple[list[SearchHit], QueryTrace | None]:
+        """Search while also returning per-stage attribution for the query.
+
+        Offline diagnostics use this to answer *which stage* lost a passage
+        instead of inferring it from parameter changes.
+        """
+
+        if not query.strip():
+            return [], QueryTrace(query=query, namespace=namespace)
+        top_k = max(1, min(top_k, 50))
+        query_vector = await asyncio.to_thread(self.embedder.embed, query)
+        return await asyncio.to_thread(
+            self._search_sync_traced,
+            query_vector,
+            query,
+            namespace,
+            top_k,
+            metadata_filter or {},
+            trace_enabled=True,
         )
 
     async def delete_document(self, document_id: str, *, namespace: str) -> int:
@@ -214,33 +245,65 @@ class FaissVectorStore:
         top_k: int,
         metadata_filter: dict[str, Any],
     ) -> list[SearchHit]:
+        return self._search_sync_traced(query_vector, query_text, namespace, top_k, metadata_filter)[0]
+
+    def _search_sync_traced(
+        self,
+        query_vector: Sequence[float],
+        query_text: str,
+        namespace: str,
+        top_k: int,
+        metadata_filter: dict[str, Any],
+        *,
+        trace_enabled: bool = False,
+    ) -> tuple[list[SearchHit], QueryTrace | None]:
+        """Run the hybrid retrieval pipeline and materialize the selected rows.
+
+        Recall comes from the dense index; fusion, scoring and duplicate
+        suppression come from the shared tuning pipeline, so this store and the
+        in-memory store rank identically for the same inputs.
+        """
+
         signature = self._signature(namespace)
         rows = self._read_namespace_cached(namespace, signature)
         if not rows:
-            return []
+            return [], QueryTrace(query=query_text, namespace=namespace) if trace_enabled else None
         query = _normalized_matrix([query_vector])
         index = self._load_index_sync(namespace, rows, expected_dimensions=query.shape[1], signature=signature)
-        search_count = len(rows) if metadata_filter else min(len(rows), max(top_k * 8, top_k))
-        scores, positions = index.search(query, search_count)
-        lexical_tokens = _lexical_tokens(query_text)
-        candidate_positions = {int(position): float(score) for score, position in zip(scores[0].tolist(), positions[0].tolist(), strict=True) if position >= 0}
-        if lexical_tokens and len(rows) <= 20_000:
-            lexical_candidates = sorted(
-                ((index, _lexical_overlap(lexical_tokens, str(row[0]))) for index, row in enumerate(rows)),
-                key=lambda item: item[1],
-                reverse=True,
-            )[: max(top_k * 8, top_k)]
-            for position, _ in lexical_candidates:
-                candidate_positions.setdefault(position, 0.0)
-        hits: list[SearchHit] = []
-        ranked_positions = sorted(
-            candidate_positions,
-            key=lambda position: (
-                -(0.75 * candidate_positions[position] + 0.25 * _lexical_overlap(lexical_tokens, str(rows[position][0])) if lexical_tokens else candidate_positions[position]),
-                position,
-            ),
+
+        # A metadata filter is a non-score predicate, so it is resolved into the
+        # eligibility set before ranking: unfiltered rows never consume a slot in
+        # the dense probe, which is what lets the filtered path search deeper for
+        # the same cost as the unfiltered one.
+        allowed_positions = self._eligible_positions(rows, metadata_filter)
+        if not allowed_positions:
+            return [], QueryTrace(query=query_text, namespace=namespace) if trace_enabled else None
+
+        search_count = len(rows) if metadata_filter else min(len(rows), max(top_k * self.tuning.candidate_multiplier, top_k))
+        scores, positions = index.search(query, max(1, search_count))
+        vector_ranked: list[int] = []
+        vector_scores: list[float] = []
+        for score, position in zip(scores[0].tolist(), positions[0].tolist(), strict=True):
+            if position < 0:
+                continue
+            vector_ranked.append(int(position))
+            vector_scores.append(float(score))
+
+        outcome = retrieve(
+            query=query_text,
+            texts=[str(row[0]) for row in rows],
+            vector_ranked=vector_ranked,
+            vector_scores=vector_scores,
+            top_k=top_k,
+            tuning=self.tuning,
+            allowed_positions=allowed_positions,
+            trace_enabled=trace_enabled,
         )
-        for position in ranked_positions:
+        if outcome.trace is not None:
+            outcome.trace.namespace = namespace
+
+        hits: list[SearchHit] = []
+        for position in outcome.positions:
             if position < 0 or position >= len(rows):
                 continue
             text, document_id, chunk_id, ordinal, metadata_json, _ = rows[position]
@@ -259,12 +322,23 @@ class FaissVectorStore:
                         ordinal=ordinal,
                         metadata=metadata,
                     ),
-                    score=round(float(candidate_positions[position]), 8),
+                    score=round(float(outcome.scores.get(position, 0.0)), 8),
                 )
             )
-            if len(hits) >= top_k:
-                break
-        return hits
+        return hits, outcome.trace
+
+    def _eligible_positions(self, rows: list[tuple[Any, ...]], metadata_filter: dict[str, Any]) -> set[int]:
+        if not metadata_filter:
+            return set(range(len(rows)))
+        eligible: set[int] = set()
+        for position, row in enumerate(rows):
+            try:
+                metadata = json.loads(row[4])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if isinstance(metadata, dict) and _matches(metadata, metadata_filter):
+                eligible.add(position)
+        return eligible
 
     def _load_index_sync(
         self,
@@ -464,20 +538,6 @@ def _metadata_owner(metadata_json: str) -> str | None:
     except (TypeError, ValueError, json.JSONDecodeError):
         return None
     return str(metadata.get("owner_id")) if isinstance(metadata, dict) and metadata.get("owner_id") is not None else None
-
-
-def _lexical_tokens(text: str) -> set[str]:
-    tokens = set(re.findall(r"[A-Za-z0-9_]+|[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", text.casefold()))
-    compact = re.sub(r"\s+", "", text.casefold())
-    tokens.update(compact[index : index + 2] for index in range(max(0, len(compact) - 1)))
-    return tokens
-
-
-def _lexical_overlap(query_tokens: set[str], text: str) -> float:
-    if not query_tokens:
-        return 0.0
-    text_tokens = _lexical_tokens(text)
-    return len(query_tokens & text_tokens) / len(query_tokens)
 
 
 __all__ = ["FaissVectorStore"]
