@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.ican.digitalhuman</groupId>
+    <groupId>com.digitalhuman</groupId>
     <artifactId>auth-service</artifactId>
     <version>0.1.54</version>
     <name>digital-human-auth-service</name>

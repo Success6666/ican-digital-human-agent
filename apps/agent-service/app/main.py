@@ -9,46 +9,46 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.routes import router
 from .api.body_limit import RequestBodyLimitMiddleware
 from .api.inflight_limit import InFlightLimitMiddleware
+from .api.routes import router
 from .application.chat_service import ChatApplicationService
 from .application.cleanup import CleanupWorker
 from .application.configuration_service import ConfigurationApplicationService
 from .application.provider_service import ProviderApplicationService
 from .application.session_service import SessionApplicationService
 from .avatar.registry import ProviderRegistry, build_default_registry
-from .evaluation.service import EvaluationService
 from .evaluation.runner import EvaluationDatasetRunner
+from .evaluation.service import EvaluationService
 from .graph.runtime import AgentGraphRuntime
-from .infrastructure.redis_session_store import RedisSessionStore
 from .infrastructure.profile_store import AccountPreferenceStore
+from .infrastructure.redis_session_store import RedisSessionStore
 from .infrastructure.response_cache import ResponseCache
-from .infrastructure.session_store import InMemorySessionStore
 from .infrastructure.runtime_configuration import (
     RuntimeConfigurationRepository,
     apply_aliyun_environment,
-    apply_iflytek_environment,
-    apply_mofa_environment,
     apply_docling_environment,
     apply_embedding_environment,
     apply_futureagi_environment,
+    apply_iflytek_environment,
     apply_llm_environment,
+    apply_mofa_environment,
 )
+from .infrastructure.session_store import InMemorySessionStore
+from .interview.service import InterviewService
+from .llm.client import OpenAICompatibleLlm
 from .mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
 from .mcp.limits import ToolResultLimiter
-from .llm.client import OpenAICompatibleLlm
 from .messaging import ReliableMessageBus
 from .observability.service import ObservabilityService, build_default_observability
-from .rag.service import RagService, build_default_rag_service
 from .rag.models import SearchRequest
-from .interview.service import InterviewService
-from .webfetch.service import WebFetchService
+from .rag.service import RagService, build_default_rag_service
 from .realtime.audio import MockPcmIngress
 from .realtime.limits import RealtimeLimits, audio_buffer_bytes_for_seconds
 from .realtime.media import HttpAsrIngress, HttpTtsOutput, NullAudioOutput
 from .realtime.router import router as realtime_router
 from .settings import Settings, get_settings
+from .webfetch.service import WebFetchService
 
 
 @dataclass(slots=True)
@@ -113,12 +113,12 @@ def build_container(
         tts_concurrency=settings.realtime_tts_concurrency,
         tts_queue_timeout_seconds=settings.realtime_tts_queue_timeout_seconds,
     )
-    store_kwargs = dict(
-        ttl_seconds=settings.session_ttl_seconds,
-        max_sessions=settings.session_max_sessions,
-        cleanup_batch_size=settings.session_cleanup_batch_size,
-        idle_timeout_seconds=settings.session_idle_timeout_seconds,
-    )
+    store_kwargs = {
+        "ttl_seconds": settings.session_ttl_seconds,
+        "max_sessions": settings.session_max_sessions,
+        "cleanup_batch_size": settings.session_cleanup_batch_size,
+        "idle_timeout_seconds": settings.session_idle_timeout_seconds,
+    }
     if settings.session_store_backend.strip().casefold() == "redis":
         store = RedisSessionStore(
             redis_url=settings.redis_url,
@@ -315,7 +315,9 @@ def create_app(
         warmup = getattr(app.state.container.rag, "warmup_embedding", None)
         if callable(warmup):
             import asyncio
-            asyncio.create_task(warmup())
+            # Referenced on the app state so the loop's weak reference does not
+            # let the warmup be collected before it finishes.
+            app.state.embedding_warmup_task = asyncio.create_task(warmup())
         try:
             yield
         finally:

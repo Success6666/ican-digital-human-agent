@@ -8,8 +8,8 @@ and the pipeline degrades to plain vector search when everything is disabled.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import os
+from dataclasses import dataclass, replace
 
 from .fusion import DEFAULT_K
 from .scoring import DEFAULT_WEIGHTS, ScorerWeights
@@ -72,11 +72,11 @@ class RetrievalTuning:
     numeric_boost_enabled: bool = True
     numeric_relative_tolerance: float = 0.05
 
-    def with_overrides(self, **overrides: object) -> "RetrievalTuning":
+    def with_overrides(self, **overrides: object) -> RetrievalTuning:
         return replace(self, **overrides)
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> "RetrievalTuning":
+    def from_env(cls, env: dict[str, str] | None = None) -> RetrievalTuning:
         source = env if env is not None else os.environ
         return cls(
             lexical_enabled=_truthy(source.get("RAG_LEXICAL_ENABLED"), True),

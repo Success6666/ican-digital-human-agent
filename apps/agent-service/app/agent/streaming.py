@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import FillerPlan
 from ..domain.models import ChatResult, ToolCallRecord
+from .models import FillerPlan
 
 
 def filler_payload(trace_id: str, filler: FillerPlan, *, run_id: str | None = None) -> dict[str, Any]:

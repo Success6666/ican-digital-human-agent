@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
-from collections.abc import Awaitable, Callable
 import inspect
 import time
+from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 from ..agent.steering import RunInterrupted, RunToken, should_stop, wait_for_stop

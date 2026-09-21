@@ -9,10 +9,10 @@ consistent with the stored text.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-import math
 
 from .tokenizer import tokens
 

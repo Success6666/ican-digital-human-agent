@@ -9,7 +9,12 @@ from __future__ import annotations
 from . import metrics_primitives as _primitives
 from . import metrics_security as _security
 from .metrics_grounding import grounding_score as _grounding_score
-from .models import EvaluationCase, EvaluationDimension, EvaluationRunRequest, MetricScore
+from .models import (
+    EvaluationCase,
+    EvaluationDimension,
+    EvaluationRunRequest,
+    MetricScore,
+)
 
 # Keep the former module-level names available for integrations that imported
 # helpers before the implementation was split into focused modules.
@@ -119,4 +124,4 @@ def score_run(
     return scores, input_tokens, output_tokens, cost
 
 
-__all__ = ["estimate_tokens", "score_run", "looks_like_prompt_injection", "looks_like_safe_refusal"]
+__all__ = ["estimate_tokens", "looks_like_prompt_injection", "looks_like_safe_refusal", "score_run"]

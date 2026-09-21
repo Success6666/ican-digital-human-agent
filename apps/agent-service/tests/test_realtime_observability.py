@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 
-import pytest
-
 from app.observability.futureagi import FutureAGIConfig, FutureAGISink
 from app.observability.local import LocalJsonLogSink
 from app.observability.service import ObservabilityService

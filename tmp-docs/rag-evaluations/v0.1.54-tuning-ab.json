@@ -1,0 +1,1285 @@
+{
+  "topK": 5,
+  "denseDepth": 40,
+  "corpusSize": 34,
+  "caseCount": 15,
+  "configurations": {
+    "baseline": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.466667,
+            "sample_count": 15,
+            "lower": 0.342378,
+            "upper": 0.590955
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.984357,
+            "sample_count": 15,
+            "lower": 0.953698,
+            "upper": 1.0
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.28,
+            "sample_count": 15,
+            "lower": 0.205427,
+            "upper": 0.354573
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.953362,
+            "sample_count": 15,
+            "lower": 0.899957,
+            "upper": 1.0
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.8,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "lexical-off": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.466667,
+            "sample_count": 15,
+            "lower": 0.342378,
+            "upper": 0.590955
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.979005,
+            "sample_count": 15,
+            "lower": 0.947318,
+            "upper": 1.0
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.28,
+            "sample_count": 15,
+            "lower": 0.205427,
+            "upper": 0.354573
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.94801,
+            "sample_count": 15,
+            "lower": 0.894858,
+            "upper": 1.0
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.922222,
+            "sample_count": 15,
+            "lower": 0.84667,
+            "upper": 0.997775
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": false,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.8,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "no-dedup": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.333333,
+            "sample_count": 15,
+            "lower": 0.333333,
+            "upper": 0.333333
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.868066,
+            "sample_count": 15,
+            "lower": 0.752225,
+            "upper": 0.983906
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.2,
+            "sample_count": 15,
+            "lower": 0.2,
+            "upper": 0.2
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.852286,
+            "sample_count": 15,
+            "lower": 0.721344,
+            "upper": 0.983228
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.0,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "no-numeric-boost": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.466667,
+            "sample_count": 15,
+            "lower": 0.342378,
+            "upper": 0.590955
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.984357,
+            "sample_count": 15,
+            "lower": 0.953698,
+            "upper": 1.0
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.28,
+            "sample_count": 15,
+            "lower": 0.205427,
+            "upper": 0.354573
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.953362,
+            "sample_count": 15,
+            "lower": 0.899957,
+            "upper": 1.0
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.8,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": false,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "wide-pool": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.466667,
+            "sample_count": 15,
+            "lower": 0.342378,
+            "upper": 0.590955
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.984357,
+            "sample_count": 15,
+            "lower": 0.953698,
+            "upper": 1.0
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.28,
+            "sample_count": 15,
+            "lower": 0.205427,
+            "upper": 0.354573
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.953362,
+            "sample_count": 15,
+            "lower": 0.899957,
+            "upper": 1.0
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 12,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 100,
+        "redundancyThreshold": 0.8,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "lexical-heavy": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.466667,
+            "sample_count": 15,
+            "lower": 0.342378,
+            "upper": 0.590955
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.984357,
+            "sample_count": 15,
+            "lower": 0.953698,
+            "upper": 1.0
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.28,
+            "sample_count": 15,
+            "lower": 0.205427,
+            "upper": 0.354573
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.953362,
+            "sample_count": 15,
+            "lower": 0.899957,
+            "upper": 1.0
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 2.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.8,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "rrf-k-10": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.466667,
+            "sample_count": 15,
+            "lower": 0.342378,
+            "upper": 0.590955
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.984357,
+            "sample_count": 15,
+            "lower": 0.953698,
+            "upper": 1.0
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.28,
+            "sample_count": 15,
+            "lower": 0.205427,
+            "upper": 0.354573
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.953362,
+            "sample_count": 15,
+            "lower": 0.899957,
+            "upper": 1.0
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.933333,
+            "sample_count": 15,
+            "lower": 0.85823,
+            "upper": 1.0
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 10.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.8,
+        "shortTextExemptChars": 24,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    },
+    "dedup-tight": {
+      "evaluation": {
+        "case_count": 15,
+        "empty_result_cases": 0,
+        "misses": [],
+        "metrics": {
+          "recall@1": {
+            "name": "recall@1",
+            "mean": 0.816667,
+            "sample_count": 15,
+            "lower": 0.654739,
+            "upper": 0.978594
+          },
+          "precision@1": {
+            "name": "precision@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "ndcg@1": {
+            "name": "ndcg@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "hit_rate@1": {
+            "name": "hit_rate@1",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@3": {
+            "name": "recall@3",
+            "mean": 0.833333,
+            "sample_count": 15,
+            "lower": 0.684658,
+            "upper": 0.982009
+          },
+          "precision@3": {
+            "name": "precision@3",
+            "mean": 0.355556,
+            "sample_count": 15,
+            "lower": 0.312,
+            "upper": 0.399111
+          },
+          "ndcg@3": {
+            "name": "ndcg@3",
+            "mean": 0.887804,
+            "sample_count": 15,
+            "lower": 0.784868,
+            "upper": 0.990741
+          },
+          "hit_rate@3": {
+            "name": "hit_rate@3",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "recall@5": {
+            "name": "recall@5",
+            "mean": 0.833333,
+            "sample_count": 15,
+            "lower": 0.684658,
+            "upper": 0.982009
+          },
+          "precision@5": {
+            "name": "precision@5",
+            "mean": 0.213333,
+            "sample_count": 15,
+            "lower": 0.1872,
+            "upper": 0.239467
+          },
+          "ndcg@5": {
+            "name": "ndcg@5",
+            "mean": 0.868706,
+            "sample_count": 15,
+            "lower": 0.750303,
+            "upper": 0.987109
+          },
+          "hit_rate@5": {
+            "name": "hit_rate@5",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "mrr": {
+            "name": "mrr",
+            "mean": 1.0,
+            "sample_count": 15,
+            "lower": 1.0,
+            "upper": 1.0
+          },
+          "map": {
+            "name": "map",
+            "mean": 0.833333,
+            "sample_count": 15,
+            "lower": 0.684658,
+            "upper": 0.982009
+          }
+        }
+      },
+      "tuning": {
+        "lexicalEnabled": true,
+        "lexicalRouteTopK": 50,
+        "candidateMultiplier": 8,
+        "rrfK": 60.0,
+        "vectorRouteWeight": 1.0,
+        "lexicalRouteWeight": 1.0,
+        "fusionPoolSize": 50,
+        "redundancyThreshold": 0.6,
+        "shortTextExemptChars": 12,
+        "numericBoostEnabled": true,
+        "numericRelativeTolerance": 0.05
+      }
+    }
+  },
+  "abTests": [
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.9333333333333333,
+      "variant": "lexical-off"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "lexical-off"
+    },
+    {
+      "mean_delta": -0.00535194739012083,
+      "lower": -0.01605584217036249,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 1,
+      "ties": 14,
+      "significant": false,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.9480098770225855,
+      "variant": "lexical-off"
+    },
+    {
+      "mean_delta": -0.11666666666666667,
+      "lower": -0.23333333333333334,
+      "upper": -0.03333333333333333,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 4,
+      "ties": 11,
+      "significant": true,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.8166666666666667,
+      "variant": "no-dedup"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "no-dedup"
+    },
+    {
+      "mean_delta": -0.10107600156325555,
+      "lower": -0.19850936269302852,
+      "upper": -0.025790187148969444,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 4,
+      "ties": 11,
+      "significant": true,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.8522858228494509,
+      "variant": "no-dedup"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.9333333333333333,
+      "variant": "no-numeric-boost"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "no-numeric-boost"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.9533618244127064,
+      "variant": "no-numeric-boost"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.9333333333333333,
+      "variant": "wide-pool"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "wide-pool"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.9533618244127064,
+      "variant": "wide-pool"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.9333333333333333,
+      "variant": "lexical-heavy"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "lexical-heavy"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.9533618244127064,
+      "variant": "lexical-heavy"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.9333333333333333,
+      "variant": "rrf-k-10"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "rrf-k-10"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.9533618244127064,
+      "variant": "rrf-k-10"
+    },
+    {
+      "mean_delta": -0.1,
+      "lower": -0.2,
+      "upper": -0.016666666666666666,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 4,
+      "ties": 11,
+      "significant": true,
+      "metric": "recall@5",
+      "baseline_mean": 0.9333333333333333,
+      "candidate_mean": 0.8333333333333334,
+      "variant": "dedup-tight"
+    },
+    {
+      "mean_delta": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 0,
+      "ties": 15,
+      "significant": false,
+      "metric": "mrr",
+      "baseline_mean": 1.0,
+      "candidate_mean": 1.0,
+      "variant": "dedup-tight"
+    },
+    {
+      "mean_delta": -0.08465584231387355,
+      "lower": -0.16590419371143517,
+      "upper": -0.016420159249382,
+      "confidence": 0.95,
+      "samples": 2000,
+      "wins": 0,
+      "losses": 4,
+      "ties": 11,
+      "significant": true,
+      "metric": "ndcg@5",
+      "baseline_mean": 0.9533618244127064,
+      "candidate_mean": 0.8687059820988329,
+      "variant": "dedup-tight"
+    }
+  ]
+}

@@ -11,13 +11,13 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..agent.models import ExpressionName, PerformanceCue
 from ..agent.mofa_capabilities import (
     MOFA_ACTION_INTENT_OPTIONS,
     MOFA_EMOTIONS,
     normalize_mofa_action_intent,
     normalize_mofa_emotion,
 )
-from ..agent.models import ExpressionName, PerformanceCue
 
 
 class LlmGeneration(BaseModel):

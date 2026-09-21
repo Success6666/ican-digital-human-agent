@@ -12,7 +12,7 @@ interface ConsoleShellProps {
   children: ReactNode
 }
 
-const COLLAPSED_KEY = 'ican.console.nav.collapsed'
+const COLLAPSED_KEY = 'digital-human.console.nav.collapsed'
 
 export function ConsoleShell({ user, activePage, onNavigate, onLogout, children }: ConsoleShellProps) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')

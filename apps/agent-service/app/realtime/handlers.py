@@ -191,7 +191,7 @@ class RealtimeHandlersMixin(RealtimeAudioHandlersMixin):
                     self._tts_semaphore.acquire(),
                     timeout=self.limits.tts_queue_timeout_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.telemetry.tts_dropped(
                     run_id=binding.run_id, reason="tts_queue_timeout", text_length=len(text)
                 )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -73,7 +72,7 @@ class HttpAsrIngress(MockPcmIngress):
                 return TranscriptResult(status="error", utterance_id=self.utterance_id, revision=self.revision, reason="asr_response_too_large")
             text = _extract_text(response)
             return TranscriptResult(status="final" if text else "empty", text=text, utterance_id=self.utterance_id, revision=self.revision, reason=None if text else "asr_empty")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return TranscriptResult(status="error", utterance_id=self.utterance_id, revision=self.revision, reason="asr_timeout")
         except httpx.HTTPError:
             return TranscriptResult(status="error", utterance_id=self.utterance_id, revision=self.revision, reason="asr_unavailable")
@@ -126,7 +125,7 @@ class HttpTtsOutput:
                 chunk = payload[offset : offset + self.chunk_bytes]
                 if len(chunk) % 2 == 0 and chunk:
                     yield chunk
-        except (httpx.HTTPError, asyncio.TimeoutError):
+        except (TimeoutError, httpx.HTTPError):
             return
 
     async def close(self) -> None:

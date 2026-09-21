@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 DEFAULT_MAX_METADATA_BYTES = 64 * 1024
 DEFAULT_MAX_METADATA_ITEMS = 128
 DEFAULT_MAX_METADATA_DEPTH = 6

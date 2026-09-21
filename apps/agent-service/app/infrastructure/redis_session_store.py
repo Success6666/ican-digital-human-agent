@@ -8,9 +8,11 @@ JSON document.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+import contextlib
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from ..domain.models import AvatarSession, SessionRecord, SessionStatus
 from .session_close import SessionCloseLifecycleMixin
@@ -122,10 +124,8 @@ class RedisSessionStore(InMemorySessionStore):
             raise
         finally:
             if acquired:
-                try:
+                with contextlib.suppress(Exception):
                     await lease.release()
-                except Exception:
-                    pass
 
     async def close_redis(self) -> None:
         client, self._redis = self._redis, None

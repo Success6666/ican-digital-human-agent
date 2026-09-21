@@ -7,7 +7,6 @@ from fastapi import APIRouter, WebSocket
 from .connection import RealtimeConnection
 from .limits import DEFAULT_LIMITS
 
-
 router = APIRouter()
 
 

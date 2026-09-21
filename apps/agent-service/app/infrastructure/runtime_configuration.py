@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -11,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-def apply_mofa_environment(configuration: "MofaRuntimeConfiguration") -> None:
+def apply_mofa_environment(configuration: MofaRuntimeConfiguration) -> None:
     """Apply persisted provider settings to the current process environment."""
     for key, value in {
         "MOFA_APP_ID": configuration.app_id,
@@ -55,7 +56,7 @@ class MofaRuntimeConfiguration(BaseModel):
     emotion_enabled: bool = False
 
     @classmethod
-    def from_env(cls) -> "MofaRuntimeConfiguration":
+    def from_env(cls) -> MofaRuntimeConfiguration:
         return cls(
             enabled=os.getenv("MOFA_AVATAR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
             app_id=os.getenv("MOFA_APP_ID", "").strip(),
@@ -81,7 +82,7 @@ class AliyunRuntimeConfiguration(BaseModel):
     access_key_secret: str = Field(default="", max_length=256)
 
     @classmethod
-    def from_env(cls) -> "AliyunRuntimeConfiguration":
+    def from_env(cls) -> AliyunRuntimeConfiguration:
         return cls(
             enabled=os.getenv("ALIYUN_AVATAR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
             base_url=os.getenv("ALIYUN_AVATAR_BASE_URL", "").strip(),
@@ -104,7 +105,7 @@ class IflytekRuntimeConfiguration(BaseModel):
     api_secret: str = Field(default="", max_length=256)
 
     @classmethod
-    def from_env(cls) -> "IflytekRuntimeConfiguration":
+    def from_env(cls) -> IflytekRuntimeConfiguration:
         return cls(
             enabled=os.getenv("IFLYTEK_AVATAR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
             gateway_url=os.getenv("IFLYTEK_GATEWAY_URL", "").strip(),
@@ -151,7 +152,7 @@ class LlmRuntimeConfiguration(BaseModel):
     max_tokens: int = Field(default=1024, ge=64, le=16_384)
 
     @classmethod
-    def from_env(cls) -> "LlmRuntimeConfiguration":
+    def from_env(cls) -> LlmRuntimeConfiguration:
         return cls(
             enabled=_truthy(os.getenv("LLM_ENABLED", "false")),
             provider=os.getenv("LLM_PROVIDER", "openai-compatible").strip(),
@@ -179,7 +180,7 @@ class EmbeddingRuntimeConfiguration(BaseModel):
     batch_size: int = Field(default=64, ge=1, le=256)
 
     @classmethod
-    def from_env(cls) -> "EmbeddingRuntimeConfiguration":
+    def from_env(cls) -> EmbeddingRuntimeConfiguration:
         return cls(
             enabled=_truthy(os.getenv("EMBEDDING_ENABLED", "true")),
             provider=os.getenv("EMBEDDING_PROVIDER", "local").strip(),
@@ -202,16 +203,16 @@ class FutureAGIRuntimeConfiguration(BaseModel):
     endpoint: str = Field(default="", max_length=512)
     api_key: str = Field(default="", max_length=512)
     secret_key: str = Field(default="", max_length=512)
-    project: str = Field(default="ican-digital-human", max_length=128)
+    project: str = Field(default="digital-human", max_length=128)
 
     @classmethod
-    def from_env(cls) -> "FutureAGIRuntimeConfiguration":
+    def from_env(cls) -> FutureAGIRuntimeConfiguration:
         return cls(
             enabled=_truthy(os.getenv("FUTUREAGI_ENABLED", "false")),
             endpoint=os.getenv("FUTUREAGI_ENDPOINT", "").strip(),
             api_key=os.getenv("FUTUREAGI_API_KEY", "").strip(),
             secret_key=os.getenv("FUTUREAGI_SECRET_KEY", "").strip(),
-            project=os.getenv("FUTUREAGI_PROJECT", "ican-digital-human").strip(),
+            project=os.getenv("FUTUREAGI_PROJECT", "digital-human").strip(),
         )
 
 
@@ -230,7 +231,7 @@ class DoclingRuntimeConfiguration(BaseModel):
     max_concurrency: int = Field(default=1, ge=1, le=8)
 
     @classmethod
-    def from_env(cls) -> "DoclingRuntimeConfiguration":
+    def from_env(cls) -> DoclingRuntimeConfiguration:
         languages = [item.strip() for item in os.getenv("DOCLING_OCR_LANG", "chinese").split(",") if item.strip()]
         return cls(
             enabled=_truthy(os.getenv("DOCLING_ENABLED", "true")),
@@ -307,16 +308,16 @@ class RuntimeConfiguration(BaseModel):
     default_provider: str = Field(default="mock", min_length=1, max_length=64)
     session_ttl_seconds: int = Field(default=1800, ge=60, le=86_400)
     cleanup_interval_seconds: int = Field(default=30, ge=5, le=3_600)
-    mofa: "MofaRuntimeConfiguration" = Field(default_factory=lambda: MofaRuntimeConfiguration())
-    aliyun: "AliyunRuntimeConfiguration" = Field(default_factory=lambda: AliyunRuntimeConfiguration())
-    iflytek: "IflytekRuntimeConfiguration" = Field(default_factory=lambda: IflytekRuntimeConfiguration())
-    llm: "LlmRuntimeConfiguration" = Field(default_factory=lambda: LlmRuntimeConfiguration())
-    embedding: "EmbeddingRuntimeConfiguration" = Field(default_factory=lambda: EmbeddingRuntimeConfiguration())
-    docling: "DoclingRuntimeConfiguration" = Field(default_factory=lambda: DoclingRuntimeConfiguration())
-    futureagi: "FutureAGIRuntimeConfiguration" = Field(default_factory=lambda: FutureAGIRuntimeConfiguration())
+    mofa: MofaRuntimeConfiguration = Field(default_factory=lambda: MofaRuntimeConfiguration())
+    aliyun: AliyunRuntimeConfiguration = Field(default_factory=lambda: AliyunRuntimeConfiguration())
+    iflytek: IflytekRuntimeConfiguration = Field(default_factory=lambda: IflytekRuntimeConfiguration())
+    llm: LlmRuntimeConfiguration = Field(default_factory=lambda: LlmRuntimeConfiguration())
+    embedding: EmbeddingRuntimeConfiguration = Field(default_factory=lambda: EmbeddingRuntimeConfiguration())
+    docling: DoclingRuntimeConfiguration = Field(default_factory=lambda: DoclingRuntimeConfiguration())
+    futureagi: FutureAGIRuntimeConfiguration = Field(default_factory=lambda: FutureAGIRuntimeConfiguration())
 
     @classmethod
-    def from_settings(cls, settings: Any) -> "RuntimeConfiguration":
+    def from_settings(cls, settings: Any) -> RuntimeConfiguration:
         return cls(
             default_provider=settings.default_provider,
             session_ttl_seconds=settings.session_ttl_seconds,
@@ -363,27 +364,25 @@ class RuntimeConfigurationRepository:
                 os.fsync(stream.fileno())
             os.replace(temporary, self.path)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(temporary)
-            except OSError:
-                pass
             raise
 
 __all__ = [
     "AliyunRuntimeConfiguration",
+    "DoclingRuntimeConfiguration",
+    "EmbeddingRuntimeConfiguration",
+    "FutureAGIRuntimeConfiguration",
     "IflytekRuntimeConfiguration",
+    "LlmRuntimeConfiguration",
     "MofaRuntimeConfiguration",
     "RuntimeConfiguration",
     "RuntimeConfigurationRepository",
     "apply_aliyun_environment",
-    "apply_iflytek_environment",
-    "apply_mofa_environment",
-    "DoclingRuntimeConfiguration",
-    "EmbeddingRuntimeConfiguration",
-    "FutureAGIRuntimeConfiguration",
-    "LlmRuntimeConfiguration",
     "apply_docling_environment",
     "apply_embedding_environment",
     "apply_futureagi_environment",
+    "apply_iflytek_environment",
     "apply_llm_environment",
+    "apply_mofa_environment",
 ]

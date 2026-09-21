@@ -1,5 +1,5 @@
-const STORAGE_KEY = 'ican.avatar.preview.v4'
-const UPDATED_EVENT = 'ican-avatar-preview-updated'
+const STORAGE_KEY = 'digital-human.avatar.preview.v4'
+const UPDATED_EVENT = 'digital-human-avatar-preview-updated'
 
 export interface AvatarPreview {
   provider: string

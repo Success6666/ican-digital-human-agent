@@ -9,12 +9,12 @@ from uuid import uuid4
 
 from .client_events import ClientTelemetryEvent
 from .local import LocalJsonLogSink
+from .marker_api import ObservabilityMarkerMixin
 from .models import ObservabilityHealth, TelemetryEvent, TraceReplay, TraceSummary
 from .ports import EventSink
 from .span import Span, _current_span, _current_trace
 from .traces import replay as replay_trace
 from .traces import summaries as summarize_traces
-from .marker_api import ObservabilityMarkerMixin
 from .transport import emit_async as _emit_async_transport
 from .transport import emit_sync as _emit_sync_transport
 from .transport import flush_pending as _flush_pending_transport
@@ -250,7 +250,7 @@ class ObservabilityService(ObservabilityMarkerMixin):
                 enabled=bool(getattr(configuration, "enabled", False)),
                 api_key=getattr(configuration, "api_key", None) or None,
                 secret_key=getattr(configuration, "secret_key", None) or None,
-                project=getattr(configuration, "project", "ican-digital-human"),
+                project=getattr(configuration, "project", "digital-human"),
                 endpoint=getattr(configuration, "endpoint", None) or None,
             ),
             fallback=self.local_sink,

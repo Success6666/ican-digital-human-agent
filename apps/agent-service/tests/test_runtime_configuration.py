@@ -193,7 +193,7 @@ def test_model_rag_and_observability_configuration_is_editable_and_persisted(tmp
                     "endpoint": "https://futureagi.example.test",
                     "apiKey": "future-api-key",
                     "secretKey": "future-secret-value",
-                    "project": "ican-test",
+                    "project": "dh-test",
                 },
             },
         )
@@ -210,4 +210,4 @@ def test_model_rag_and_observability_configuration_is_editable_and_persisted(tmp
     configuration = restarted.configuration_service._configuration
     assert configuration.llm.model == "qwen-plus"
     assert configuration.docling.enabled is False
-    assert configuration.futureagi.project == "ican-test"
+    assert configuration.futureagi.project == "dh-test"

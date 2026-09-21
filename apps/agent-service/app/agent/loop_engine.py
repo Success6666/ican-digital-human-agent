@@ -67,7 +67,7 @@ class ApprovalStore:
             return False
         try:
             return await asyncio.wait_for(future, timeout=self.timeout_seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False
         finally:
             self._pending.pop(approval_id, None)

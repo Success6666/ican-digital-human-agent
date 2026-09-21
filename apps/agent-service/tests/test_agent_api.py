@@ -8,7 +8,11 @@ from app.api.routes import _session_response
 from app.avatar.adapters.mofa import MofaProvider
 from app.domain.models import AvatarCapabilities, AvatarSession
 from app.main import build_container, create_app
-from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.mcp.client import (
+    CompositeToolClient,
+    LocalToolClient,
+    StreamableHttpToolClient,
+)
 from app.settings import Settings
 
 

@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-import time
-from typing import Any
-import uuid
+import contextlib
 import hashlib
 import json
+import time
+import uuid
+from collections.abc import AsyncIterator
+from typing import Any
 
-from ..evaluation.service import EvaluationService
 from ..domain.models import ChatResult
+from ..evaluation.service import EvaluationService
 from ..graph.runtime import AgentGraphRuntime
+from ..infrastructure.profile_store import AccountPreferenceStore
+from ..infrastructure.response_cache import ResponseCache
 from .chat_evaluation import ChatEvaluationRecorder
 from .chat_evaluation import number as _number_value
 from .chat_evaluation import result_status as _result_status_value
 from .errors import InvalidMessageError
 from .session_service import SessionApplicationService
-from ..infrastructure.profile_store import AccountPreferenceStore
-from ..infrastructure.response_cache import ResponseCache
 
 # Preserve the old private helper import paths for downstream integrations.
 _number = _number_value
@@ -181,9 +182,7 @@ class ChatApplicationService:
                                 tools.append(str(item["name"]))
                             if isinstance(item, dict) and item.get("error"):
                                 status = "error"
-                    elif event_name == "provider" and payload.get("status") == "error":
-                        status = "error"
-                    elif event_name == "error":
+                    elif (event_name == "provider" and payload.get("status") == "error") or event_name == "error":
                         status = "error"
                     elif event_name == "interrupted":
                         status = "interrupted"
@@ -249,20 +248,16 @@ class ChatApplicationService:
         finally:
             close = getattr(graph_events, "aclose", None)
             if callable(close):
-                try:
+                # A transport disconnect may race with graph cleanup; preserve
+                # the original stream outcome and rely on the store marker below
+                # to invalidate the run.
+                with contextlib.suppress(Exception):
                     await close()
-                except Exception:
-                    # A transport disconnect may race with graph cleanup;
-                    # preserve the original stream outcome and rely on the
-                    # store marker below to invalidate the run.
-                    pass
             if not recorded:
-                try:
+                # Disconnect cleanup is best effort and must not mask the
+                # original stream cancellation or provider error.
+                with contextlib.suppress(Exception):
                     await self.sessions.mark_run_interrupted(session_id=session_id, run_id=run_id)
-                except Exception:
-                    # Disconnect cleanup is best effort and must not mask the
-                    # original stream cancellation or provider error.
-                    pass
 
     def _validate(self, message: str) -> str:
         clean = message.strip()

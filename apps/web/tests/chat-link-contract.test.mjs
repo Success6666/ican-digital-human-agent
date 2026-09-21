@@ -54,7 +54,7 @@ test('assistant speech only uses real response text', () => {
 })
 
 test('conversation history is account scoped, bounded, and included as request context', () => {
-  assert.match(conversationStoreSource, /STORAGE_PREFIX = 'ican:chat-history:v1:'/)
+  assert.match(conversationStoreSource, /STORAGE_PREFIX = 'digital-human:chat-history:v1:'/)
   assert.match(conversationStoreSource, /MAX_CONVERSATIONS = 40/)
   assert.match(chatModelSource, /useChat\(session: AvatarSession \| null, accountId\?: string\)/)
   assert.match(chatModelSource, /slice\(-MAX_CONTEXT_MESSAGES\)/)

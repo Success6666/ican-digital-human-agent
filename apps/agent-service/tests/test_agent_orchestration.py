@@ -14,18 +14,22 @@ from app.agent.models import (
     IntentSource,
     ToolCategory,
 )
-from app.evaluation.models import EvaluationDimension
 from app.agent.performance import PerformancePlanner
 from app.agent.security import assess_prompt_injection, safe_refusal
 from app.agent.tool_catalog import ProgressiveToolRouter
-from app.graph.builder import _fast_path_reply, _is_fast_path_message
+from app.application.session_service import SessionApplicationService
 from app.avatar.adapters.mock import MockProvider
 from app.avatar.registry import ProviderRegistry
-from app.application.session_service import SessionApplicationService
 from app.domain.models import AvatarCapabilities, AvatarSession, SessionStatus
-from app.main import build_container
-from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.evaluation.models import EvaluationDimension
+from app.graph.builder import _fast_path_reply, _is_fast_path_message
 from app.infrastructure.session_store import InMemorySessionStore
+from app.main import build_container
+from app.mcp.client import (
+    CompositeToolClient,
+    LocalToolClient,
+    StreamableHttpToolClient,
+)
 from app.settings import Settings
 
 

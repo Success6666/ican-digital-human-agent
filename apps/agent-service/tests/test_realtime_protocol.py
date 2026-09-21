@@ -7,12 +7,16 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import build_container, create_app
-from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.mcp.client import (
+    CompositeToolClient,
+    LocalToolClient,
+    StreamableHttpToolClient,
+)
 from app.realtime.audio_handlers import RealtimeAudioHandlersMixin
 from app.realtime.handlers import RealtimeHandlersMixin
 from app.realtime.observability import RealtimeTelemetry
-from app.realtime.state import ConnectionState
 from app.realtime.protocol import RealtimeMessage
+from app.realtime.state import ConnectionState
 from app.settings import Settings
 
 

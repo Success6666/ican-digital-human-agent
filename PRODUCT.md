@@ -2,7 +2,7 @@
 
 ## Register
 
-ICAN 数字人 Agent 控制台
+数字人 Agent 控制台
 
 ## Users
 
@@ -10,7 +10,7 @@ ICAN 数字人 Agent 控制台
 
 ## Product Purpose
 
-ICAN 是通用数字人 Agent 的控制台与运行工作台。它把数字人 Provider、LangGraph Agent、RAG、MCP、会话状态和 FutureAGI 可观测性放在同一个可信入口中，让使用者可以建立会话、实时交流、检索知识、评测质量、回放 Trace，并在不暴露敏感凭证的前提下维护运行配置。
+这是通用数字人 Agent 的控制台与运行工作台。它把数字人 Provider、LangGraph Agent、RAG、MCP、会话状态和 FutureAGI 可观测性放在同一个可信入口中，让使用者可以建立会话、实时交流、检索知识、评测质量、回放 Trace，并在不暴露敏感凭证的前提下维护运行配置。
 
 成功标准是：用户能在首次进入后迅速建立一个可用会话；在实时对话中能看懂当前状态并随时改口；在 RAG、评测和审计页面能通过人类可读的指标和图表判断问题落点；新增 Provider 或数据源时不需要重写控制台。
 

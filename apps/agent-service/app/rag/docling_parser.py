@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from html.parser import HTMLParser
-from io import BytesIO
 import importlib.util
 import os
-from pathlib import Path, PurePath
 import threading
-from typing import Any
 from dataclasses import dataclass
+from html.parser import HTMLParser
+from io import BytesIO
+from pathlib import Path, PurePath
+from typing import Any
 
 from .models import ParsedDocument
 from .parser_support import infer_content_type, positive_int, public_load_error, truthy
@@ -98,7 +98,7 @@ class DoclingRuntimeConfig:
             raise ValueError("ocr_languages must not be empty")
 
     @classmethod
-    def from_env(cls) -> "DoclingRuntimeConfig":
+    def from_env(cls) -> DoclingRuntimeConfig:
         raw_languages = os.getenv("DOCLING_OCR_LANG", "chinese")
         languages = tuple(item.strip() for item in raw_languages.split(",") if item.strip())
         return cls(
@@ -261,7 +261,9 @@ class DoclingParser:
         converter = self._load_converter()
         if converter is None:
             raise RuntimeError(self._converter_error or "docling is unavailable")
-        from docling.datamodel.base_models import DocumentStream  # type: ignore[import-not-found]
+        from docling.datamodel.base_models import (
+            DocumentStream,  # type: ignore[import-not-found]
+        )
 
         source = DocumentStream(name=PurePath(source_name).name, stream=BytesIO(payload))
         # Docling conversion is CPU/memory heavy. Keep the limit inside the
@@ -284,17 +286,17 @@ class DoclingParser:
                 self._converter_error = "docling disabled by configuration"
                 return None
             try:
-                from docling.document_converter import (  # type: ignore[import-not-found]
-                    DocumentConverter,
-                    ImageFormatOption,
-                    InputFormat,
-                    PdfFormatOption,
-                )
                 from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
                     PdfPipelineOptions,
                     RapidOcrOptions,
                     TableFormerMode,
                     TableStructureOptions,
+                )
+                from docling.document_converter import (  # type: ignore[import-not-found]
+                    DocumentConverter,
+                    ImageFormatOption,
+                    InputFormat,
+                    PdfFormatOption,
                 )
 
                 pipeline_options = PdfPipelineOptions(

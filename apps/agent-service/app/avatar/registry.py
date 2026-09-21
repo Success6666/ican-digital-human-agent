@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from .adapters import AliyunProvider, FayProvider, IflytekProvider, MockProvider, MofaProvider
-from .errors import ProviderError
 from ..domain.models import AvatarCapabilities, AvatarHealth
 from ..domain.ports import AvatarProvider
 from ..settings import Settings, get_settings
+from .adapters import (
+    AliyunProvider,
+    FayProvider,
+    IflytekProvider,
+    MockProvider,
+    MofaProvider,
+)
+from .errors import ProviderError
 
 
 class ProviderRegistry:

@@ -6,13 +6,18 @@ import httpx
 import pytest
 
 from app.agent.mofa_capabilities import (
-    MOFA_ACTION_INTENTS,
     MOFA_ACTION_INTENT_OPTIONS,
+    MOFA_ACTION_INTENTS,
     MOFA_EMOTIONS,
     normalize_mofa_action_intent,
     normalize_mofa_emotion,
 )
-from app.llm.client import OpenAICompatibleLlm, _structured_system_prompt, extract_reply_prefix, parse_generation
+from app.llm.client import (
+    OpenAICompatibleLlm,
+    _structured_system_prompt,
+    extract_reply_prefix,
+    parse_generation,
+)
 
 
 def test_completion_url_accepts_base_or_full_endpoint() -> None:

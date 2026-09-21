@@ -9,7 +9,6 @@ import re
 from collections.abc import Sequence
 from urllib.request import Request, urlopen
 
-
 _TOKEN_RE = re.compile(r"[\w]+|[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", re.UNICODE)
 
 
@@ -138,7 +137,7 @@ class OpenAICompatibleEmbeddingProvider:
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             method="POST",
         )
-        with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 - URL is operator config, not user input.
+        with urlopen(request, timeout=self.timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
         values = payload.get("data", [{}])[0].get("embedding") if isinstance(payload, dict) else None
         if not isinstance(values, list) or not values:

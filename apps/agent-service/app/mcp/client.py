@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+import contextlib
 import socket
 import time
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -114,16 +115,18 @@ class StreamableHttpToolClient:
             connect=min(self.timeout_seconds, 2.0),
             pool=min(self.timeout_seconds, 2.0),
         )
-        async with httpx.AsyncClient(headers=headers, timeout=timeout) as http_client:
-            async with streamable_http_client(self.url, http_client=http_client) as (read_stream, write_stream):
-                async with ClientSession(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds=self.timeout_seconds,
-                ) as session:
-                    await session.initialize()
-                    await session.list_tools()
-                    return await session.call_tool(name, arguments)
+        async with (
+            httpx.AsyncClient(headers=headers, timeout=timeout) as http_client,
+            streamable_http_client(self.url, http_client=http_client) as (read_stream, write_stream),
+            ClientSession(
+                read_stream,
+                write_stream,
+                read_timeout_seconds=self.timeout_seconds,
+            ) as session,
+        ):
+            await session.initialize()
+            await session.list_tools()
+            return await session.call_tool(name, arguments)
 
 
 class CompositeToolClient:
@@ -165,7 +168,7 @@ class CompositeToolClient:
             # is reachable, retain the full MCP request timeout configured on
             # StreamableHttpToolClient so real tools are not cut off early.
             remote_result = await self.remote.call(name, arguments)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._remote_unavailable_until = time.monotonic() + 5.0
             local_result = await self.local.call(name, arguments)
             return self._fallback_result(local_result, "MCP connectivity probe timeout")
@@ -199,13 +202,11 @@ class CompositeToolClient:
                 asyncio.open_connection(host, port, family=socket.AF_INET),
                 timeout=self.remote_budget_seconds,
             )
-        except (OSError, asyncio.TimeoutError, ValueError):
+        except (TimeoutError, OSError, ValueError):
             return False
         writer.close()
-        try:
+        with contextlib.suppress(OSError, asyncio.CancelledError):
             await writer.wait_closed()
-        except (OSError, asyncio.CancelledError):
-            pass
         return True
 
 

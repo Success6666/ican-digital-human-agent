@@ -2,29 +2,31 @@ from __future__ import annotations
 
 import base64
 import sys
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from app.rag import (  # noqa: E402
+from app.rag import (
     CharacterChunker,
-    DocumentParseError,
     DoclingParser,
     DoclingRuntimeConfig,
-    InMemoryVectorStore,
+    DocumentParseError,
+    HierarchicalChunker,
     IngestRequest,
-    MetadataLimits,
+    InMemoryVectorStore,
     MetadataLimitError,
+    MetadataLimits,
     RagService,
     SearchRequest,
-    HierarchicalChunker,
 )
-from app.rag.embeddings import LocalSentenceTransformerEmbeddingProvider, build_embedding_provider  # noqa: E402
+from app.rag.embeddings import (
+    LocalSentenceTransformerEmbeddingProvider,
+    build_embedding_provider,
+)
 
 
 class RagTests(unittest.IsolatedAsyncioTestCase):
@@ -235,8 +237,9 @@ class RagTests(unittest.IsolatedAsyncioTestCase):
     def test_ocr_probe_surfaces_a_native_library_failure(self) -> None:
         """The real failure mode: the package resolves but `import cv2` fails."""
 
-        from app.rag import docling_parser
         import builtins
+
+        from app.rag import docling_parser
 
         parser = DoclingParser(
             config=DoclingRuntimeConfig(enabled=True, do_ocr=True, ocr_backend="onnxruntime")

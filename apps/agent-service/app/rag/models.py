@@ -77,7 +77,7 @@ class IngestRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def require_content(self) -> "IngestRequest":
+    def require_content(self) -> IngestRequest:
         if (self.content is None) == (self.content_base64 is None):
             raise ValueError("exactly one of content or content_base64 is required")
         return self

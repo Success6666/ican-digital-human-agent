@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 import math
+from collections.abc import Iterable
 from typing import Any
 
 from .models import TelemetryEvent, TracePhase, TraceReplay, TraceStage, TraceSummary
 from .redaction import redact
-
 
 DEFAULT_MAX_REPLAY_EVENTS = 500
 

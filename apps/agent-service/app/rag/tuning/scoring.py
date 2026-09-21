@@ -39,7 +39,7 @@ class ScorerWeights:
     numeric: float = 0.10
     quality: float = 0.10
 
-    def normalized(self) -> "ScorerWeights":
+    def normalized(self) -> ScorerWeights:
         total = self.fusion + self.lexical + self.coverage + self.numeric + self.quality
         if total <= 0:
             return ScorerWeights()

@@ -12,15 +12,15 @@ from ..domain.models import AvatarSession, SessionRecord, SessionStatus
 from ..domain.ports import SessionCapacityError, SessionStore
 from ..infrastructure.provider_lifecycle import ProviderLifecycleRegistry
 from ..infrastructure.session_operations import SessionOperationRegistry
-from .session_admission import rollback_provider_session
-from .session_cleanup import SessionCleanupCoordinator
-from .session_close import abort_close_claim
 from .errors import (
     ProviderUnavailableError,
     SessionCapacityExceededError,
     SessionNotFoundError,
     SessionOwnershipError,
 )
+from .session_admission import rollback_provider_session
+from .session_cleanup import SessionCleanupCoordinator
+from .session_close import abort_close_claim
 
 
 class SessionApplicationService:
@@ -253,12 +253,12 @@ class SessionApplicationService:
             except asyncio.CancelledError:
                 await abort_close_claim(self.store, session_id, close_claim_token)
                 raise
-            except Exception:
+            except Exception as exc:
                 # Custom SDK adapters are not required to normalize every
                 # exception to ProviderError. Never leave the atomic close
                 # lease stuck when one of them fails unexpectedly.
                 await abort_close_claim(self.store, session_id, close_claim_token)
-                raise ProviderUnavailableError("provider teardown failed")
+                raise ProviderUnavailableError("provider teardown failed") from exc
             complete_close = getattr(self.store, "complete_close", None)
             if callable(complete_close):
                 try:

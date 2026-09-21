@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import contextlib
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
@@ -200,13 +201,11 @@ class AgentGraphRuntime:
             async for event in inner:
                 yield event
         finally:
-            try:
+            # The inner generator already performs best-effort run invalidation;
+            # an adapter close failure must not mask the caller's cancellation
+            # or completed stream.
+            with contextlib.suppress(Exception):
                 await inner.aclose()
-            except Exception:
-                # The inner generator already performs best-effort run
-                # invalidation; an adapter close failure must not mask the
-                # caller's cancellation or completed stream.
-                pass
 
     async def _classify(self, message: str, *, user_id: str, session_id: str) -> IntentDecision:
         return await self._classifier.classify(

@@ -1,4 +1,8 @@
-from app.interview.models import CreateInterviewRequest, InterviewStage, InterviewTurnRequest
+from app.interview.models import (
+    CreateInterviewRequest,
+    InterviewStage,
+    InterviewTurnRequest,
+)
 from app.interview.service import InterviewService
 
 

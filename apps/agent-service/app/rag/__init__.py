@@ -6,11 +6,11 @@ here, while :class:`RagService` keeps the application-facing workflow stable.
 """
 
 from .chunker import CharacterChunker, ChunkDraft, HierarchicalChunker
-from .docling_parser import DocumentParseError, DoclingParser, DoclingRuntimeConfig
+from .docling_parser import DoclingParser, DoclingRuntimeConfig, DocumentParseError
 from .embeddings import HashEmbeddingProvider, LocalSentenceTransformerEmbeddingProvider
 from .faiss_store import FaissVectorStore
-from .memory_store import InMemoryVectorStore
 from .limits import MetadataLimitError, MetadataLimits
+from .memory_store import InMemoryVectorStore
 from .models import (
     DocumentChunk,
     IngestRequest,
@@ -22,9 +22,9 @@ from .models import (
 )
 from .service import RagService, build_default_rag_service
 from .tuning import (
+    QueryTrace,
     RetrievalOutcome,
     RetrievalTuning,
-    QueryTrace,
     classify_candidates,
     diagnose,
     retrieve,
@@ -34,22 +34,22 @@ from .tuning import (
 __all__ = [
     "CharacterChunker",
     "ChunkDraft",
-    "HierarchicalChunker",
-    "DocumentChunk",
-    "DocumentParseError",
     "DoclingParser",
     "DoclingRuntimeConfig",
-    "HashEmbeddingProvider",
+    "DocumentChunk",
+    "DocumentParseError",
     "FaissVectorStore",
-    "LocalSentenceTransformerEmbeddingProvider",
+    "HashEmbeddingProvider",
+    "HierarchicalChunker",
     "InMemoryVectorStore",
     "IngestRequest",
     "IngestResult",
+    "LocalSentenceTransformerEmbeddingProvider",
     "MetadataLimitError",
     "MetadataLimits",
     "ParsedDocument",
-    "RagService",
     "QueryTrace",
+    "RagService",
     "RetrievalOutcome",
     "RetrievalTuning",
     "SearchHit",

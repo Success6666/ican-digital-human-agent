@@ -8,9 +8,9 @@ service and is coordinated through the generation token methods below.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from datetime import datetime
-import time
 from uuid import uuid4
 
 from ..domain.models import SessionRecord, SessionStatus

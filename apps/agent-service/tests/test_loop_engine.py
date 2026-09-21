@@ -2,7 +2,12 @@ import asyncio
 
 import pytest
 
-from app.agent.loop_engine import AgentLoopEngine, LoopEvent, MessageQueue, ToolInvocation
+from app.agent.loop_engine import (
+    AgentLoopEngine,
+    LoopEvent,
+    MessageQueue,
+    ToolInvocation,
+)
 from app.agent.models import ToolCategory, ToolSpec
 from app.domain.models import ToolCallRecord
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .mofa_capabilities import mofa_emotion_for_expression
-from .models import PerformanceCue
 from ..domain.models import AgentResponse
+from .models import PerformanceCue
+from .mofa_capabilities import mofa_emotion_for_expression
 
 
 def build_agent_response(

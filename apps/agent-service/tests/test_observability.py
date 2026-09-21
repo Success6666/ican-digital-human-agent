@@ -4,25 +4,24 @@ import asyncio
 import logging
 import os
 import sys
-from types import SimpleNamespace
-from pathlib import Path
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
-
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from app.observability.client_events import (  # noqa: E402
+from app.observability.client_events import (
     ClientTelemetryBatch,
     ClientTelemetryEvent,
 )
-from app.observability.futureagi import FutureAGIConfig, FutureAGISink  # noqa: E402
-from app.observability.futureagi_runtime import FutureAGIRuntime  # noqa: E402
-from app.observability.local import LocalJsonLogSink  # noqa: E402
-from app.observability.models import ObservabilityHealth, TelemetryEvent  # noqa: E402
-from app.observability.service import ObservabilityService  # noqa: E402
+from app.observability.futureagi import FutureAGIConfig, FutureAGISink
+from app.observability.futureagi_runtime import FutureAGIRuntime
+from app.observability.local import LocalJsonLogSink
+from app.observability.models import ObservabilityHealth, TelemetryEvent
+from app.observability.service import ObservabilityService
 
 
 class ObservabilityTests(unittest.IsolatedAsyncioTestCase):
@@ -185,7 +184,7 @@ class ObservabilityTests(unittest.IsolatedAsyncioTestCase):
             enabled=True,
             api_key="api-value",
             secret_key="secret-value",
-            project="ican-test",
+            project="dh-test",
             endpoint="https://collector.example.test",
         )
         sink = FutureAGISink(config, fallback=self.local)
@@ -206,10 +205,10 @@ class ObservabilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sink.backend, "futureagi")
         self.assertIs(calls["project_type"], ProjectType.OBSERVE)
-        self.assertEqual(calls["project_name"], "ican-test")
+        self.assertEqual(calls["project_name"], "dh-test")
         self.assertEqual(calls["headers"], {"X-Api-Key": "api-value", "X-Secret-Key": "secret-value"})
         self.assertFalse(calls["set_global_tracer_provider"])
-        self.assertEqual(provider.scope, "ican-test")
+        self.assertEqual(provider.scope, "dh-test")
         self.assertEqual(tracer.name, "test-span")
         self.assertEqual(span.attributes["api_key"], "[REDACTED]")
         self.assertEqual(str(span.exceptions[0]), "authorization: Bearer [REDACTED]")
@@ -367,7 +366,7 @@ class ObservabilityTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(accepted, 1)
         events = self.observability.recent(owner_id="u-owner")
-        browser_event = [event for event in events if event.name == "speak.dispatched"][0]
+        browser_event = next(event for event in events if event.name == "speak.dispatched")
         self.assertEqual(browser_event.trace_id, trace_id)
         self.assertEqual(browser_event.event_type, "realtime")
         self.assertEqual(browser_event.attributes["source"], "browser")

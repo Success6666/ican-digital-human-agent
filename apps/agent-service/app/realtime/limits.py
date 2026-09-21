@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 # The negotiated input format is PCM16, 16 kHz, mono, in 20 ms frames. These two
 # constants are what turn a human-facing "how many seconds may a question be"

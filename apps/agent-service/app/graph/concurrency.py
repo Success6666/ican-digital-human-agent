@@ -6,7 +6,6 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from typing import TypeVar
 
-
 T = TypeVar("T")
 R = TypeVar("R")
 
@@ -68,4 +67,4 @@ async def bounded_map(
 
     if failures:
         raise failures[0]
-    return [value for value in results]  # type: ignore[list-item]
+    return list(results)  # type: ignore[list-item]

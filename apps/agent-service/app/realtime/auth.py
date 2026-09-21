@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import re
 import secrets
+from dataclasses import dataclass
 
 from fastapi import WebSocket
-
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 

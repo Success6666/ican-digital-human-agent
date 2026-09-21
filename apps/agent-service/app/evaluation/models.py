@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class EvaluationDimension(StrEnum):
@@ -77,7 +77,7 @@ class EvaluationRunRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    dataset_id: str = Field(default="ican-agent-core", max_length=128)
+    dataset_id: str = Field(default="digital-human-core", max_length=128)
     case_id: str | None = Field(default=None, max_length=128)
     trace_id: str | None = Field(default=None, max_length=128)
     input_text: str = Field(min_length=1, max_length=4000)

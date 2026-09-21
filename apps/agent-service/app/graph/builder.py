@@ -5,22 +5,27 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from langgraph.graph import END, START, StateGraph
 from langgraph.config import get_stream_writer
+from langgraph.graph import END, START, StateGraph
 
 from ..agent.intent import CompositeIntentClassifier, IntentClassifier
 from ..agent.loop_engine import AgentLoopEngine, LoopEvent, ToolInvocation
 from ..agent.models import FillerPhase, IntentDecision, PerformanceCue
 from ..agent.performance import PerformancePlanner
 from ..agent.response import build_agent_response
-from ..agent.security import assess_prompt_injection, blocked_decision, blocked_plan, safe_refusal
+from ..agent.security import (
+    assess_prompt_injection,
+    blocked_decision,
+    blocked_plan,
+    safe_refusal,
+)
 from ..agent.tool_catalog import ProgressiveToolRouter, ToolRouter
-from ..avatar.registry import ProviderRegistry
 from ..avatar.presentation import PresentationLayer, ProviderRuntime
-from ..messaging import ReliableMessageBus
+from ..avatar.registry import ProviderRegistry
 from ..domain.models import ToolCallRecord
 from ..domain.ports import SessionStore, ToolClient
 from ..llm.client import LlmClient, extract_reply_prefix, parse_generation
+from ..messaging import ReliableMessageBus
 from ..rag.models import SearchRequest
 from .builder_support import attrs as _attrs
 from .builder_support import decision_from_state as _decision

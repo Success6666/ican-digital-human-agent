@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..observability.redaction import redact_text
 from .docling_parser import DocumentParseError
 from .models import IngestRequest, IngestResult, SearchRequest, SearchResult
 from .service import RagService, build_default_rag_service
-from ..observability.redaction import redact_text
 
 try:  # Keep importing the package possible for non-HTTP workers.
-    from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+    from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 except ImportError:  # pragma: no cover - exercised only in minimal workers
     APIRouter = None  # type: ignore[assignment,misc]
     Depends = HTTPException = UploadFile = File = Query = None  # type: ignore[assignment]

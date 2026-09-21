@@ -7,9 +7,9 @@ domain and graph layers.
 
 from __future__ import annotations
 
-from functools import lru_cache
 import math
 import os
+from functools import lru_cache
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -206,7 +206,7 @@ class Settings(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_session_lease_window(self) -> "Settings":
+    def validate_session_lease_window(self) -> Settings:
         if self.session_idle_timeout_seconds <= self.session_heartbeat_interval_seconds:
             raise ValueError(
                 "session_idle_timeout_seconds must exceed session_heartbeat_interval_seconds"
@@ -258,7 +258,7 @@ class Settings(BaseModel):
         return value
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         values: dict[str, object] = {}
         for field_name, field in cls.model_fields.items():
             env_name = field.alias or field_name.upper()

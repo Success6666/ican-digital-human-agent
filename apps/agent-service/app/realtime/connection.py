@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 from fastapi import WebSocket
@@ -119,7 +120,7 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
                 raise SessionNotFoundError("会话已关闭，请重新建立会话")
         except WebSocketDisconnect:
             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self._send_error("handshake_timeout", "hello 握手超时", close=True)
             return False
         except (RealtimeProtocolError, ApplicationError) as exc:
@@ -245,19 +246,15 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
                 self.stop_event.set()
                 self._close_code = 1013
                 if self._accepted:
-                    try:
+                    with contextlib.suppress(Exception):
                         await self.websocket.close(code=1013, reason="backpressure")
-                    except Exception:
-                        pass
                 raise
 
     async def _send_error(
         self, code: str, message: str, *, request_id: str | None = None, close: bool = False
     ) -> None:
-        try:
+        with contextlib.suppress(Exception):
             await self._emit("error", request_id=request_id, code=code, message=message)
-        except Exception:
-            pass
         if close:
             self.stop_event.set()
             self._close_code = _close_code(code)
@@ -276,10 +273,8 @@ class RealtimeConnection(RealtimeHandlersMixin, RealtimeLifecycleMixin):
 
     async def _close_transport(self) -> None:
         await asyncio.sleep(0)
-        try:
+        with contextlib.suppress(Exception):
             await self.websocket.close(code=self._close_code)
-        except Exception:
-            pass
 
 def _error_code(exc: Exception) -> str:
     return getattr(exc, "code", "session_rejected")

@@ -41,7 +41,7 @@ export function AdvancedConfigurationControls({ configuration, canManage, isLoad
   const [futureEndpoint, setFutureEndpoint] = useState('')
   const [futureApiKey, setFutureApiKey] = useState('')
   const [futureSecretKey, setFutureSecretKey] = useState('')
-  const [futureProject, setFutureProject] = useState('ican-digital-human')
+  const [futureProject, setFutureProject] = useState('digital-human')
 
   useEffect(() => {
     if (!configuration) return
@@ -53,7 +53,7 @@ export function AdvancedConfigurationControls({ configuration, canManage, isLoad
     const rag = configuration.rag ?? {}
     setDoclingEnabled(rag.enabled !== false); setDoclingArtifactsPath(String(rag.artifactsPath ?? '')); setDoclingOcrBackend(String(rag.ocrBackend ?? 'onnxruntime')); setDoclingLanguages(Array.isArray(rag.ocrLanguages) ? rag.ocrLanguages.join(',') : 'chinese'); setDoclingOcr(rag.doOcr !== false); setDoclingTables(rag.doTableStructure !== false); setDoclingTableMode(String(rag.tableMode ?? 'accurate')); setDoclingConcurrency(String(rag.maxConcurrency ?? 1))
     const future = configuration.futureagi ?? {}
-    setFutureEnabled(Boolean(future.enabled)); setFutureEndpoint(String(future.endpoint ?? '')); setFutureProject(String(future.project ?? 'ican-digital-human')); setFutureApiKey(''); setFutureSecretKey('')
+    setFutureEnabled(Boolean(future.enabled)); setFutureEndpoint(String(future.endpoint ?? '')); setFutureProject(String(future.project ?? 'digital-human')); setFutureApiKey(''); setFutureSecretKey('')
   }, [configuration])
 
   function open(kind: Exclude<DialogKind, null>) { if (canManage) { setError(null); setDialog(kind) } }

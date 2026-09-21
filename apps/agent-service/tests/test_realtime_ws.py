@@ -7,11 +7,14 @@ import pytest
 from starlette.testclient import TestClient, WebSocketDisconnect
 
 from app.main import build_container, create_app
-from app.mcp.client import CompositeToolClient, LocalToolClient, StreamableHttpToolClient
+from app.mcp.client import (
+    CompositeToolClient,
+    LocalToolClient,
+    StreamableHttpToolClient,
+)
 from app.realtime.audio import AudioFormat
 from app.realtime.media import HttpAsrIngress
 from app.settings import Settings
-
 
 HEADERS = {"X-Internal-Token": "test-token", "X-User-Id": "u1", "X-User-Name": "Tester"}
 

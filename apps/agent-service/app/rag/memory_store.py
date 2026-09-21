@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections import OrderedDict
 import math
+from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -143,7 +143,7 @@ def _matches(metadata: dict[str, Any], expected: dict[str, Any]) -> bool:
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     if not left or not right:
         return 0.0
-    dot = sum(a * b for a, b in zip(left, right))
+    dot = sum(a * b for a, b in zip(left, right, strict=False))
     left_norm = math.sqrt(sum(value * value for value in left))
     right_norm = math.sqrt(sum(value * value for value in right))
     if not left_norm or not right_norm:

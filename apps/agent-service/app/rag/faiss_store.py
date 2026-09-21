@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
-from collections import OrderedDict
 import hashlib
 import json
 import os
-from pathlib import Path
 import sqlite3
 import time
+from collections import OrderedDict
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import faiss

@@ -11,19 +11,19 @@ from ..application.errors import ApplicationError
 from ..domain.models import AvatarSession, ChatResult
 from .client_params import browser_safe_client_params
 from .dependencies import InternalContext, get_container
-from .sse import iter_sse_frames
 from .schemas import (
+    ApprovalDecisionRequest,
     ChatRequest,
     ChatResponse,
     ConfigurationPatch,
     CreateSessionRequest,
     HealthResponse,
     InterruptRequest,
-    ApprovalDecisionRequest,
+    ProfilePatch,
     ProviderResponse,
     SessionResponse,
-    ProfilePatch,
 )
+from .sse import iter_sse_frames
 
 router = APIRouter()
 

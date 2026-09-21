@@ -205,7 +205,7 @@ class ConfigurationPatch(BaseModel):
     futureagi: FutureAGIConfigurationPatch | None = None
 
     @model_validator(mode="after")
-    def require_change(self) -> "ConfigurationPatch":
+    def require_change(self) -> ConfigurationPatch:
         if self.default_provider is None and self.session is None and self.mofa is None and self.aliyun is None and self.iflytek is None and self.llm is None and self.embedding is None and self.docling is None and self.futureagi is None:
             raise ValueError("至少需要提交一项配置")
         if self.session is not None and self.session.ttl_seconds is None and self.session.cleanup_interval_seconds is None:

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ican.local/contracts/events.schema.json",
+  "$id": "https://digital-human.local/contracts/events.schema.json",
   "title": "DigitalHumanAgentEvent",
   "type": "object",
   "required": ["schema_version", "event_id", "run_id", "seq", "type", "data"],

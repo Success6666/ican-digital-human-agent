@@ -12,9 +12,10 @@ always yields the same token set, so cached retrieval results stay coherent.
 
 from __future__ import annotations
 
+import contextlib
+import re
 from collections.abc import Iterable
 from functools import lru_cache
-import re
 
 # Latin/number runs are kept whole so identifiers like ``bge-small-zh-v1.5``
 # stay searchable; CJK is tokenized by the word segmenter below.
@@ -66,10 +67,9 @@ def _jieba_segmenter():
     except Exception:  # pragma: no cover - exercised only without jieba
         return None
 
-    try:
+    # Older jieba builds have no setLogLevel; silence is acceptable there.
+    with contextlib.suppress(Exception):  # pragma: no cover - older jieba builds
         jieba.setLogLevel(60)
-    except Exception:  # pragma: no cover - older jieba builds
-        pass
 
     def segment(text: str) -> list[str]:
         return [token for token in jieba.cut(text, HMM=False) if token.strip()]

@@ -9,8 +9,8 @@ shared by all clients in a service container.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from ..domain.models import ToolCallRecord

@@ -1,4 +1,4 @@
-"""ICAN 数字人 Agent 的项目化评测样本。"""
+"""数字人 Agent 的项目化评测样本。"""
 
 from __future__ import annotations
 

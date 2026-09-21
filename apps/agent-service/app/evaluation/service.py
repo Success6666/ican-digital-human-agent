@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from collections import deque
-from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import math
 import os
-from pathlib import Path
 import threading
-from typing import Iterable
-import logging
+from collections import deque
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from pathlib import Path
 
 from .dataset import build_default_dataset
-from .metrics import _SENSITIVE_LEAK_RE, _SECRET_RE, score_run
+from .metrics import _SECRET_RE, _SENSITIVE_LEAK_RE, score_run
 from .models import (
     EvaluationCase,
     EvaluationDataset,
@@ -122,7 +122,7 @@ class EvaluationService:
         if self.raw_archive_path is None:
             return
         payload = {
-            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_at": datetime.now(UTC).isoformat(),
             "owner_id": _owner_key(owner_id),
             "request": request.model_dump(mode="json"),
             "run": run.model_dump(mode="json"),
@@ -228,7 +228,7 @@ class EvaluationService:
             cancellation_rate=cancellation_rate,
             status_counts=status_counts,
             metrics=metrics,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
             source="evaluation" if runs else "empty",
         )
 

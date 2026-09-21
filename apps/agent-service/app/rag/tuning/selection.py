@@ -18,9 +18,9 @@ duplicates while otherwise preserving relevance order is the safer lever.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-import re
 
 from .tokenizer import normalize_term
 

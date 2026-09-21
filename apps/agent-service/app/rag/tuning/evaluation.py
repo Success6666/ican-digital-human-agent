@@ -22,10 +22,10 @@ non-normal at the sample sizes a retrieval eval typically has.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 import math
 import random
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 DEFAULT_BOOTSTRAP_SAMPLES = 2000
@@ -45,7 +45,7 @@ class RetrievalCase:
     relevant: frozenset[str]
     retrieved: tuple[str, ...] = ()
 
-    def with_retrieved(self, retrieved: Sequence[str]) -> "RetrievalCase":
+    def with_retrieved(self, retrieved: Sequence[str]) -> RetrievalCase:
         return RetrievalCase(query=self.query, relevant=self.relevant, retrieved=tuple(retrieved))
 
 

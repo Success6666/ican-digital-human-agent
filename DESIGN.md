@@ -1,4 +1,4 @@
-# ICAN Digital Human Console Design
+# Digital Human Console Design
 
 ## Direction
 

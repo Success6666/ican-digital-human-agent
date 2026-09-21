@@ -57,7 +57,7 @@ class QueryTrace:
     candidates_seen: int = 0
     candidates_fused: int = 0
     candidates_selected: int = 0
-    buckets: dict[Bucket, int] = field(default_factory=lambda: {bucket: 0 for bucket in BUCKETS})
+    buckets: dict[Bucket, int] = field(default_factory=lambda: dict.fromkeys(BUCKETS, 0))
 
     def record(self, bucket: Bucket, *, count: int = 1) -> None:
         if bucket not in BUCKETS:
@@ -93,7 +93,7 @@ def classify_candidates(
     order were ``dropped_in_fusion``.
     """
 
-    counts: dict[Bucket, int] = {bucket: 0 for bucket in BUCKETS}
+    counts: dict[Bucket, int] = dict.fromkeys(BUCKETS, 0)
     fused_index = {position: index for index, position in enumerate(fused_positions)}
     filtered = set(filtered_positions)
     selected = set(selected_positions)
@@ -121,7 +121,7 @@ def classify_candidates(
 def summarize_traces(traces: Sequence[QueryTrace]) -> dict[str, Any]:
     """Aggregate traces into per-bucket totals and shares."""
 
-    totals: dict[Bucket, int] = {bucket: 0 for bucket in BUCKETS}
+    totals: dict[Bucket, int] = dict.fromkeys(BUCKETS, 0)
     for trace in traces:
         for bucket in BUCKETS:
             totals[bucket] += trace.buckets.get(bucket, 0)

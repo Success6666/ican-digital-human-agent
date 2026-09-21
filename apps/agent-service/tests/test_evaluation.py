@@ -4,7 +4,11 @@ from starlette.testclient import TestClient
 
 from app.evaluation.dataset import build_default_dataset
 from app.evaluation.metrics import score_run
-from app.evaluation.models import EvaluationCase, EvaluationDimension, EvaluationRunRequest
+from app.evaluation.models import (
+    EvaluationCase,
+    EvaluationDimension,
+    EvaluationRunRequest,
+)
 from app.evaluation.service import EvaluationService
 from app.main import build_container, create_app
 from app.settings import Settings
@@ -36,7 +40,7 @@ def test_evaluation_raw_archive_survives_service_restart(tmp_path) -> None:
     archive = tmp_path / "runs.raw.jsonl"
     first = EvaluationService(raw_archive_path=str(archive), max_runs=4)
     run = first.record(
-        EvaluationRunRequest(dataset_id="ican-agent-core", case_id="chat-acknowledge-001", input_text="原始输入", output_text="原始输出"),
+        EvaluationRunRequest(dataset_id="digital-human-core", case_id="chat-acknowledge-001", input_text="原始输入", output_text="原始输出"),
         owner_id="u-raw",
     )
     assert first.raw_run(run.id, owner_id="u-raw")["request"]["input_text"] == "原始输入"
@@ -282,7 +286,7 @@ def test_dataset_runner_executes_real_agent_graph_and_records_case() -> None:
     client = TestClient(create_app(container=build_container(settings)))
     with client:
         response = client.post(
-            "/internal/evaluation/datasets/ican-agent-core/run",
+            "/internal/evaluation/datasets/digital-human-core/run",
             headers=_headers("u-runner", "Runner"),
             json={
                 "case_ids": ["chat-acknowledge-001"],

@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from .payloads import sanitize_event_data
 
-
 MAX_CONTROL_FRAME_BYTES = 64 * 1024
 MAX_IDENTIFIER_LENGTH = 128
 MAX_TEXT_LENGTH = 4000

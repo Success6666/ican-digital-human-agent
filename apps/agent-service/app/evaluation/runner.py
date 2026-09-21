@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import contextlib
 import json
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from ..application.session_service import SessionApplicationService
 from ..graph.runtime import AgentGraphRuntime
 from .metrics import looks_like_safe_refusal
-from .models import DatasetRunRequest, EvaluationCase, EvaluationRun, EvaluationRunRequest
+from .models import (
+    DatasetRunRequest,
+    EvaluationCase,
+    EvaluationRun,
+    EvaluationRunRequest,
+)
 from .service import EvaluationService
 
 
@@ -132,16 +138,14 @@ class EvaluationDatasetRunner:
                 first_visible_latency_ms=result.first_visible_latency_ms,
                 cancellation_latency_ms=result.cancellation_latency_ms,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return _Execution("", "error", None, [], [], _elapsed_ms(started), None, None, None, None, "case timeout")
         except Exception as exc:
             return _Execution("", "error", None, [], [], _elapsed_ms(started), None, None, None, None, exc.__class__.__name__)
         finally:
             if session_id:
-                try:
+                with contextlib.suppress(Exception):
                     await self.sessions.close(user_id=owner_id, session_id=session_id)
-                except Exception:
-                    pass
 
     def _record(
         self,

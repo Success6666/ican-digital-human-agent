@@ -8,7 +8,11 @@ import pytest
 
 from app.realtime.audio import AudioFormat
 from app.realtime.limits import RealtimeLimits
-from app.realtime.media import HttpAsrIngress, HttpTtsOutput, _should_trust_environment_proxy
+from app.realtime.media import (
+    HttpAsrIngress,
+    HttpTtsOutput,
+    _should_trust_environment_proxy,
+)
 
 
 def test_http_asr_bypasses_environment_proxy_for_compose_service() -> None:

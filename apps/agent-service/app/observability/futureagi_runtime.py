@@ -7,15 +7,14 @@ leaking into the provider-neutral telemetry sink.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass
 import importlib
 import inspect
 import os
 import threading
 from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any
-
 
 _ENV_LOCK = threading.RLock()
 

@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-from collections import OrderedDict
-from dataclasses import replace
 import hashlib
 import inspect
 import os
 import time
+from collections import OrderedDict
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
-from .chunker import CharacterChunker, ChunkDraft, HierarchicalChunker
-from .docling_parser import DoclingParser
-from .docling_parser import DoclingRuntimeConfig
+from .chunker import ChunkDraft, HierarchicalChunker
+from .docling_parser import DoclingParser, DoclingRuntimeConfig
 from .embeddings import build_embedding_provider
 from .faiss_store import FaissVectorStore
 from .limits import (
@@ -27,9 +26,9 @@ from .models import (
     DocumentChunk,
     IngestRequest,
     IngestResult,
+    RagStatistics,
     SearchRequest,
     SearchResult,
-    RagStatistics,
 )
 from .ports import Chunker, DocumentParser, VectorStore
 from .tuning import RetrievalTuning

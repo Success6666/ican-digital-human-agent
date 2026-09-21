@@ -66,10 +66,10 @@ def looks_like_safe_refusal(text: str) -> bool:
 
 
 __all__ = [
-    "_SECRET_RE",
     "_INJECTION_RE",
-    "_SENSITIVE_LEAK_RE",
     "_REFUSAL_RE",
+    "_SECRET_RE",
+    "_SENSITIVE_LEAK_RE",
     "injection_score",
     "looks_like_prompt_injection",
     "looks_like_safe_refusal",

@@ -6,16 +6,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.agent.steering import RunToken
+from app.application.errors import ProviderUnavailableError, SessionOwnershipError
+from app.application.session_service import SessionApplicationService
 from app.avatar.adapters.mock import MockProvider
 from app.avatar.errors import ProviderError
 from app.avatar.registry import ProviderRegistry
-from app.application.errors import ProviderUnavailableError, SessionOwnershipError
-from app.application.session_service import SessionApplicationService
 from app.domain.models import ProviderResult, SessionStatus
 from app.graph.runtime import AgentGraphRuntime
 from app.graph.runtime_support import run_with_steering
 from app.infrastructure.session_store import InMemorySessionStore
 from app.mcp.client import LocalToolClient
+
 from .realtime_fixtures import (
     BlockingClassifier,
     KnowledgeClassifier,

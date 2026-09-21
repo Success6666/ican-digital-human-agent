@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -45,6 +46,10 @@ class ResponseCache:
         self._local_lock = asyncio.Lock()
         self._singleflight: dict[str, asyncio.Future[ChatResult]] = {}
         self._singleflight_lock = asyncio.Lock()
+        # Strong references to fire-and-forget tasks (TTL refresh). The event
+        # loop keeps only weak references, so holding these prevents an
+        # in-flight refresh from being collected before it completes.
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
     @staticmethod
     def normalize(message: str) -> str:
@@ -93,8 +98,13 @@ class ResponseCache:
                 if raw is not None:
                     self._remember_local(key, raw)
                     # Sliding TTL is maintained without adding another network
-                    # round-trip to the request critical path.
-                    asyncio.create_task(self._refresh_ttl(client, key))
+                    # round-trip to the request critical path. The task is
+                    # retained because the event loop only holds a weak
+                    # reference: without this the refresh can be collected
+                    # mid-flight and the TTL silently stops sliding.
+                    task = asyncio.create_task(self._refresh_ttl(client, key))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
             except Exception:
                 self._unavailable = True
         if not raw:
@@ -185,10 +195,8 @@ class ResponseCache:
             raise
         finally:
             if distributed_owner and client is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await client.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, lock_key, lock_token)
-                except Exception:
-                    pass
             async with self._singleflight_lock:
                 self._singleflight.pop(key, None)
 

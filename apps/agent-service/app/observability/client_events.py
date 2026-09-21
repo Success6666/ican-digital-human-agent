@@ -140,8 +140,8 @@ class ClientTelemetryAck(BaseModel):
 
 
 __all__ = [
+    "MAX_CLIENT_EVENTS_PER_BATCH",
     "ClientTelemetryAck",
     "ClientTelemetryBatch",
     "ClientTelemetryEvent",
-    "MAX_CLIENT_EVENTS_PER_BATCH",
 ]

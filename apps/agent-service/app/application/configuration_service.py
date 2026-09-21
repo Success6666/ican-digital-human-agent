@@ -5,28 +5,26 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from ..observability.service import ObservabilityService
-from ..rag.service import RagService
-from ..rag.docling_parser import DoclingRuntimeConfig
 from ..avatar.registry import ProviderRegistry
-from ..settings import Settings
-from ..infrastructure.runtime_configuration import (
-    RuntimeConfiguration,
-    RuntimeConfigurationRepository,
-    apply_aliyun_environment,
-    apply_iflytek_environment,
-    apply_mofa_environment,
-    apply_docling_environment,
-    apply_embedding_environment,
-    apply_futureagi_environment,
-    apply_llm_environment,
-)
 from ..infrastructure.runtime_configuration import (
     DoclingRuntimeConfiguration,
     EmbeddingRuntimeConfiguration,
     FutureAGIRuntimeConfiguration,
     LlmRuntimeConfiguration,
+    RuntimeConfiguration,
+    RuntimeConfigurationRepository,
+    apply_aliyun_environment,
+    apply_docling_environment,
+    apply_embedding_environment,
+    apply_futureagi_environment,
+    apply_iflytek_environment,
+    apply_llm_environment,
+    apply_mofa_environment,
 )
+from ..observability.service import ObservabilityService
+from ..rag.docling_parser import DoclingRuntimeConfig
+from ..rag.service import RagService
+from ..settings import Settings
 
 
 class ConfigurationApplicationService:

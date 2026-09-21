@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import asyncio
+import contextlib
 import logging
 import os
 import threading
+from dataclasses import dataclass
 from typing import Any
 
 from .futureagi_runtime import FutureAGIRuntime, flush_runtime, register_runtime
@@ -20,11 +21,11 @@ class FutureAGIConfig:
     enabled: bool = False
     api_key: str | None = None
     secret_key: str | None = None
-    project: str = "ican-digital-human"
+    project: str = "digital-human"
     endpoint: str | None = None
 
     @classmethod
-    def from_env(cls) -> "FutureAGIConfig":
+    def from_env(cls) -> FutureAGIConfig:
         api_key = os.getenv("FUTUREAGI_API_KEY") or os.getenv("FI_API_KEY")
         secret_key = os.getenv("FUTUREAGI_SECRET_KEY") or os.getenv("FI_SECRET_KEY")
         enabled = _truthy(os.getenv("FUTUREAGI_ENABLED", "false")) or bool(api_key)
@@ -32,7 +33,7 @@ class FutureAGIConfig:
             enabled=enabled,
             api_key=api_key,
             secret_key=secret_key,
-            project=os.getenv("FUTUREAGI_PROJECT", "ican-digital-human"),
+            project=os.getenv("FUTUREAGI_PROJECT", "digital-human"),
             endpoint=os.getenv("FUTUREAGI_ENDPOINT") or os.getenv("FI_BASE_URL"),
         )
 
@@ -56,7 +57,7 @@ class FutureAGISink:
         self.config = config or FutureAGIConfig.from_env()
         # An explicitly supplied empty sink is still a valid caller-owned sink.
         self.fallback = fallback if fallback is not None else LocalJsonLogSink(logger=logger)
-        self.logger = logger or logging.getLogger("ican.agent.observability.futureagi")
+        self.logger = logger or logging.getLogger("agent.observability.futureagi")
         self._runtime: FutureAGIRuntime | None = None
         self._error: str | None = None
         self._initialized = False
@@ -140,10 +141,8 @@ class FutureAGISink:
                 except Exception:
                     continue
             if event.error_message:
-                try:
+                with contextlib.suppress(Exception):
                     span.record_exception(Exception(event.error_message))
-                except Exception:
-                    pass
         finally:
             span.end()
 

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from ..api.dependencies import InternalContext, require_internal_context
-from ..rag.models import IngestRequest
 from ..rag.docling_parser import DocumentParseError
+from ..rag.models import IngestRequest
 from ..webfetch import FetchError, WebFetchService
 from .models import (
     CreateInterviewRequest,

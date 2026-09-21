@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import hashlib
 import os
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from ...domain.models import AvatarCapabilities, AvatarSession, ProviderResult
@@ -85,7 +85,7 @@ class MofaProvider(ConfigProvider):
 
 def _browser_user_id(user_id: str) -> str:
     digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:24]
-    return f"ican-{digest}"
+    return f"dh-{digest}"
 
 
 def _env_or(name: str, default: str) -> str:

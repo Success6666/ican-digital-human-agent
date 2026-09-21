@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 import os
+from datetime import UTC, datetime, timedelta
+
 from ..domain.models import SessionRecord, SessionStatus
 from .session_metrics import SessionResourceMetrics
 
@@ -47,7 +48,7 @@ class SessionResourceMixin:
 
     async def stats(self) -> dict[str, int]:
         async with self._lock:
-            counts = {status: 0 for status in SessionStatus}
+            counts = dict.fromkeys(SessionStatus, 0)
             for record in self._items.values():
                 counts[record.session.status] += 1
             return self._metrics.snapshot(

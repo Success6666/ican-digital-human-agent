@@ -45,11 +45,14 @@ class ChatEvaluationRecorder:
         done_data: dict[str, Any],
         elapsed_ms: float,
     ) -> None:
-        if status == "success":
-            if done_data.get("provider") == "unknown":
-                status = "error"
-            elif any(isinstance(item, dict) and item.get("error") for item in done_data.get("toolCalls", [])):
-                status = "error"
+        if status == "success" and (
+            done_data.get("provider") == "unknown"
+            or any(
+                isinstance(item, dict) and item.get("error")
+                for item in done_data.get("toolCalls", [])
+            )
+        ):
+            status = "error"
         first_event_latency = number(done_data.get("firstEventLatencyMs"))
         first_visible_latency = number(done_data.get("firstVisibleLatencyMs"))
         cancellation_latency = number(done_data.get("cancellationLatencyMs"))

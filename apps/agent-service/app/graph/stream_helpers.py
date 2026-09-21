@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 import time
+from collections.abc import Iterator
 from typing import Any
 
 from ..agent.models import FillerPhase

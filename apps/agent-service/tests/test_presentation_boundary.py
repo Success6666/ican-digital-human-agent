@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-import pytest
 import asyncio
 import time
 
-from app.avatar.presentation import PresentationLayer, ProviderRuntime
+import pytest
+
 from app.agent.models import PerformanceCue
 from app.agent.response import build_agent_response
-from app.domain.models import AgentResponse, AvatarCapabilities, ChatResult, ProviderResult
+from app.avatar.presentation import PresentationLayer, ProviderRuntime
+from app.domain.models import (
+    AgentResponse,
+    AvatarCapabilities,
+    ChatResult,
+    ProviderResult,
+)
 
 
 class RecordingRuntime:

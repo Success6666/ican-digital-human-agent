@@ -6,7 +6,12 @@ from typing import Any
 
 from app.agent.models import IntentDecision, IntentName, IntentSource
 from app.avatar.adapters.mock import MockProvider
-from app.domain.models import AvatarCapabilities, AvatarSession, ProviderResult, ToolCallRecord
+from app.domain.models import (
+    AvatarCapabilities,
+    AvatarSession,
+    ProviderResult,
+    ToolCallRecord,
+)
 from app.rag.models import SearchRequest, SearchResult
 
 

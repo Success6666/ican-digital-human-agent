@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+import contextlib
 import time
+from collections.abc import Awaitable
 from typing import Any
 
 
@@ -25,10 +26,8 @@ class RealtimeLifecycleMixin:
                     self._writer_failed = True
                     self.stop_event.set()
                     self._close_code = 1011
-                    try:
+                    with contextlib.suppress(Exception):
                         await self.websocket.close(code=1011, reason="realtime writer failed")
-                    except Exception:
-                        pass
                     return
                 continue
             if not await self._allow(item):
@@ -40,10 +39,8 @@ class RealtimeLifecycleMixin:
                 self._writer_failed = True
                 self.stop_event.set()
                 self._close_code = 1011
-                try:
+                with contextlib.suppress(Exception):
                     await self.websocket.close(code=1011, reason="realtime writer failed")
-                except Exception:
-                    pass
                 return
 
     async def _allow(self, item: dict[str, Any]) -> bool:
@@ -115,12 +112,10 @@ class RealtimeLifecycleMixin:
         active = await self.state.invalidate()
         if active is not None:
             self._remember_run(self.cancelled_runs, active.run_id)
-            try:
+            with contextlib.suppress(Exception):
                 await self.container.session_service.mark_run_interrupted(
                     session_id=self.state.session_id or "", run_id=active.run_id,
                 )
-            except Exception:
-                pass
         for task in list(self.run_tasks.values()):
             task.cancel()
         for task in list(self.background_tasks):
@@ -134,10 +129,8 @@ class RealtimeLifecycleMixin:
         if self._writer_task is not None:
             await self._writer_task
         if self._accepted:
-            try:
+            with contextlib.suppress(Exception):
                 await self.websocket.close(code=self._close_code)
-            except Exception:
-                pass
         self.telemetry.closed(code=self._close_code)
 
 

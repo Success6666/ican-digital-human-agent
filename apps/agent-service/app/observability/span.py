@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from contextvars import ContextVar, Token
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -23,7 +24,7 @@ class Span:
 
     def __init__(
         self,
-        manager: "ObservabilityService",
+        manager: ObservabilityService,
         *,
         name: str,
         event_type: str,
@@ -43,24 +44,24 @@ class Span:
         self._trace_token: Token[str | None] | None = None
         self._ended = False
 
-    def __enter__(self) -> "Span":
+    def __enter__(self) -> Span:
         self.start()
         return self
 
     def __exit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
         self.end(error=exc)
 
-    async def __aenter__(self) -> "Span":
+    async def __aenter__(self) -> Span:
         self.start()
         return self
 
     async def __aexit__(self, exc_type: Any, exc: BaseException | None, tb: Any) -> None:
         await self.aend(error=exc)
 
-    def start(self) -> "Span":
+    def start(self) -> Span:
         if self.started_at is not None:
             return self
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = datetime.now(UTC)
         self._token = _current_span.set(self.span_id)
         self._trace_token = _current_trace.set(self.trace_id)
         self.manager._emit_sync(
@@ -73,7 +74,7 @@ class Span:
         )
         return self
 
-    def set_attribute(self, key: str, value: Any) -> "Span":
+    def set_attribute(self, key: str, value: Any) -> Span:
         self.attributes[key] = value
         return self
 
@@ -92,7 +93,7 @@ class Span:
         self._ended = True
         if self.started_at is None:
             self.start()
-        ended_at = datetime.now(timezone.utc)
+        ended_at = datetime.now(UTC)
         duration = (ended_at - self.started_at).total_seconds() * 1000
         self.manager._emit_sync(
             self._event(
@@ -111,7 +112,7 @@ class Span:
         self._ended = True
         if self.started_at is None:
             self.start()
-        ended_at = datetime.now(timezone.utc)
+        ended_at = datetime.now(UTC)
         duration = (ended_at - self.started_at).total_seconds() * 1000
         await self.manager._emit_async(
             self._event(
@@ -144,7 +145,7 @@ class Span:
             trace_id=self.trace_id,
             span_id=self.span_id,
             parent_span_id=self.parent_span_id,
-            timestamp=timestamp or datetime.now(timezone.utc),
+            timestamp=timestamp or datetime.now(UTC),
             duration_ms=duration_ms,
             status=status,  # type: ignore[arg-type]
             attributes=attributes,
@@ -154,15 +155,11 @@ class Span:
 
     def _reset_context(self) -> None:
         if self._token is not None:
-            try:
+            with contextlib.suppress(RuntimeError, ValueError):
                 _current_span.reset(self._token)
-            except (RuntimeError, ValueError):
-                pass
         if self._trace_token is not None:
-            try:
+            with contextlib.suppress(RuntimeError, ValueError):
                 _current_trace.reset(self._trace_token)
-            except (RuntimeError, ValueError):
-                pass
 
 
 def _span_status(error: BaseException | None, status: str | None) -> str:

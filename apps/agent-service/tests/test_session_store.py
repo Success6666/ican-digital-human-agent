@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domain.models import AvatarCapabilities, AvatarSession, SessionStatus
-from app.domain.ports import SessionCapacityError
 from app.application.errors import SessionCapacityExceededError
 from app.application.session_service import SessionApplicationService
 from app.avatar.registry import ProviderRegistry
+from app.domain.models import AvatarCapabilities, AvatarSession, SessionStatus
+from app.domain.ports import SessionCapacityError
 from app.infrastructure.session_store import InMemorySessionStore
 
 

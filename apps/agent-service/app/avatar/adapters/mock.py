@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from ...domain.models import AvatarCapabilities, AvatarHealth, AvatarSession, ProviderResult
+from ...domain.models import (
+    AvatarCapabilities,
+    AvatarHealth,
+    AvatarSession,
+    ProviderResult,
+)
 from ..errors import ProviderSessionError
 
 

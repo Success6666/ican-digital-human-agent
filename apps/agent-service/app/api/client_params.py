@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
-
 _TEXT_LIMITS = {
     "mode": 64,
     "runtime": 64,

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import Request
-
 
 _STREAM_EVENTS = frozenset(
     {
@@ -158,13 +158,10 @@ async def iter_sse_frames(
     finally:
         close = getattr(events, "aclose", None)
         if callable(close):
-            try:
+            # Closing an already-disconnected async iterator is best effort and
+            # must not turn a completed response into another transport failure.
+            with contextlib.suppress(Exception):
                 await close()
-            except Exception:
-                # Closing an already-disconnected async iterator is best
-                # effort and must not turn a completed response into another
-                # transport failure.
-                pass
 
 
 def _normalize_stream_event(

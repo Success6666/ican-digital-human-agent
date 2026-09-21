@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections import deque
 import json
 import logging
 import threading
+from collections import deque
 
 from .models import TelemetryEvent
 from .redaction import redact
@@ -15,7 +15,7 @@ class LocalJsonLogSink:
     def __init__(self, *, logger: logging.Logger | None = None, max_events: int = 1000) -> None:
         if max_events < 1:
             raise ValueError("max_events must be positive")
-        self.logger = logger or logging.getLogger("ican.agent.observability")
+        self.logger = logger or logging.getLogger("agent.observability")
         self._events: deque[TelemetryEvent] = deque(maxlen=max_events)
         self._lock = threading.Lock()
         self._sequence = 0

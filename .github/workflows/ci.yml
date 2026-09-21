@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  agent-service:
+    name: agent-service (pytest + ruff)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/agent-service/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,rag]"
+          pip install ruff
+
+      - name: Lint (ruff)
+        run: ruff check app tests
+
+      - name: Test (pytest)
+        # The retrieval layer writes FAISS indexes to disk; the default pytest
+        # basetemp is fine on Linux, but pass an explicit one so the run is
+        # reproducible and never reuses a cached directory.
+        run: pytest -q --basetemp="$RUNNER_TEMP/pt-agent"
+
+  auth-service:
+    name: auth-service (Maven)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/auth-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Test (Maven)
+        run: ./mvnw -B test
+
+  web:
+    name: web (build + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Chat link contract
+        run: npm run test:chat
+
+      - name: Realtime transport
+        run: npm run test:realtime
+
+      - name: Layout contract
+        run: npm run test:layout
+
+      - name: Avatar speech
+        run: npm run test:avatar
+
+      - name: Observability phases
+        run: npm run test:observability

@@ -7,9 +7,9 @@ so transport-facing event details do not inflate the lifecycle runtime.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 from ..agent.models import FillerPhase, IntentDecision, IntentName, IntentSource
@@ -23,12 +23,12 @@ from .runtime_support import (
     safe_error,
     trace_scope,
 )
+from .state import AgentGraphState
 from .stream_helpers import elapsed_ms as _elapsed_ms
 from .stream_helpers import invalidate_run as _invalidate_run
 from .stream_helpers import latency_payload as _latency_payload
 from .stream_helpers import node_event as _node_event
 from .stream_helpers import response_events as _response_events
-from .state import AgentGraphState
 
 
 async def stream_runtime(

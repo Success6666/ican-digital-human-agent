@@ -14,9 +14,9 @@ should be surfaced rather than silently dropped.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-import re
 from typing import Literal
 
 Relation = Literal["exact", "compatible", "conflict", "missing"]

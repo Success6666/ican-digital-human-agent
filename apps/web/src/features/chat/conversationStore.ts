@@ -1,12 +1,15 @@
 import type { ChatConversation, ChatMessage } from './model'
 
-const STORAGE_PREFIX = 'ican:chat-history:v1:'
+const STORAGE_PREFIX = 'digital-human:chat-history:v1:'
+// 早期版本写入的前缀。仅用于读取兜底，避免改前缀后既有对话历史瞬间消失；
+// 新数据一律写入上面的前缀，读到旧数据后会在下一次写入时自然迁移。
+const LEGACY_STORAGE_PREFIX = 'ican:chat-history:v1:'
 const MAX_CONVERSATIONS = 40
 const MAX_MESSAGES = 200
 const MAX_CONTENT_LENGTH = 20_000
 
-function storageKey(accountId: string): string {
-  return `${STORAGE_PREFIX}${encodeURIComponent(accountId.trim())}`
+function storageKey(accountId: string, prefix: string = STORAGE_PREFIX): string {
+  return `${prefix}${encodeURIComponent(accountId.trim())}`
 }
 
 function cleanMessage(value: unknown): ChatMessage | null {
@@ -49,7 +52,9 @@ export function createConversation(): ChatConversation {
 export function readConversations(accountId: string): ChatConversation[] {
   if (!accountId.trim()) return []
   try {
-    const raw = window.localStorage.getItem(storageKey(accountId))
+    const raw =
+    window.localStorage.getItem(storageKey(accountId)) ??
+    window.localStorage.getItem(storageKey(accountId, LEGACY_STORAGE_PREFIX))
     const parsed = raw ? JSON.parse(raw) : []
     if (!Array.isArray(parsed)) return []
     return parsed

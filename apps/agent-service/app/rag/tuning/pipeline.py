@@ -31,8 +31,8 @@ from .fusion import fuse_positions
 from .quantity import contains_compatible_value, parse_quantities
 from .scoring import score_candidates
 from .selection import Candidate, select_distinct
-from .trace import QueryTrace, RouteStats
 from .tokenizer import tokens
+from .trace import QueryTrace, RouteStats
 
 VECTOR_ROUTE = 0
 LEXICAL_ROUTE = 1
@@ -76,7 +76,7 @@ def retrieve(
 
     # ---- Route 1: dense vectors -------------------------------------------
     dense_ranked = [position for position in vector_ranked if position in eligible]
-    dense_score_by_position = {
+    {
         position: float(score)
         for position, score in zip(vector_ranked, vector_scores, strict=False)
         if position in eligible

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from hashlib import sha256
 import ipaddress
 import socket
-from typing import Any, Callable
-from urllib.parse import urljoin, urlparse, urlunparse
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from hashlib import sha256
+from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 
 class FetchError(ValueError):

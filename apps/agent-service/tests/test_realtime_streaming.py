@@ -14,6 +14,7 @@ from app.mcp.client import LocalToolClient
 from app.observability.futureagi import FutureAGIConfig, FutureAGISink
 from app.observability.local import LocalJsonLogSink
 from app.observability.service import ObservabilityService
+
 from .realtime_fixtures import BlockingClassifier, session
 
 
